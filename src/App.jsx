@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Users, Calendar, Archive, LogOut, Plus, Trash2, 
   ChevronRight, BarChart3, AlertCircle, CheckCircle2, 
-  UserPlus, Eye, Check, Database, Settings, ShieldAlert, Edit2
+  UserPlus, Eye, Check, Database, Settings, ShieldAlert, 
+  Edit2, FileSpreadsheet, Upload, X, Info
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, updateProfile } from 'firebase/auth';
@@ -39,7 +40,6 @@ try {
   firebaseInitError = e.message;
 }
 
-// Bereinigt die App-ID für Firestore Pfade
 const appId = (typeof __app_id !== 'undefined' ? __app_id : 'ruesssuuger-app').replace(/[^a-zA-Z0-9_-]/g, '-');
 
 const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder'];
@@ -47,8 +47,6 @@ const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitex
 
 const INITIAL_USERS = [
   { id: '1', firstName: 'Admin', lastName: 'Suuger', role: 'admin', groups: ['Vorstand', 'Aktive'] },
-  { id: '2', firstName: 'Max', lastName: 'Muster', role: 'member', groups: ['Aktive', 'Wagenbau'] },
-  { id: '3', firstName: 'Anna', lastName: 'Beispiel', role: 'member', groups: ['Passiv'] },
 ];
 
 const INITIAL_EVENTS = [
@@ -58,20 +56,7 @@ const INITIAL_EVENTS = [
     category: 'Generalversammlung',
     date: '2026-04-15',
     isArchived: false,
-    surveys: [
-      {
-        id: 's1',
-        title: 'Wahl des neuen Präsidenten',
-        maxAnswers: 1,
-        allowedGroups: ['Vorstand', 'Aktive', 'Ehrenmitglieder'],
-        status: 'active',
-        options: [
-          { id: 'o1', text: 'Köbi Meier', votes: 1 },
-          { id: 'o2', text: 'Hans Müller', votes: 0 },
-        ],
-        votedUsers: ['3']
-      }
-    ]
+    surveys: []
   }
 ];
 
@@ -93,7 +78,6 @@ export default function App() {
 
   if (!isConfigured) return <SetupScreen />;
 
-  // 1. Firebase Authentifizierung
   useEffect(() => {
     if (!auth) return;
     const initAuth = async () => {
@@ -115,66 +99,40 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Datenbank-Listener
   useEffect(() => {
     if (!fbUser || !db) return;
-    
     setPermissionsError(null);
-
     let unsubUsers = () => {};
     let unsubEvents = () => {};
-
     try {
       const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
       const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
-
-      unsubUsers = onSnapshot(usersRef, 
-        (snap) => {
+      unsubUsers = onSnapshot(usersRef, (snap) => {
           setUsers(snap.docs.map(d => d.data()));
           setIsDBReady(true);
-        }, 
-        (err) => {
-          console.error("Users Snapshot Error:", err);
-          if (err.code === 'permission-denied') {
-             setPermissionsError("Fehlende Berechtigungen für Firestore. Bitte aktualisiere die Datenbank-Regeln.");
-          }
+        }, (err) => {
+          if (err.code === 'permission-denied') setPermissionsError("Fehlende Berechtigungen für Firestore.");
         }
       );
-      
-      unsubEvents = onSnapshot(eventsRef, 
-        (snap) => {
+      unsubEvents = onSnapshot(eventsRef, (snap) => {
           setEvents(snap.docs.map(d => d.data()));
           setIsDBReady(true);
-        }, 
-        (err) => {
-          console.error("Events Snapshot Error:", err);
-          if (err.code === 'permission-denied') {
-             setPermissionsError("Fehlende Berechtigungen für Firestore. Bitte aktualisiere die Datenbank-Regeln.");
-          }
+        }, (err) => {
+          if (err.code === 'permission-denied') setPermissionsError("Fehlende Berechtigungen für Firestore.");
         }
       );
-
-    } catch (err) {
-      console.error("Firestore Listeners Setup Error:", err);
-    }
-    
-    return () => { 
-        unsubUsers(); 
-        unsubEvents(); 
-    };
+    } catch (err) { console.error(err); }
+    return () => { unsubUsers(); unsubEvents(); };
   }, [fbUser]); 
 
-  // 3. Session-Wiederherstellung (Auto-Login)
   useEffect(() => {
       let timer;
       if (isDBReady && fbUser) {
           if (fbUser.displayName && !currentUser) {
               const savedUser = users.find(u => u.id === fbUser.displayName);
-              if (savedUser) {
-                  setCurrentUser(savedUser);
-              }
+              if (savedUser) setCurrentUser(savedUser);
           }
-          timer = setTimeout(() => setIsCheckingSession(false), 1200); // Etwas länger für das Splash-Gefühl
+          timer = setTimeout(() => setIsCheckingSession(false), 1200);
       }
       return () => clearTimeout(timer);
   }, [isDBReady, fbUser, users, currentUser]); 
@@ -186,10 +144,7 @@ export default function App() {
       if (!db) throw new Error("Datenbank nicht initialisiert");
       for (const u of INITIAL_USERS) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id), u);
       for (const e of INITIAL_EVENTS) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', e.id), e);
-    } catch (err) {
-      console.error(err);
-      alert(`Fehler beim Initialisieren der Datenbank: ${err.message}`);
-    }
+    } catch (err) { alert(`Fehler: ${err.message}`); }
     setIsSeeding(false);
   };
 
@@ -197,9 +152,7 @@ export default function App() {
     const user = users.find(u => u.firstName.toLowerCase() === firstName.toLowerCase() && u.lastName.toLowerCase() === lastName.toLowerCase());
     if (user) {
         setCurrentUser(user);
-        if (fbUser) {
-            await updateProfile(fbUser, { displayName: user.id });
-        }
+        if (fbUser) await updateProfile(fbUser, { displayName: user.id });
     } else {
         alert("Mitglied nicht gefunden. Bitte Vor- und Nachname prüfen.");
     }
@@ -208,20 +161,12 @@ export default function App() {
   const handleLogout = async () => {
     setCurrentUser(null);
     setActiveTab('events');
-    if (fbUser) {
-        await updateProfile(fbUser, { displayName: "" });
-    }
+    if (fbUser) await updateProfile(fbUser, { displayName: "" });
   };
 
-  if (authError) {
-    return <FatalErrorScreen message={`Anmeldefehler bei Firebase: ${authError}. Bitte prüfe, ob die Anonymous-Anmeldung aktiviert ist.`} />;
-  }
-  
-  if (permissionsError) {
-      return <FatalErrorScreen message={permissionsError} />
-  }
+  if (authError) return <FatalErrorScreen message={`Anmeldefehler: ${authError}`} />;
+  if (permissionsError) return <FatalErrorScreen message={permissionsError} />;
 
-  // RüssSuuger Splash-Ladebildschirm
   if (!fbUser || !isDBReady || isCheckingSession) {
      return (
         <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
@@ -291,18 +236,8 @@ function FatalErrorScreen({ message }) {
         <ShieldAlert className="mx-auto text-red-500 mb-4" size={48} />
         <h1 className="text-2xl font-bold text-white mb-2">Fehler</h1>
         <p className="text-red-300 text-sm mb-6">{message}</p>
-        <div className="text-left bg-red-900/50 p-4 rounded-lg border border-red-800 text-xs text-red-200 mt-4 font-mono">
-            <p className="font-bold mb-2 font-sans text-white">Lösung (Firestore Rules):</p>
-            <pre className="whitespace-pre-wrap mt-2 overflow-x-auto bg-black p-3 rounded text-green-400">
-{`rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
-    }
-  }
-}`}
-            </pre>
+        <div className="text-left bg-red-900/50 p-4 rounded-lg border border-red-800 text-xs text-red-200 mt-4">
+            <p className="font-bold mb-2 font-sans text-white text-xs">Prüfe deine Firestore-Regeln!</p>
         </div>
       </div>
     </div>
@@ -315,7 +250,7 @@ function SetupScreen() {
       <div className="max-w-2xl w-full bg-gray-900 border border-orange-500/50 rounded-2xl p-8 shadow-2xl text-center">
         <Settings className="mx-auto text-orange-500 mb-4" size={48} />
         <h1 className="text-2xl font-bold text-white mb-2">Setup erforderlich</h1>
-        <p className="text-gray-400">Bitte Firebase Konfiguration in der App.jsx eintragen.</p>
+        <p className="text-gray-400 text-sm">Bitte trage deine Konfiguration in der App.jsx ein.</p>
       </div>
     </div>
   );
@@ -324,43 +259,29 @@ function SetupScreen() {
 function LoginScreen({ onLogin, users, onSeed, isSeeding }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-
-  const onSubmit = (e) => {
-    e.preventDefault();
-    if (firstName && lastName) onLogin(firstName.trim(), lastName.trim());
-  };
+  const onSubmit = (e) => { e.preventDefault(); if (firstName && lastName) onLogin(firstName.trim(), lastName.trim()); };
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
       <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl overflow-hidden relative">
-        <div className="absolute top-0 left-0 w-full h-1 bg-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.5)]"></div>
+        <div className="absolute top-0 left-0 w-full h-1 bg-orange-500"></div>
         <div className="flex flex-col items-center mb-10 mt-4">
           <h1 className="text-4xl font-black mb-1 text-center tracking-tighter">
-            <span className="text-gray-400">Rüss</span><span className="text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.3)]">Suuger</span>
+            <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
           </h1>
           <p className="text-gray-500 uppercase text-[10px] font-bold tracking-[0.3em] ml-1">Ämme • Portal</p>
         </div>
-
         {users.length === 0 ? (
           <div className="text-center py-6">
             <Database className="mx-auto text-gray-700 mb-4" size={48} />
             <h3 className="text-white font-medium mb-2">Datenbank einrichten</h3>
-            <p className="text-sm text-gray-500 mb-6">Bitte lade die Vereinsdaten für den Start.</p>
-            <button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-3 rounded-xl mt-4 disabled:opacity-50 transition-colors">
-              {isSeeding ? 'Wird geladen...' : 'Vereinsdaten laden'}
-            </button>
+            <button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-3 rounded-xl mt-4">Vereinsdaten laden</button>
           </div>
         ) : (
           <form onSubmit={onSubmit} className="space-y-4">
-            <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-600 uppercase ml-2 tracking-widest">Vorname</label>
-                <input type="text" required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Max" />
-            </div>
-            <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-600 uppercase ml-2 tracking-widest">Nachname</label>
-                <input type="text" required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Muster" />
-            </div>
-            <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4 transition-all shadow-lg shadow-orange-500/10 active:scale-[0.98]">Anmelden</button>
+            <input type="text" required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" />
+            <input type="text" required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" />
+            <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4">Anmelden</button>
           </form>
         )}
       </div>
@@ -376,362 +297,11 @@ function TabButton({ active, onClick, icon, label }) {
   );
 }
 
-function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db, fbUser }) {
-  const [showCreate, setShowCreate] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState(null);
-
-  const getDbRef = (id) => doc(db, 'artifacts', dbAppId, 'public', 'data', 'events', id);
-
-  const handleCreateEvent = async (newEvent) => {
-    if (!fbUser) return;
-    const id = Date.now().toString();
-    await setDoc(getDbRef(id), { ...newEvent, id, isArchived: false, surveys: [] });
-    setShowCreate(false);
-  };
-
-  const handleArchive = async (eventId, archiveStatus) => {
-    if (!fbUser) return;
-    const event = events.find(e => e.id === eventId);
-    if(event) await setDoc(getDbRef(eventId), { ...event, isArchived: archiveStatus });
-    setSelectedEvent(null);
-  };
-
-  const handleDeleteEvent = async (eventId) => {
-    if (!fbUser) return;
-    if (confirm('Event unwiderruflich löschen?')) {
-      await deleteDoc(getDbRef(eventId));
-      setSelectedEvent(null);
-    }
-  };
-
-  if (selectedEvent) {
-    const currentEventData = events.find(e => e.id === selectedEvent.id);
-    if (!currentEventData) { setSelectedEvent(null); return null; }
-    return <EventDetail event={currentEventData} onBack={() => setSelectedEvent(null)} currentUser={currentUser} onArchive={handleArchive} onDelete={handleDeleteEvent} users={users} dbAppId={dbAppId} db={db} fbUser={fbUser} />;
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-white tracking-tight">{isArchive ? 'Archiv' : 'Aktuelle Events'}</h2>
-        {!isArchive && currentUser.role === 'admin' && (
-          <button onClick={() => setShowCreate(!showCreate)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
-            {showCreate ? 'Abbrechen' : <><Plus size={18} /> Neuer Event</>}
-          </button>
-        )}
-      </div>
-      {showCreate && <CreateEventForm onSubmit={handleCreateEvent} />}
-      
-      {events.length === 0 ? (
-        <div className="text-center py-12 bg-gray-900 rounded-2xl border border-gray-800">
-          <Calendar size={48} className="mx-auto text-gray-700 mb-4" />
-          <p className="text-gray-500">Keine Events gefunden.</p>
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {events.map(event => (
-            <div key={event.id} onClick={() => setSelectedEvent(event)} className="bg-gray-900 border border-gray-800 p-5 rounded-2xl cursor-pointer hover:border-orange-500/50 transition-colors group active:scale-[0.98]">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md">{event.category}</span>
-                <ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" />
-              </div>
-              <h3 className="text-xl font-bold text-white mt-1 mb-4">{event.title}</h3>
-              <div className="flex justify-between text-xs text-gray-500 font-medium">
-                <span className="flex items-center gap-1"><Calendar size={14} /> {new Date(event.date).toLocaleDateString('de-CH')}</span>
-                <span className="flex items-center gap-1"><BarChart3 size={14} /> {event.surveys.length} Umfragen</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CreateEventForm({ onSubmit }) {
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0]);
-  const [date, setDate] = useState('');
-  const [customCategory, setCustomCategory] = useState('');
-
-  const submit = (e) => { 
-      e.preventDefault(); 
-      const finalCategory = category === 'Freitext' ? customCategory.trim() : category;
-      if (category === 'Freitext' && !finalCategory) return alert('Bitte eigene Kategorie eingeben.');
-      onSubmit({ title, category: finalCategory, date }); 
-  };
-
-  return (
-    <form onSubmit={submit} className="bg-gray-900 border border-gray-800 p-6 rounded-2xl mb-8 space-y-4 shadow-xl">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-           <label className="block text-xs text-gray-500 mb-1 font-bold">Titel</label>
-           <input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Z.B. Fasnacht 2026" className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors" />
-        </div>
-        <div>
-           <label className="block text-xs text-gray-500 mb-1 font-bold">Kategorie</label>
-           <select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors">
-            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-           </select>
-           {category === 'Freitext' && (
-               <input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Name der Kategorie" className="w-full mt-2 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors" />
-           )}
-        </div>
-        <div>
-           <label className="block text-xs text-gray-500 mb-1 font-bold">Datum</label>
-           <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors" />
-        </div>
-      </div>
-      <div className="flex justify-end pt-2">
-        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-6 py-2 rounded-lg transition-colors shadow-lg shadow-orange-500/10">Speichern</button>
-      </div>
-    </form>
-  );
-}
-
-function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, dbAppId, db, fbUser }) {
-  const [showCreateSurvey, setShowCreateSurvey] = useState(false);
-  const getDbRef = () => doc(db, 'artifacts', dbAppId, 'public', 'data', 'events', event.id);
-
-  const handleAddSurvey = async (newSurvey) => {
-    if (!fbUser) return;
-    const updatedSurveys = [...event.surveys, { ...newSurvey, id: Date.now().toString(), status: 'draft', votedUsers: [] }];
-    await setDoc(getDbRef(), { ...event, surveys: updatedSurveys });
-    setShowCreateSurvey(false);
-  };
-
-  const updateSurvey = async (surveyId, updates) => {
-    if (!fbUser) return;
-    const updatedSurveys = event.surveys.map(s => s.id === surveyId ? { ...s, ...updates } : s);
-    await setDoc(getDbRef(), { ...event, surveys: updatedSurveys });
-  };
-
-  const handleVote = async (surveyId, selectedOptionIds) => {
-    if (!fbUser) return;
-    const updatedSurveys = event.surveys.map(s => {
-      if (s.id === surveyId) {
-        const updatedOptions = s.options.map(opt => selectedOptionIds.includes(opt.id) ? { ...opt, votes: opt.votes + 1 } : opt);
-        return { ...s, options: updatedOptions, votedUsers: [...s.votedUsers, currentUser.id] };
-      }
-      return s;
-    });
-    await setDoc(getDbRef(), { ...event, surveys: updatedSurveys });
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-4">
-            <button onClick={onBack} className="text-gray-400 hover:text-white bg-gray-900 p-2 rounded-lg border border-gray-800 transition-colors"><ChevronRight className="rotate-180" size={20} /></button>
-            <div className="flex-1">
-                <h2 className="text-2xl font-bold text-white">{event.title}</h2>
-                <p className="text-sm text-gray-400">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
-            </div>
-        </div>
-        
-        {currentUser.role === 'admin' && (
-          <div className="flex gap-2">
-            <button onClick={() => onArchive(event.id, !event.isArchived)} className="px-4 py-2 rounded-lg text-sm border bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 flex items-center gap-2 transition-colors">
-                <Archive size={16} /> <span className="hidden sm:inline">{event.isArchived ? 'Aktivieren' : 'Archivieren'}</span>
-            </button>
-            <button onClick={() => onDelete(event.id)} className="px-4 py-2 rounded-lg text-sm border bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 flex items-center gap-2 transition-colors">
-                <Trash2 size={16} /> <span className="hidden sm:inline">Löschen</span>
-            </button>
-          </div>
-        )}
-      </div>
-      
-      {currentUser.role === 'admin' && !event.isArchived && (
-        <div className="flex justify-end">
-            <button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 mb-4 transition-colors shadow-lg shadow-orange-500/10">
-            {showCreateSurvey ? 'Abbrechen' : <><Plus size={18} /> Neue Umfrage</>}
-            </button>
-        </div>
-      )}
-      
-      {showCreateSurvey && <CreateSurveyForm onSubmit={handleAddSurvey} />}
-      
-      <div className="space-y-6">
-        {event.surveys.length === 0 ? (
-           <p className="text-gray-500 text-center py-8">Keine Umfragen in diesem Event.</p>
-        ) : (
-            event.surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} />)
-        )}
-      </div>
-    </div>
-  );
-}
-
-function CreateSurveyForm({ onSubmit }) {
-  const [title, setTitle] = useState('');
-  const [maxAnswers, setMaxAnswers] = useState(1);
-  const [allowedGroups, setAllowedGroups] = useState(GROUPS); 
-  const [options, setOptions] = useState([{ id: '1', text: '' }, { id: '2', text: '' }]);
-
-  const handleGroupToggle = (group) => setAllowedGroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
-  const handleOptionChange = (id, text) => setOptions(prev => prev.map(o => o.id === id ? { ...o, text } : o));
-  const addOption = () => { if (options.length < 10) setOptions([...options, { id: Date.now().toString(), text: '' }]); };
-  const removeOption = (id) => { if (options.length > 2) setOptions(prev => prev.filter(o => o.id !== id)); };
-
-  const submit = (e) => {
-    e.preventDefault();
-    const validOptions = options.filter(o => o.text.trim() !== '').map((o, i) => ({ id: `o${i}`, text: o.text.trim(), votes: 0 }));
-    if (validOptions.length < 2) return alert('Min. 2 Optionen.');
-    if (allowedGroups.length === 0) return alert('Bitte mindestens eine Gruppe wählen.');
-    onSubmit({ title, maxAnswers, allowedGroups, options: validOptions });
-  };
-
-  return (
-    <form onSubmit={submit} className="bg-gray-900 border border-gray-700 p-6 rounded-2xl mb-8 shadow-xl">
-      <h3 className="text-lg font-bold text-white mb-4">Neue Umfrage erstellen</h3>
-      
-      <div className="space-y-4">
-        <div>
-            <label className="block text-xs text-gray-500 mb-1 font-bold">Frage</label>
-            <input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Z.B. Welches Sujet wählen wir?" className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500 transition-colors" />
-        </div>
-        
-        <div>
-            <label className="block text-xs text-gray-500 mb-2 font-bold">Antworten (Max. 10)</label>
-            <div className="space-y-2">
-                {options.map((opt, i) => (
-                    <div key={opt.id} className="flex gap-2">
-                        <input type="text" required value={opt.text} onChange={e => handleOptionChange(opt.id, e.target.value)} placeholder={`Option ${i + 1}`} className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500 transition-colors" />
-                        <button type="button" onClick={() => removeOption(opt.id)} disabled={options.length <= 2} className="p-2 text-gray-500 hover:text-red-500 disabled:opacity-50 transition-colors">
-                            <Trash2 size={20} />
-                        </button>
-                    </div>
-                ))}
-            </div>
-            {options.length < 10 && (
-                <button type="button" onClick={addOption} className="text-orange-500 text-xs mt-2 flex items-center gap-1 hover:text-orange-400 transition-colors">
-                    <Plus size={16}/> Weitere Option
-                </button>
-            )}
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-gray-800 pt-4 mt-4">
-            <div>
-                <label className="block text-xs text-gray-500 mb-2 font-bold">Max. Stimmen pro Person</label>
-                <input type="number" min="1" max="10" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500 transition-colors" />
-                <p className="text-[10px] text-gray-600 mt-1 italic">{maxAnswers === 1 ? 'Single Choice Modus' : 'Multiple Choice Modus'}</p>
-            </div>
-            <div>
-                <label className="block text-xs text-gray-500 mb-2 font-bold">Berechtigte Gruppen</label>
-                <div className="grid grid-cols-2 gap-2">
-                    {GROUPS.map(g => (
-                        <label key={g} className="text-xs text-gray-400 flex items-center gap-2 cursor-pointer hover:text-white transition-colors">
-                            <input type="checkbox" checked={allowedGroups.includes(g)} onChange={() => handleGroupToggle(g)} className="accent-orange-500 rounded" />
-                            {g}
-                        </label>
-                    ))}
-                </div>
-            </div>
-        </div>
-      </div>
-      <div className="flex justify-end mt-6">
-        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-6 py-2 rounded-lg transition-colors">Speichern</button>
-      </div>
-    </form>
-  );
-}
-
-function SurveyCard({ survey, currentUser, onUpdate, onVote, users }) {
-  const [selectedOptions, setSelectedOptions] = useState([]);
-  const isEligible = currentUser.role === 'admin' || survey.allowedGroups.some(g => currentUser.groups.includes(g));
-  const hasVoted = survey.votedUsers.includes(currentUser.id);
-  const totalVotes = survey.options.reduce((sum, opt) => sum + opt.votes, 0);
-  const eligibleUsersCount = users.filter(u => survey.allowedGroups.some(g => u.groups.includes(g))).length;
-
-  if (!isEligible && currentUser.role !== 'admin') return null; 
-  if (currentUser.role !== 'admin' && survey.status === 'draft') return null;
-
-  const max = survey.maxAnswers || 1;
-
-  const toggleOption = (id) => {
-    if (selectedOptions.includes(id)) setSelectedOptions(prev => prev.filter(x => x !== id));
-    else if (max === 1) setSelectedOptions([id]);
-    else if (selectedOptions.length < max) setSelectedOptions([...selectedOptions, id]);
-  };
-
-  return (
-    <div className={`bg-gray-900 border rounded-2xl overflow-hidden transition-colors shadow-md ${survey.status === 'active' ? 'border-orange-500/50' : 'border-gray-800'}`}>
-      <div className="p-5 border-b border-gray-800 bg-gray-900/50 flex flex-col sm:flex-row sm:justify-between items-start gap-4">
-        <div>
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-             {survey.status === 'draft' && <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-1 rounded font-bold uppercase tracking-wider">Entwurf</span>}
-             {survey.status === 'active' && <span className="text-[10px] bg-green-500/10 text-green-500 px-2 py-1 rounded font-bold uppercase tracking-wider flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Aktiv</span>}
-             {survey.status === 'published' && <span className="text-[10px] bg-orange-500/10 text-orange-500 px-2 py-1 rounded font-bold uppercase tracking-wider">Veröffentlicht</span>}
-             <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">{max === 1 ? 'Single Choice' : `Max. ${max} Stimmen`}</span>
-          </div>
-          <h4 className="text-xl font-bold text-white leading-tight">{survey.title}</h4>
-        </div>
-        {currentUser.role === 'admin' && (
-          <div className="flex flex-row sm:flex-col items-center sm:items-end gap-3 sm:gap-2 w-full sm:w-auto justify-between">
-            <div className="flex gap-2">
-                {survey.status === 'draft' && <button onClick={() => onUpdate({ status: 'active' })} className="text-xs bg-green-500/20 text-green-500 hover:bg-green-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors"><CheckCircle2 size={16}/> Freigeben</button>}
-                {survey.status === 'active' && <button onClick={() => onUpdate({ status: 'published' })} className="text-xs bg-orange-500 hover:bg-orange-600 text-gray-950 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition-colors active:scale-95"><Eye size={16}/> Beenden</button>}
-            </div>
-            <div className="text-[10px] text-gray-500 font-bold flex items-center gap-1" title="Teilnahme">
-                <Users size={12} /> {survey.votedUsers.length} / {eligibleUsersCount}
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="p-5">
-        {survey.status === 'published' || currentUser.role === 'admin' ? (
-          <div className="space-y-3">
-             {survey.status === 'active' && currentUser.role === 'admin' && (
-                 <div className="mb-4 p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg flex items-start gap-3">
-                     <AlertCircle className="text-blue-500 mt-0.5 flex-shrink-0" size={18} />
-                     <p className="text-[11px] text-blue-400 italic">Resultate sind live nur für Admins sichtbar.</p>
-                 </div>
-             )}
-             {survey.options.map(opt => {
-                const pct = totalVotes === 0 ? 0 : Math.round((opt.votes / totalVotes) * 100);
-                return (
-                  <div key={opt.id} className="relative w-full bg-black/20 border border-gray-800 rounded-xl overflow-hidden p-3 flex justify-between items-center group">
-                    <div className="absolute top-0 left-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
-                    <span className="relative z-10 font-medium text-sm text-white group-hover:translate-x-1 transition-transform">{opt.text}</span>
-                    <span className="relative z-10 text-xs text-gray-500 font-bold">{pct}% ({opt.votes})</span>
-                  </div>
-                )
-             })}
-          </div>
-        ) : hasVoted ? (
-          <div className="flex flex-col items-center justify-center py-6 text-center animate-in fade-in duration-500">
-              <div className="w-12 h-12 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-3">
-                  <Check size={24} />
-              </div>
-              <h5 className="text-lg font-bold text-white">Abgestimmt!</h5>
-              <p className="text-xs text-gray-500 mt-1 italic">Danke für deine Teilnahme.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {survey.options.map(opt => (
-              <div key={opt.id} onClick={() => toggleOption(opt.id)} className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all active:scale-[0.99] ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-600 hover:bg-black/20'}`}>
-                <div className={`w-5 h-5 flex items-center justify-center border transition-colors ${max > 1 ? 'rounded' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-gray-950' : 'border-gray-600'}`}>
-                    {selectedOptions.includes(opt.id) && <Check size={14} className="stroke-[3]" />}
-                </div>
-                <span className="font-bold">{opt.text}</span>
-              </div>
-            ))}
-            <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest italic">{selectedOptions.length} von {max} gewählt</p>
-                <button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 disabled:bg-gray-800 disabled:text-gray-600 text-gray-950 font-bold px-8 py-3 rounded-xl transition-all shadow-lg shadow-orange-500/10 active:scale-95">
-                    Stimme abgeben
-                </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function MembersView({ users, dbAppId, db, fbUser }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const fileInputRef = useRef(null);
 
   const handleAddUser = async (user) => {
     if (!fbUser) return;
@@ -746,21 +316,113 @@ function MembersView({ users, dbAppId, db, fbUser }) {
   };
 
   const removeUser = async (id) => {
-    if (!fbUser) return;
-    if (confirm('Mitglied wirklich löschen?')) {
-        await deleteDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', id));
-    }
+    if (!fbUser || !confirm('Mitglied wirklich löschen?')) return;
+    await deleteDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', id));
+  };
+
+  const handleCsvUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const text = e.target.result;
+      const rows = text.split(/\r?\n/).filter(row => row.trim() !== '');
+      
+      const importedMembers = rows.map((row, index) => {
+        // Erkennt Komma oder Semikolon als Trenner
+        const columns = row.split(/[;,]/).map(col => col.trim());
+        if (columns.length < 2) return null;
+
+        const firstName = columns[0];
+        const lastName = columns[1];
+        const groupRaw = columns[2] || '';
+        
+        // Versucht die Gruppe in der Liste der erlaubten Gruppen zu finden
+        const matchedGroups = GROUPS.filter(g => 
+          groupRaw.toLowerCase().includes(g.toLowerCase()) || 
+          g.toLowerCase().includes(groupRaw.toLowerCase())
+        );
+
+        return {
+          id: `import-${Date.now()}-${index}`,
+          firstName,
+          lastName,
+          role: 'member',
+          groups: matchedGroups.length > 0 ? matchedGroups : []
+        };
+      }).filter(Boolean);
+
+      if (importedMembers.length === 0) {
+        alert("Keine gültigen Daten gefunden. Bitte prüfe das Format (Vorname, Nachname, Gruppe).");
+        return;
+      }
+
+      if (confirm(`${importedMembers.length} Mitglieder wurden erkannt. Jetzt importieren?`)) {
+        for (const member of importedMembers) {
+          await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', member.id), member);
+        }
+        alert("Import erfolgreich abgeschlossen!");
+        setShowImport(false);
+      }
+    };
+    reader.readAsText(file);
+    // Reset file input
+    event.target.value = "";
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-4">
         <h2 className="text-2xl font-bold text-white tracking-tight">Stammdaten</h2>
-        <button onClick={() => { setShowAdd(!showAdd); setEditingUser(null); }} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors active:scale-95">
-            {showAdd ? 'Abbrechen' : <><UserPlus size={18} /> Hinzufügen</>}
-        </button>
+        <div className="flex gap-2">
+            <button 
+                onClick={() => setShowImport(!showImport)} 
+                className="bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+            >
+                <FileSpreadsheet size={18} /> Import
+            </button>
+            <button 
+                onClick={() => { setShowAdd(!showAdd); setEditingUser(null); }} 
+                className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+            >
+                {showAdd ? 'Abbrechen' : <><UserPlus size={18} /> Hinzufügen</>}
+            </button>
+        </div>
       </div>
       
+      {showImport && (
+        <div className="bg-gray-900 border-2 border-dashed border-gray-700 p-8 rounded-2xl text-center">
+            <Upload className="mx-auto text-orange-500 mb-4" size={40} />
+            <h3 className="text-white font-bold text-lg mb-2">Excel / CSV Mitglieder-Import</h3>
+            <p className="text-gray-400 text-sm mb-6 max-w-md mx-auto">
+                Erstelle eine Excel-Liste mit den Spalten: <br/>
+                <span className="text-orange-400 font-mono">Vorname, Nachname, Gruppe</span><br/>
+                Speichere diese als <b>.csv</b> und lade sie hier hoch.
+            </p>
+            <div className="flex flex-col items-center gap-4">
+                <input 
+                    type="file" 
+                    ref={fileInputRef}
+                    accept=".csv"
+                    onChange={handleCsvUpload}
+                    className="hidden" 
+                />
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="bg-orange-500 text-gray-950 font-bold px-8 py-3 rounded-xl hover:bg-orange-600 transition-colors"
+                >
+                    Datei auswählen (.csv)
+                </button>
+                <button onClick={() => setShowImport(false)} className="text-gray-500 hover:text-gray-300 text-xs uppercase tracking-widest font-bold">Schliessen</button>
+            </div>
+            <div className="mt-6 p-4 bg-gray-950/50 rounded-xl border border-gray-800 text-left flex items-start gap-3">
+                <Info className="text-blue-500 shrink-0" size={18} />
+                <p className="text-[10px] text-gray-500 italic">Hinweis: Falls ein Mitglied bereits existiert, wird ein Duplikat erstellt (basierend auf neuer ID). Die Gruppenerkennung ist flexibel (z.B. "aktiv" wird als "Aktive" erkannt).</p>
+            </div>
+        </div>
+      )}
+
       {showAdd && <MemberForm onSubmit={handleAddUser} onCancel={() => setShowAdd(false)} />}
       {editingUser && <MemberForm initialData={editingUser} onSubmit={handleUpdateUser} onCancel={() => setEditingUser(null)} />}
       
@@ -816,31 +478,21 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
   const [selectedGroups, setSelectedGroups] = useState(initialData?.groups || []);
 
   const toggleGroup = (group) => {
-      setSelectedGroups(prev => 
-          prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]
-      );
+      setSelectedGroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
   };
 
   const submit = (e) => { 
       e.preventDefault(); 
-      onSubmit({ 
-          ...initialData,
-          firstName: firstName.trim(), 
-          lastName: lastName.trim(), 
-          role, 
-          groups: selectedGroups 
-      }); 
+      onSubmit({ ...initialData, firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups }); 
   };
 
   return (
     <form onSubmit={submit} className="bg-gray-900 border-2 border-orange-500/10 p-6 rounded-2xl mb-8 shadow-2xl relative overflow-hidden">
       <h3 className="text-xl font-bold text-white mb-6 tracking-tight">{initialData ? 'Mitglied bearbeiten' : 'Neues Mitglied'}</h3>
-      
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
-        <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
+        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 font-bold" />
+        <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 font-bold" />
       </div>
-      
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6">
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-gray-500 uppercase block mb-2">Berechtigungs-Level</label>
@@ -851,33 +503,280 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
               </select>
           </div>
         </div>
-        
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-gray-500 uppercase block mb-2">Sektionen / Gruppen</label>
           <div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 p-4 rounded-xl">
             {GROUPS.map(group => (
               <label key={group} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all">
-                <input 
-                    type="checkbox" 
-                    checked={selectedGroups.includes(group)} 
-                    onChange={() => toggleGroup(group)} 
-                    className="w-4 h-4 accent-orange-500 rounded" 
-                />
+                <input type="checkbox" checked={selectedGroups.includes(group)} onChange={() => toggleGroup(group)} className="w-4 h-4 accent-orange-500 rounded" />
                 {group}
               </label>
             ))}
           </div>
         </div>
       </div>
-
       <div className="flex justify-end items-center pt-4 gap-4 border-t border-gray-800">
-        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all">
-            Abbrechen
-        </button>
-        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-8 py-3 rounded-xl transition-all shadow-lg active:scale-95 uppercase tracking-widest text-xs">
+        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all">Abbrechen</button>
+        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-8 py-3 rounded-xl transition-all shadow-lg active:scale-95 text-xs">
             {initialData ? 'Speichern' : 'Anlegen'}
         </button>
       </div>
     </form>
+  );
+}
+
+function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db, fbUser }) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const getDbRef = (id) => doc(db, 'artifacts', dbAppId, 'public', 'data', 'events', id);
+
+  const handleCreateEvent = async (newEvent) => {
+    if (!fbUser) return;
+    const id = Date.now().toString();
+    await setDoc(getDbRef(id), { ...newEvent, id, isArchived: false, surveys: [] });
+    setShowCreate(false);
+  };
+
+  const handleArchive = async (eventId, archiveStatus) => {
+    if (!fbUser) return;
+    const event = events.find(e => e.id === eventId);
+    if(event) await setDoc(getDbRef(eventId), { ...event, isArchived: archiveStatus });
+    setSelectedEvent(null);
+  };
+
+  const handleDeleteEvent = async (eventId) => {
+    if (!fbUser || !confirm('Event unwiderruflich löschen?')) return;
+    await deleteDoc(getDbRef(eventId));
+    setSelectedEvent(null);
+  };
+
+  if (selectedEvent) {
+    const currentEventData = events.find(e => e.id === selectedEvent.id);
+    if (!currentEventData) { setSelectedEvent(null); return null; }
+    return <EventDetail event={currentEventData} onBack={() => setSelectedEvent(null)} currentUser={currentUser} onArchive={handleArchive} onDelete={handleDeleteEvent} users={users} dbAppId={dbAppId} db={db} fbUser={fbUser} />;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-white tracking-tight">{isArchive ? 'Archiv' : 'Aktuelle Events'}</h2>
+        {!isArchive && currentUser.role === 'admin' && (
+          <button onClick={() => setShowCreate(!showCreate)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+            {showCreate ? 'Abbrechen' : <><Plus size={18} /> Neuer Event</>}
+          </button>
+        )}
+      </div>
+      {showCreate && <CreateEventForm onSubmit={handleCreateEvent} />}
+      {events.length === 0 ? (
+        <div className="text-center py-12 bg-gray-900 rounded-2xl border border-gray-800">
+          <Calendar size={48} className="mx-auto text-gray-700 mb-4" />
+          <p className="text-gray-500">Keine Events gefunden.</p>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          {events.map(event => (
+            <div key={event.id} onClick={() => setSelectedEvent(event)} className="bg-gray-900 border border-gray-800 p-5 rounded-2xl cursor-pointer hover:border-orange-500/50 transition-colors group active:scale-[0.98]">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md">{event.category}</span>
+                <ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" />
+              </div>
+              <h3 className="text-xl font-bold text-white mt-1 mb-4">{event.title}</h3>
+              <div className="flex justify-between text-xs text-gray-500 font-medium">
+                <span className="flex items-center gap-1"><Calendar size={14} /> {new Date(event.date).toLocaleDateString('de-CH')}</span>
+                <span className="flex items-center gap-1"><BarChart3 size={14} /> {event.surveys.length} Umfragen</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CreateEventForm({ onSubmit }) {
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState(CATEGORIES[0]);
+  const [date, setDate] = useState('');
+  const [customCategory, setCustomCategory] = useState('');
+
+  const submit = (e) => { 
+      e.preventDefault(); 
+      const finalCategory = category === 'Freitext' ? customCategory.trim() : category;
+      if (category === 'Freitext' && !finalCategory) return alert('Bitte eigene Kategorie eingeben.');
+      onSubmit({ title, category: finalCategory, date }); 
+  };
+
+  return (
+    <form onSubmit={submit} className="bg-gray-900 border border-gray-800 p-6 rounded-2xl mb-8 space-y-4 shadow-xl">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+           <label className="block text-xs text-gray-500 mb-1 font-bold">Titel</label>
+           <input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Z.B. Fasnacht 2026" className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none" />
+        </div>
+        <div>
+           <label className="block text-xs text-gray-500 mb-1 font-bold">Kategorie</label>
+           <select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
+            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+           </select>
+           {category === 'Freitext' && (
+               <input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Name der Kategorie" className="w-full mt-2 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none" />
+           )}
+        </div>
+        <div>
+           <label className="block text-xs text-gray-500 mb-1 font-bold">Datum</label>
+           <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none" />
+        </div>
+      </div>
+      <div className="flex justify-end pt-2">
+        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-6 py-2 rounded-lg transition-colors shadow-lg">Speichern</button>
+      </div>
+    </form>
+  );
+}
+
+function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, dbAppId, db, fbUser }) {
+  const [showCreateSurvey, setShowCreateSurvey] = useState(false);
+  const getDbRef = () => doc(db, 'artifacts', dbAppId, 'public', 'data', 'events', event.id);
+
+  const handleAddSurvey = async (newSurvey) => {
+    if (!fbUser) return;
+    const updatedSurveys = [...event.surveys, { ...newSurvey, id: Date.now().toString(), status: 'draft', votedUsers: [] }];
+    await setDoc(getDbRef(), { ...event, surveys: updatedSurveys });
+    setShowCreateSurvey(false);
+  };
+
+  const updateSurvey = async (surveyId, updates) => {
+    if (!fbUser) return;
+    const updatedSurveys = event.surveys.map(s => s.id === surveyId ? { ...s, ...updates } : s);
+    await setDoc(getDbRef(), { ...event, surveys: updatedSurveys });
+  };
+
+  const handleVote = async (surveyId, selectedOptionIds) => {
+    if (!fbUser) return;
+    const updatedSurveys = event.surveys.map(s => {
+      if (s.id === surveyId) {
+        const updatedOptions = s.options.map(opt => selectedOptionIds.includes(opt.id) ? { ...opt, votes: opt.votes + 1 } : opt);
+        return { ...s, options: updatedOptions, votedUsers: [...s.votedUsers, currentUser.id] };
+      }
+      return s;
+    });
+    await setDoc(getDbRef(), { ...event, surveys: updatedSurveys });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-4">
+            <button onClick={onBack} className="text-gray-400 hover:text-white bg-gray-900 p-2 rounded-lg border border-gray-800"><ChevronRight className="rotate-180" size={20} /></button>
+            <div className="flex-1">
+                <h2 className="text-2xl font-bold text-white">{event.title}</h2>
+                <p className="text-sm text-gray-400">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
+            </div>
+        </div>
+        {currentUser.role === 'admin' && (
+          <div className="flex gap-2">
+            <button onClick={() => onArchive(event.id, !event.isArchived)} className="px-4 py-2 rounded-lg text-sm border bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 flex items-center gap-2"><Archive size={16} /> {event.isArchived ? 'Aktivieren' : 'Archivieren'}</button>
+            <button onClick={() => onDelete(event.id)} className="px-4 py-2 rounded-lg text-sm border bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 flex items-center gap-2"><Trash2 size={16} /> Löschen</button>
+          </div>
+        )}
+      </div>
+      {currentUser.role === 'admin' && !event.isArchived && (
+        <div className="flex justify-end">
+            <button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 mb-4 transition-colors">
+            {showCreateSurvey ? 'Abbrechen' : <><Plus size={18} /> Neue Umfrage</>}
+            </button>
+        </div>
+      )}
+      {showCreateSurvey && <CreateSurveyForm onSubmit={handleAddSurvey} />}
+      <div className="space-y-6">
+        {event.surveys.length === 0 ? <p className="text-gray-500 text-center py-8">Keine Umfragen in diesem Event.</p> : 
+            event.surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} />)}
+      </div>
+    </div>
+  );
+}
+
+function SurveyCard({ survey, currentUser, onUpdate, onVote, users }) {
+  const [selectedOptions, setSelectedOptions] = useState([]);
+  const isEligible = currentUser.role === 'admin' || survey.allowedGroups.some(g => currentUser.groups.includes(g));
+  const hasVoted = survey.votedUsers.includes(currentUser.id);
+  const totalVotes = survey.options.reduce((sum, opt) => sum + opt.votes, 0);
+  const eligibleUsersCount = users.filter(u => survey.allowedGroups.some(g => u.groups.includes(g))).length;
+
+  if (!isEligible && currentUser.role !== 'admin') return null; 
+  if (currentUser.role !== 'admin' && survey.status === 'draft') return null;
+
+  const max = survey.maxAnswers || 1;
+  const toggleOption = (id) => {
+    if (selectedOptions.includes(id)) setSelectedOptions(prev => prev.filter(x => x !== id));
+    else if (max === 1) setSelectedOptions([id]);
+    else if (selectedOptions.length < max) setSelectedOptions([...selectedOptions, id]);
+  };
+
+  return (
+    <div className={`bg-gray-900 border rounded-2xl overflow-hidden transition-colors shadow-md ${survey.status === 'active' ? 'border-orange-500/50' : 'border-gray-800'}`}>
+      <div className="p-5 border-b border-gray-800 bg-gray-900/50 flex flex-col sm:flex-row sm:justify-between items-start gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+             {survey.status === 'draft' && <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-1 rounded font-bold uppercase tracking-wider">Entwurf</span>}
+             {survey.status === 'active' && <span className="text-[10px] bg-green-500/10 text-green-500 px-2 py-1 rounded font-bold uppercase tracking-wider flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Aktiv</span>}
+             {survey.status === 'published' && <span className="text-[10px] bg-orange-500/10 text-orange-500 px-2 py-1 rounded font-bold uppercase tracking-wider">Veröffentlicht</span>}
+             <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">{max === 1 ? 'Single Choice' : `Max. ${max} Stimmen`}</span>
+          </div>
+          <h4 className="text-xl font-bold text-white leading-tight">{survey.title}</h4>
+        </div>
+        {currentUser.role === 'admin' && (
+          <div className="flex flex-row sm:flex-col items-center sm:items-end gap-3 sm:gap-2 w-full sm:w-auto justify-between">
+            <div className="flex gap-2">
+                {survey.status === 'draft' && <button onClick={() => onUpdate({ status: 'active' })} className="text-sm bg-green-500/20 text-green-500 hover:bg-green-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1"><CheckCircle2 size={16}/> Freigeben</button>}
+                {survey.status === 'active' && <button onClick={() => onUpdate({ status: 'published' })} className="text-sm bg-orange-500 hover:bg-orange-600 text-gray-950 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1"><Eye size={16}/> Beenden</button>}
+            </div>
+            <div className="text-[10px] text-gray-500 font-bold flex items-center gap-1"><Users size={12} /> {survey.votedUsers.length} / {eligibleUsersCount}</div>
+          </div>
+        )}
+      </div>
+      <div className="p-5">
+        {survey.status === 'published' || currentUser.role === 'admin' ? (
+          <div className="space-y-3">
+             {survey.status === 'active' && currentUser.role === 'admin' && (
+                 <div className="mb-4 p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg flex items-start gap-3">
+                     <AlertCircle className="text-blue-500 mt-0.5 flex-shrink-0" size={18} />
+                     <p className="text-[11px] text-blue-400 italic">Resultate live nur für Admins sichtbar.</p>
+                 </div>
+             )}
+             {survey.options.map(opt => {
+                const pct = totalVotes === 0 ? 0 : Math.round((opt.votes / totalVotes) * 100);
+                return (
+                  <div key={opt.id} className="relative w-full bg-black/20 border border-gray-800 rounded-xl overflow-hidden p-3 flex justify-between items-center group">
+                    <div className="absolute top-0 left-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
+                    <span className="relative z-10 font-medium text-sm text-white">{opt.text}</span>
+                    <span className="relative z-10 text-xs text-gray-500 font-bold">{pct}% ({opt.votes})</span>
+                  </div>
+                )
+             })}
+          </div>
+        ) : hasVoted ? (
+          <div className="flex flex-col items-center justify-center py-6 text-center">
+              <div className="w-12 h-12 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-3"><Check size={24} /></div>
+              <h5 className="text-lg font-bold text-white">Abgestimmt!</h5>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {survey.options.map(opt => (
+              <div key={opt.id} onClick={() => toggleOption(opt.id)} className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all active:scale-[0.99] ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-600'}`}>
+                <div className={`w-5 h-5 flex items-center justify-center border transition-colors ${max > 1 ? 'rounded' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-gray-950' : 'border-gray-600'}`}>
+                    {selectedOptions.includes(opt.id) && <Check size={14} className="stroke-[3]" />}
+                </div>
+                <span className="font-bold">{opt.text}</span>
+              </div>
+            ))}
+            <div className="pt-4 flex justify-between gap-4">
+                <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest italic">{selectedOptions.length} / {max} Stimmen</p>
+                <button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="bg-orange-500 hover:bg-orange-600 disabled:bg-gray-800 disabled:text-gray-600 text-gray-950 font-bold px-8 py-3 rounded-xl shadow-lg active:scale-95">Stimme abgeben</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
