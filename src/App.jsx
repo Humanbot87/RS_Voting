@@ -55,6 +55,7 @@ export default function App() {
   const [users, setUsers] = useState([]);
   const [events, setEvents] = useState([]);
   const [minutes, setMinutes] = useState([]);
+  const [activeSessions, setActiveSessions] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState('events');
   const [fbUser, setFbUser] = useState(null);
@@ -70,6 +71,7 @@ export default function App() {
 
   if (!isConfigured) return <SetupScreen />;
 
+  // 1. Authentifizierung
   useEffect(() => {
     if (!auth) return;
     const initAuth = async () => {
@@ -91,22 +93,26 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // 2. Datenbank-Snapshot-Listener
   useEffect(() => {
     if (!fbUser || !db) return;
     setPermissionsError(null);
     let unsubUsers = () => {};
     let unsubEvents = () => {};
     let unsubMinutes = () => {};
+    let unsubSessions = () => {};
 
     try {
       const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
       const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
       const minutesRef = collection(db, 'artifacts', appId, 'public', 'data', 'minutes');
+      const sessionsRef = collection(db, 'artifacts', appId, 'public', 'data', 'active_sessions');
 
       unsubUsers = onSnapshot(usersRef, (snap) => {
           setUsers(snap.docs.map(d => d.data()));
           setIsDBReady(true);
         }, (err) => {
+          console.error("User Sync Error:", err);
           if (err.code === 'permission-denied') setPermissionsError("Fehlende Berechtigungen.");
         }
       );
@@ -114,17 +120,22 @@ export default function App() {
           setEvents(snap.docs.map(d => d.data()));
           setIsDBReady(true);
         }, (err) => {
-          if (err.code === 'permission-denied') setPermissionsError("Fehlende Berechtigungen.");
+          console.error("Event Sync Error:", err);
         }
       );
       unsubMinutes = onSnapshot(minutesRef, (snap) => {
           setMinutes(snap.docs.map(d => d.data()));
         }
       );
+      unsubSessions = onSnapshot(sessionsRef, (snap) => {
+          setActiveSessions(snap.docs.map(d => d.data()));
+      });
+
     } catch (err) { console.error(err); }
-    return () => { unsubUsers(); unsubEvents(); unsubMinutes(); };
+    return () => { unsubUsers(); unsubEvents(); unsubMinutes(); unsubSessions(); };
   }, [fbUser]); 
 
+  // 3. Auto-Login Prüfung & Heartbeat Management
   useEffect(() => {
       let timer;
       if (isDBReady && fbUser) {
@@ -137,12 +148,50 @@ export default function App() {
       return () => clearTimeout(timer);
   }, [isDBReady, fbUser, users, currentUser]); 
 
+  // Heartbeat für aktive Sitzung
+  useEffect(() => {
+    if (!currentUser || !db || !fbUser) return;
+
+    const updateSession = async () => {
+      try {
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'active_sessions', currentUser.id), {
+            id: currentUser.id,
+            lastSeen: Date.now()
+        });
+      } catch (e) { console.error("Session heartbeat error", e); }
+    };
+
+    updateSession();
+    const interval = setInterval(updateSession, 45000); 
+
+    const handleUnload = () => {
+        deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'active_sessions', currentUser.id));
+    };
+    window.addEventListener('beforeunload', handleUnload);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleUnload);
+    };
+  }, [currentUser, fbUser]);
+
   const handleLogin = async (firstName, lastName) => {
     const user = users.find(u => 
       (u.firstName || '').toLowerCase() === firstName.toLowerCase() && 
       (u.lastName || '').toLowerCase() === lastName.toLowerCase()
     );
     if (user) {
+        const session = activeSessions.find(s => s.id === user.id);
+        if (session && (Date.now() - session.lastSeen < 60000)) {
+             alert("Diese Person ist bereits an einem anderen Gerät oder Tab angemeldet.");
+             return;
+        }
+
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'active_sessions', user.id), {
+            id: user.id,
+            lastSeen: Date.now()
+        });
+
         setCurrentUser(user);
         if (fbUser) await updateProfile(fbUser, { displayName: user.id });
     } else {
@@ -151,6 +200,9 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    if (currentUser) {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'active_sessions', currentUser.id));
+    }
     setCurrentUser(null);
     setActiveTab('events');
     if (fbUser) await updateProfile(fbUser, { displayName: "" });
@@ -167,16 +219,18 @@ export default function App() {
 
   if (authError || permissionsError) return <FatalErrorScreen message={authError || permissionsError} />;
 
+  // Splash Screen mit angepasstem Logo
   if (!fbUser || !isDBReady || isCheckingSession) {
      return (
         <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
            <div className="flex flex-col items-center animate-in fade-in zoom-in duration-700">
-              <div className="text-5xl sm:text-7xl font-black tracking-tighter mb-6 flex flex-col items-center text-center">
-                 <span className="text-gray-400 drop-shadow-lg">Rüss</span>
-                 <span className="text-orange-500 drop-shadow-[0_0_15px_rgba(249,115,22,0.4)] -mt-2">Suuger</span>
-                 <span className="text-gray-600 text-xl font-bold uppercase tracking-[0.3em] mt-2">Ämme</span>
+              <div className="flex flex-col items-center text-center">
+                 <h1 className="text-5xl sm:text-7xl font-black tracking-tighter mb-1">
+                    <span className="text-gray-400 drop-shadow-lg">Rüss</span><span className="text-orange-500 drop-shadow-[0_0_15px_rgba(249,115,22,0.4)]">Suuger</span>
+                 </h1>
+                 <span className="text-gray-600 text-xl font-bold uppercase tracking-[0.3em] drop-shadow-md">Ämme</span>
               </div>
-              <div className="flex items-center gap-3 mt-4">
+              <div className="flex items-center gap-3 mt-8">
                 <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
                 <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
                 <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce"></div>
@@ -403,9 +457,9 @@ function MembersView({ users, dbAppId, db, fbUser }) {
   };
   return (
     <div className="space-y-6"><div className="flex justify-between items-center"><h2 className="text-2xl font-bold text-white tracking-tight">Stammdaten</h2><div className="flex gap-2"><button onClick={() => setShowImport(!showImport)} className="bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"><FileSpreadsheet size={18} /> Import</button><button onClick={() => { setShowAdd(!showAdd); setEditingUser(null); }} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg transition-all">{showAdd ? 'Abbrechen' : <><UserPlus size={18} /> Hinzufügen</>}</button></div></div>
-      {showImport && (<div className="bg-gray-900 border-2 border-dashed border-gray-700 p-8 rounded-2xl text-center"><Upload className="mx-auto text-orange-500 mb-4" size={40} /><h3 className="text-white font-bold text-lg mb-2">CSV Import</h3><input type="file" ref={fileInputRef} accept=".csv" onChange={handleCsvUpload} className="hidden" /><button onClick={() => fileInputRef.current?.click()} className="bg-orange-500 text-gray-950 font-bold px-8 py-3 rounded-xl">Datei auswählen</button></div>)}
+      {showImport && (<div className="bg-gray-900 border-2 border-dashed border-gray-700 p-8 rounded-2xl text-center animate-in fade-in slide-in-from-top-2 duration-300"><Upload className="mx-auto text-orange-500 mb-4" size={40} /><h3 className="text-white font-bold text-lg mb-2">CSV Import</h3><input type="file" ref={fileInputRef} accept=".csv" onChange={handleCsvUpload} className="hidden" /><button onClick={() => fileInputRef.current?.click()} className="bg-orange-500 text-gray-950 font-bold px-8 py-3 rounded-xl">Datei auswählen</button></div>)}
       {showAdd && <MemberForm onSubmit={handleAddUser} onCancel={() => setShowAdd(false)} />}{editingUser && <MemberForm initialData={editingUser} onSubmit={handleUpdateUser} onCancel={() => setEditingUser(null)} />}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-2xl"><div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="bg-gray-950 border-b border-gray-800 text-gray-500 text-[10px] font-bold uppercase tracking-wider"><th className="p-4">Name</th><th className="p-4">Rolle</th><th className="p-4">Gruppen</th><th className="p-4 text-right">Aktionen</th></tr></thead><tbody className="divide-y divide-gray-800/50">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-2xl"><div className="overflow-x-auto scrollbar-hide"><table className="w-full text-left border-collapse"><thead><tr className="bg-gray-950 border-b border-gray-800 text-gray-500 text-[10px] font-bold uppercase tracking-wider"><th className="p-4">Name</th><th className="p-4">Rolle</th><th className="p-4">Gruppen</th><th className="p-4 text-right">Aktionen</th></tr></thead><tbody className="divide-y divide-gray-800/50">
         {users.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(u => (<tr key={u.id} className="hover:bg-black/20 transition-colors"><td className="p-4 text-white font-bold">{u.lastName} {u.firstName}</td><td className="p-4"><span className={`text-[10px] px-2 py-1 rounded font-bold uppercase tracking-widest ${u.role === 'admin' ? 'bg-orange-500/20 text-orange-500' : 'bg-gray-800/50 text-gray-500'}`}>{u.role}</span></td><td className="p-4"><div className="flex flex-wrap gap-1">{(u.groups || []).map(g => (<span key={g} className="text-[10px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-400 font-bold">{g}</span>))}</div></td><td className="p-4 text-right flex justify-end gap-1"><button onClick={() => setEditingUser(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all"><Edit2 size={18} /></button><button onClick={() => removeUser(u.id)} className="text-gray-500 hover:text-red-500 p-2 rounded-lg transition-all"><Trash2 size={18} /></button></td></tr>))}
       </tbody></table></div></div></div>
   );
@@ -428,7 +482,7 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
 }
 
 // --- EVENTS ---
-function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db, fbUser }) {
+function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db, fbUser, isAutoArchived }) {
   const [showCreate, setShowCreate] = useState(false); const [selectedEvent, setSelectedEvent] = useState(null); const getDbRef = (id) => doc(db, 'artifacts', dbAppId, 'public', 'data', 'events', id);
   const handleCreateEvent = async (n) => { if (!fbUser) return; const id = Date.now().toString(); await setDoc(getDbRef(id), { ...n, id, isArchived: false, surveys: [] }); setShowCreate(false); };
   const handleArchive = async (id, s) => { if (!fbUser) return; const e = events.find(ev => ev.id === id); if(e) await setDoc(getDbRef(id), { ...e, isArchived: s }); setSelectedEvent(null); };
@@ -436,7 +490,7 @@ function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db
   if (selectedEvent) { const evData = events.find(e => e.id === selectedEvent.id); if (!evData) return null; const isExp = evData.endDate && new Date(evData.endDate) <= new Date(); return <EventDetail event={evData} onBack={() => setSelectedEvent(null)} currentUser={currentUser} onArchive={handleArchive} onDelete={handleDeleteEvent} users={users} dbAppId={dbAppId} db={db} fbUser={fbUser} isAutoArchived={isExp} />; }
   return (
     <div className="space-y-6"><div className="flex justify-between items-center"><h2 className="text-2xl font-bold text-white tracking-tight">{isArchive ? 'Archiv' : 'Aktuelle Events'}</h2>{!isArchive && currentUser.role === 'admin' && (<button onClick={() => setShowCreate(!showCreate)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg transition-all">{showCreate ? 'Abbrechen' : <><Plus size={18} /> Neuer Event</>}</button>)}</div>
-      {showCreate && <CreateEventForm onSubmit={handleCreateEvent} />}{events.length === 0 ? (<div className="text-center py-12 bg-gray-900/50 rounded-2xl border border-gray-800"><Calendar size={48} className="mx-auto text-gray-700 mb-4" /><p className="text-gray-500">Keine Events gefunden.</p></div>) : (<div className="grid gap-4 md:grid-cols-2">{events.map(e => (<div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-5 rounded-2xl cursor-pointer hover:border-orange-500/50 transition-colors group active:scale-[0.98]"><div className="flex justify-between items-start mb-2"><div className="flex flex-wrap gap-2"><span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20">{e.category}</span>{(e.endDate && new Date(e.endDate) <= new Date() && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1"><Clock size={10}/> Automatisch Archiviert</span>}</div><ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" /></div><h3 className="text-xl font-bold text-white mt-1 mb-4">{e.title}</h3><div className="flex justify-between text-xs text-gray-500 font-medium"><span className="flex items-center gap-1 font-bold"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span><span className="flex items-center gap-1 font-bold"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span></div></div>))}</div>)}
+      {showCreate && <CreateEventForm onSubmit={handleCreateEvent} />}{events.length === 0 ? (<div className="text-center py-12 bg-gray-900/50 rounded-2xl border border-gray-800"><Calendar size={48} className="mx-auto text-gray-700 mb-4" /><p className="text-gray-500">Keine Events gefunden.</p></div>) : (<div className="grid gap-4 md:grid-cols-2">{events.map(e => { const isExp = e.endDate && new Date(e.endDate) <= new Date(); return (<div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-5 rounded-2xl cursor-pointer hover:border-orange-500/50 transition-colors group active:scale-[0.98]"><div className="flex justify-between items-start mb-2"><div className="flex flex-wrap gap-2"><span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20">{e.category}</span>{(isExp && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1"><Clock size={10}/> Automatisch Archiviert</span>}</div><ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" /></div><h3 className="text-xl font-bold text-white mt-1 mb-4">{e.title}</h3><div className="flex justify-between text-xs text-gray-500 font-medium"><span className="flex items-center gap-1 font-bold"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span><span className="flex items-center gap-1 font-bold"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span></div></div>); })}</div>)}
     </div>
   );
 }
@@ -471,7 +525,7 @@ function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, d
   const surveys = event.surveys || [];
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6"><div className="flex items-center gap-4"><button onClick={onBack} className="text-gray-400 hover:text-white bg-gray-900 p-2 rounded-lg border border-gray-800 transition-all active:scale-90"><ChevronRight className="rotate-180" size={20} /></button><div className="flex-1"><h2 className="text-2xl font-bold text-white tracking-tight">{event.title}</h2><div className="flex flex-wrap items-center gap-3"><p className="text-sm text-gray-500 font-bold uppercase tracking-wider">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>{isActuallyArchived && <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-orange-500/20">Archiviert</span>}</div></div></div>{currentUser.role === 'admin' && (<div className="flex gap-2"><button onClick={() => onArchive(event.id, !event.isArchived)} className="px-4 py-2 rounded-lg text-xs font-bold uppercase border bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 flex items-center gap-2"><Archive size={14} /> {event.isArchived ? 'Aktivieren' : 'Archivieren'}</button><button onClick={() => onDelete(event.id)} className="px-4 py-2 rounded-lg text-xs font-bold uppercase border bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 flex items-center gap-2"><Trash2 size={14} /> Löschen</button></div>)}</div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6"><div className="flex items-center gap-4"><button onClick={onBack} className="text-gray-400 hover:text-white bg-gray-900 p-2 rounded-lg border border-gray-800 transition-all active:scale-90"><ChevronRight className="rotate-180" size={20} /></button><div className="flex-1"><h2 className="text-2xl font-bold text-white tracking-tight">{event.title}</h2><div className="flex flex-wrap items-center gap-3"><p className="text-sm text-gray-500 font-bold uppercase tracking-wider">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>{isActuallyArchived && <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-orange-500/20">Archiviert</span>}</div></div></div>{currentUser.role === 'admin' && (<div className="flex gap-2"><button onClick={() => onArchive(event.id, !event.isArchived)} className="px-4 py-2 rounded-lg text-xs font-bold uppercase border bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 flex items-center gap-2 transition-all"><Archive size={14} /> {event.isArchived ? 'Aktivieren' : 'Archivieren'}</button><button onClick={() => onDelete(event.id)} className="px-4 py-2 rounded-lg text-xs font-bold uppercase border bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 flex items-center gap-2 transition-all"><Trash2 size={14} /> Löschen</button></div>)}</div>
       {currentUser.role === 'admin' && !isActuallyArchived && (<div className="flex justify-end"><button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 mb-4 transition-colors shadow-lg active:scale-95 uppercase text-xs tracking-widest">{showCreateSurvey ? 'Abbrechen' : <><Plus size={18} /> Neue Umfrage</>}</button></div>)}
       {showCreateSurvey && <CreateSurveyForm onSubmit={handleAddSurvey} isMusicMode={event.category === 'Liederwahl'} />}
       <div className="space-y-6">{surveys.length === 0 ? (<p className="text-gray-500 text-center py-12 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800 font-bold uppercase text-[10px] tracking-widest">Keine Umfragen erfasst.</p>) : (surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} isArchivedView={isActuallyArchived} />))}</div>
@@ -507,19 +561,15 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users, isArchivedVi
   const allowedGroups = survey.allowedGroups || [];
   const votedUsers = survey.votedUsers || [];
   const options = survey.options || [];
-  
   const isEligible = currentUser.role === 'admin' || allowedGroups.some(g => (currentUser.groups || []).includes(g));
   const hasVoted = votedUsers.includes(currentUser.id);
   const totalVotes = options.reduce((sum, opt) => sum + (opt.votes || 0), 0);
   const eligibleUsersCount = users.filter(u => allowedGroups.some(g => (u.groups || []).includes(g))).length;
-  
   if (!isEligible && currentUser.role !== 'admin') return null; 
   if (currentUser.role !== 'admin' && survey.status === 'draft') return null;
-  
   const max = survey.maxAnswers || 1;
   const toggleOption = (id) => { if (selectedOptions.includes(id)) setSelectedOptions(prev => prev.filter(x => x !== id)); else if (max === 1) setSelectedOptions([id]); else if (selectedOptions.length < max) setSelectedOptions([...selectedOptions, id]); };
   const showResults = survey.status === 'published' || currentUser.role === 'admin' || isArchivedView;
-
   return (
     <div className={`bg-gray-900 border rounded-2xl overflow-hidden transition-all shadow-md ${survey.status === 'active' && !isArchivedView ? 'border-orange-500/40 ring-1 ring-orange-500/10' : 'border-gray-800'}`}>
       <div className="p-5 border-b border-gray-800 bg-gray-900/50 flex flex-col sm:flex-row sm:justify-between items-start gap-4">
@@ -560,7 +610,7 @@ function LoginScreen({ onLogin, users, onSeed, isSeeding }) {
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
       <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl overflow-hidden relative">
         <div className="absolute top-0 left-0 w-full h-1 bg-orange-500"></div>
-        <div className="flex flex-col items-center mb-10 mt-4"><h1 className="text-4xl font-black mb-1 tracking-tighter"><span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span></h1><p className="text-gray-500 uppercase text-[10px] font-bold tracking-[0.3em] ml-1">Ämme • Portal</p></div>
+        <div className="flex flex-col items-center mb-10 mt-4"><div className="flex flex-col items-center text-center"><h1 className="text-4xl font-black mb-1 tracking-tighter"><span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span></h1><span className="text-gray-600 text-sm font-bold uppercase tracking-[0.3em]">Ämme</span></div></div>
         {users.length === 0 ? (<div className="text-center py-6"><Database className="mx-auto text-gray-700 mb-4" size={48} /><h3 className="text-white font-medium mb-2">Datenbank einrichten</h3><button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-3 rounded-xl mt-4">Vereinsdaten laden</button></div>) : (
           <form onSubmit={(e) => { e.preventDefault(); onLogin(firstName.trim(), lastName.trim()); }} className="space-y-4">
             <div className="space-y-1"><label className="text-[10px] font-bold text-gray-600 uppercase ml-2 tracking-widest">Vorname</label><input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Max" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" /></div>
