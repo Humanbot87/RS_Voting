@@ -51,7 +51,6 @@ const INITIAL_USERS = [
   { id: '1', firstName: 'Admin', lastName: 'Suuger', role: 'admin', groups: ['Vorstand', 'Aktive'], password: "" },
 ];
 
-// Hilfsfunktionen für Passwort-Verschleierung
 const obfuscate = (str) => btoa(str || "");
 const deobfuscate = (str) => {
     try { return atob(str || ""); } catch(e) { return ""; }
@@ -71,7 +70,6 @@ export default function App() {
   const [isDBReady, setIsDBReady] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
-  // 1. Firebase Auth
   useEffect(() => {
     if (!auth) return;
     const initAuth = async () => {
@@ -93,7 +91,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Realtime Sync
   useEffect(() => {
     if (!fbUser || !db) return;
     setPermissionsError(null);
@@ -132,7 +129,6 @@ export default function App() {
     return () => { unsubUsers(); unsubEvents(); unsubMinutes(); unsubSessions(); };
   }, [fbUser]); 
 
-  // 3. Auto-Login & Heartbeat
   useEffect(() => {
       let timer;
       if (isDBReady && fbUser) {
@@ -199,7 +195,6 @@ export default function App() {
   if (firebaseInitError) return <FatalErrorScreen message={`Firebase Fehler: ${firebaseInitError}`} />;
   if (authError || permissionsError) return <FatalErrorScreen message={authError || permissionsError} />;
 
-  // Splash Screen
   if (!fbUser || !isDBReady || isCheckingSession) {
      return (
         <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
@@ -263,6 +258,8 @@ export default function App() {
     </div>
   );
 }
+
+// --- SUBKOMPONENTEN ---
 
 function TabButton({ active, onClick, icon, label }) {
   return (
@@ -378,7 +375,6 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
   );
 }
 
-// --- PROTOKOLLE ---
 function MinutesView({ minutes, users, dbAppId, db, fbUser }) {
   const [editingMinute, setEditingMinute] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -477,7 +473,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
         <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-6 py-3 rounded-xl flex items-center gap-2 shadow-lg"><Save size={18} /> Protokoll speichern</button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 text-left">
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl">
             <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 ml-1">Sitzungsdatum</label>
@@ -496,7 +492,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
           </div>
         </div>
         <div className="lg:col-span-2 space-y-4">
-          <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl">
+          <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl text-left">
             <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6 flex items-center gap-2"><FileText size={16} className="text-orange-500" /> Traktanden nach Ressort</h3>
             <div className="space-y-8">
               {BOARD_ROLES.map(role => (
@@ -529,7 +525,6 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
   );
 }
 
-// --- MITGLIEDER ---
 function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -539,25 +534,24 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate }) {
   const handleAddUser = async (user) => { 
     if (!fbUser) return; 
     const id = Date.now().toString();
-    await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', id), { ...user, id }); 
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', id), { ...user, id }); 
     setShowAdd(false); 
   };
 
   const handleUpdateUser = async (user) => { 
     if (!fbUser) return; 
-    await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', user.id), user); 
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.id), user); 
     setEditingUser(null); 
   };
 
   const removeUser = async (id) => { 
     if (!fbUser || !confirm('Mitglied wirklich löschen?')) return; 
-    await deleteDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', id)); 
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', id)); 
   };
   
   const resetPassword = async (user) => {
     if (!fbUser || !confirm(`Passwort für ${user.firstName} ${user.lastName} zurücksetzen?`)) return;
-    await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', user.id), { ...user, password: "" });
-    alert("Passwort wurde zurückgesetzt.");
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.id), { ...user, password: "" });
   };
 
   const handleCsvUpload = (event) => {
@@ -603,16 +597,16 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate }) {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-950 border-b border-gray-800 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
-                <th className="p-5">Name</th><th className="p-5">Rolle</th><th className="p-5">Gruppen</th><th className="p-5 text-right">Verwaltung</th>
+                <th className="p-5">Name</th><th className="p-5">Rolle</th><th className="p-5">Gruppen</th><th className="p-5 text-right">Aktionen</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/50">
               {users.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(u => (
                 <tr key={u.id} className="hover:bg-black/20 transition-colors group">
                   <td className="p-5 text-white font-bold">{u.lastName} {u.firstName}</td>
-                  <td className="p-5"><span className={`text-[10px] px-3 py-1 rounded font-bold uppercase tracking-widest inline-flex items-center gap-2 ${u.role === 'admin' ? 'bg-orange-500/20 text-orange-500 border border-orange-500/20' : 'bg-gray-800/50 text-gray-500'}`}>{u.role}</span></td>
+                  <td className="p-5"><span className={`text-[10px] px-3 py-1 rounded font-bold uppercase tracking-widest inline-flex items-center gap-2 ${u.role === 'admin' ? 'bg-orange-500/20 text-orange-500 border border-orange-500/20' : 'bg-gray-800/50 text-gray-400'}`}>{u.role}</span></td>
                   <td className="p-5"><div className="flex flex-wrap gap-1">{(u.groups || []).map(g => (<span key={g} className="text-[10px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-400 font-bold">{g}</span>))}</div></td>
-                  <td className="p-5 text-right flex justify-end gap-1">
+                  <td className="p-5 text-right flex justify-end gap-1 text-left">
                       {(u.groups || []).includes('Vorstand') && (
                           <button onClick={() => resetPassword(u)} className="text-gray-500 hover:text-orange-500 p-3 rounded-xl transition-all" title="Passwort zurücksetzen"><Key size={18} /></button>
                       )}
@@ -637,10 +631,10 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
   const toggleGroup = (group) => setSelectedGroups(p => p.includes(group) ? p.filter(g => g !== group) : [...p, group]);
   
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSubmit({ firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups, password: initialData?.password || "" }); }} className="bg-gray-900 border-2 border-orange-500/10 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
+    <form onSubmit={(e) => { e.preventDefault(); onSubmit({ ...(initialData || {}), firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups, password: initialData?.password || "" }); }} className="bg-gray-900 border-2 border-orange-500/10 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
       <h3 className="text-xl font-bold text-white mb-6 tracking-tight">{initialData ? 'Mitglied bearbeiten' : 'Neues Mitglied erfassen'}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
+        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 font-bold focus:outline-none" />
         <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6">
@@ -652,7 +646,6 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
   );
 }
 
-// --- EVENTS ---
 function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db, fbUser, isAutoArchived }) {
   const [showCreate, setShowCreate] = useState(false); const [selectedEvent, setSelectedEvent] = useState(null); const getDbRef = (id) => doc(db, 'artifacts', dbAppId, 'public', 'data', 'events', id);
   const handleCreateEvent = async (n) => { if (!fbUser) return; const id = Date.now().toString(); await setDoc(getDbRef(id), { ...n, id, isArchived: false, surveys: [] }); setShowCreate(false); };
@@ -688,9 +681,9 @@ function CreateEventForm({ onSubmit }) {
   return (
     <form onSubmit={submit} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-6 shadow-xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
       <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-3xl rounded-full"></div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
         <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Event Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Titel" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Kategorie</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>{category === 'Freitext' && (<input type="text" required value={customCategory} onChange={setCustomCategory} placeholder="Kategorie Name" className="w-full mt-2 bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold" />)}</div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Kategorie</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>{category === 'Freitext' && (<input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Kategorie Name" className="w-full mt-2 bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold" />)}</div>
         <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Datum</label><input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
         <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Ende (Archiv)</label><input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
       </div>
@@ -756,7 +749,7 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users, isArchivedVi
   const showResults = survey.status === 'published' || isArchivedView || (currentUser.role === 'admin' && hasVoted);
   return (
     <div className={`bg-gray-900 border rounded-2xl overflow-hidden transition-all shadow-md ${survey.status === 'active' && !isArchivedView ? 'border-orange-500/40 ring-1 ring-orange-500/10' : 'border-gray-800'}`}>
-      <div className="p-5 border-b border-gray-800 bg-gray-900/50 flex flex-col sm:flex-row sm:justify-between items-start gap-4">
+      <div className="p-5 border-b border-gray-800 bg-gray-900/50 flex flex-col sm:flex-row sm:justify-between items-start gap-4 text-left">
         <div>
           <div className="flex flex-wrap items-center gap-2 mb-2">
              {survey.status === 'draft' && <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded font-bold uppercase tracking-widest border border-gray-700">Entwurf</span>}
@@ -768,7 +761,7 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users, isArchivedVi
         </div>
         {currentUser.role === 'admin' && (
           <div className="flex flex-row sm:flex-col items-center sm:items-end gap-3 sm:gap-2 w-full sm:w-auto justify-between">
-            {!isArchivedView && (<div className="flex gap-2">{survey.status === 'draft' && <button onClick={() => onUpdate({ status: 'active' })} className="text-[10px] font-black uppercase tracking-widest bg-green-500 text-gray-950 px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95"><CheckCircle2 size={14}/> Freigeben</button>}{survey.status === 'active' && <button onClick={() => onUpdate({ status: 'published' })} className="text-[10px] font-black uppercase tracking-widest bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-orange-500/20"><Eye size={14}/> Beenden</button>}</div>)}
+            {!isArchivedView && (<div className="flex gap-2">{survey.status === 'draft' && <button onClick={() => onUpdate({ status: 'active' })} className="text-[10px] font-black uppercase tracking-widest bg-green-500 text-gray-950 px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95"><CheckCircle2 size={14}/> Freigeben</button>}{survey.status === 'active' && <button onClick={() => onUpdate({ status: 'published' })} className="text-[10px] font-black uppercase tracking-widest bg-orange-500 hover:bg-orange-600 text-gray-950 px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-orange-500/20"><Eye size={14}/> Beenden</button>}</div>)}
             <div className="text-[10px] text-gray-600 font-black uppercase tracking-wider flex items-center gap-2 bg-gray-950 px-2 py-1 rounded border border-gray-800"><Users size={12} className="text-orange-500" /> {votedUsers.length} / {eligibleUsersCount} STIMMEN</div>
           </div>
         )}
@@ -779,8 +772,11 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users, isArchivedVi
              {survey.status === 'active' && !isArchivedView && currentUser.role === 'admin' && (<div className="mb-4 p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl flex items-start gap-3"><AlertCircle className="text-blue-500 mt-0.5 flex-shrink-0" size={18} /><p className="text-[11px] text-blue-400 italic">Administratoren sehen die Resultate live.</p></div>)}
              {options.map(opt => { const pct = totalVotes === 0 ? 0 : Math.round(((opt.votes || 0) / totalVotes) * 100); return (<div key={opt.id} className="relative w-full bg-black/20 border border-gray-800 rounded-xl overflow-hidden p-3 flex justify-between items-center group transition-all shadow-inner"><div className="absolute top-0 left-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} /><div className="relative z-10 flex items-center gap-3"><span className="font-bold text-sm text-white">{opt.text}</span>{opt.link && (<a href={opt.link} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-gray-900 rounded-lg text-gray-500 hover:text-red-500 transition-colors shadow-lg border border-gray-800"><Youtube size={14} /></a>)}</div><span className="relative z-10 text-xs text-gray-500 font-black font-mono">{pct}% <span className="text-[10px] text-gray-700 ml-1">({opt.votes || 0})</span></span></div>); })}
           </div>
-        ) : hasVoted ? (<div className="flex flex-col items-center justify-center py-8 text-center animate-in fade-in zoom-in duration-500"><div className="w-14 h-14 bg-green-500/10 text-green-500 rounded-2xl flex items-center justify-center mb-4 border border-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.1)]"><Check size={28} className="stroke-[3]" /></div><h5 className="text-xl font-bold text-white tracking-tight uppercase">Erfolgreich Abgestimmt!</h5><p className="text-xs text-gray-600 mt-1 italic font-medium tracking-wide">Deine Stimme wurde bei den RüssSuugern gezählt.</p></div>) : (<div className="space-y-3">
-            {options.map(opt => (<div key={opt.id} className="flex gap-2"><div onClick={() => toggleOption(opt.id)} className={`flex-1 flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all active:scale-[0.99] ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg shadow-orange-500/5' : 'bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-700 hover:bg-black/20'}`}><div className={`w-5 h-5 flex items-center justify-center border-2 transition-all ${max > 1 ? 'rounded' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-gray-950' : 'border-gray-700'}`}>{selectedOptions.includes(opt.id) && <Check size={14} className="stroke-[4]" />}</div><span className="font-bold text-sm sm:text-base">{opt.text}</span></div>{opt.link && (<a href={opt.link} target="_blank" rel="noopener noreferrer" className="p-4 bg-gray-950 border border-gray-800 rounded-2xl flex items-center justify-center text-gray-600 hover:text-red-500 transition-all group group-hover:scale-110 shadow-lg"><Youtube size={22} /></a>)}</div>))}<div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-800/50 mt-4 text-left"><p className="text-[10px] font-black text-gray-600 uppercase tracking-widest italic">{selectedOptions.length} / {max} Stimmen gewählt</p><button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 disabled:bg-gray-800 disabled:text-gray-600 text-gray-950 font-black px-10 py-3.5 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest transition-all">Stimme jetzt abgeben</button></div></div>)}
+        ) : hasVoted ? (<div className="flex flex-col items-center justify-center py-8 text-center animate-in fade-in zoom-in duration-500"><div className="w-14 h-14 bg-green-500/10 text-green-500 rounded-2xl flex items-center justify-center mb-4 border border-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.1)]"><Check size={28} className="stroke-[3]" /></div><h5 className="text-xl font-bold text-white tracking-tight uppercase">Erfolgreich Abgestimmt!</h5><p className="text-xs text-gray-600 mt-1 italic font-medium tracking-wide">Deine Stimme wurde bei den RüssSuugern gezählt.</p></div>) : (
+          <div className="space-y-3">
+            {options.map(opt => (<div key={opt.id} className="flex gap-2"><div onClick={() => toggleOption(opt.id)} className={`flex-1 flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all active:scale-[0.99] ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg shadow-orange-500/5' : 'bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-700 hover:bg-black/20'}`}><div className={`w-5 h-5 flex items-center justify-center border-2 transition-all ${max > 1 ? 'rounded' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-gray-950' : 'border-gray-700'}`}>{selectedOptions.includes(opt.id) && <Check size={14} className="stroke-[4]" />}</div><span className="font-bold text-sm sm:text-base">{opt.text}</span></div>{opt.link && (<a href={opt.link} target="_blank" rel="noopener noreferrer" className="p-4 bg-gray-950 border border-gray-800 rounded-2xl flex items-center justify-center text-gray-600 hover:text-red-500 transition-all group group-hover:scale-110 shadow-lg"><Youtube size={22} /></a>)}</div>))}<div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-800/50 mt-4 text-left"><p className="text-[10px] font-black text-gray-600 uppercase tracking-widest italic">{selectedOptions.length} / {max} Stimmen gewählt</p><button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 disabled:bg-gray-800 disabled:text-gray-600 text-gray-950 font-black px-10 py-3.5 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest transition-all">Stimme jetzt abgeben</button></div>
+          </div>
+        )}
       </div>
     </div>
   );
