@@ -3,7 +3,7 @@ import {
   Users, Calendar, Archive, LogOut, Plus, Trash2, 
   ChevronRight, BarChart3, AlertCircle, CheckCircle2, 
   UserPlus, Eye, Check, Database, Settings, ShieldAlert, 
-  Edit2, FileSpreadsheet, Upload, X, Info, Youtube, ExternalLink
+  Edit2, FileSpreadsheet, Upload, X, Info, Youtube, ExternalLink, Clock
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, updateProfile } from 'firebase/auth';
@@ -55,6 +55,7 @@ const INITIAL_EVENTS = [
     title: 'Generalversammlung 2026',
     category: 'Generalversammlung',
     date: '2026-04-15',
+    endDate: '', // Leer bedeutet kein automatisches Archivieren
     isArchived: false,
     surveys: []
   }
@@ -164,6 +165,12 @@ export default function App() {
     if (fbUser) await updateProfile(fbUser, { displayName: "" });
   };
 
+  // Hilfsfunktion: Prüft ob ein Event abgelaufen ist
+  const isEventExpired = (event) => {
+    if (!event.endDate) return false;
+    return new Date(event.endDate) <= new Date();
+  };
+
   if (authError) return <FatalErrorScreen message={`Anmeldefehler: ${authError}`} />;
   if (permissionsError) return <FatalErrorScreen message={permissionsError} />;
 
@@ -187,6 +194,9 @@ export default function App() {
   }
 
   if (!currentUser) return <LoginScreen onLogin={handleLogin} users={users} onSeed={seedDatabase} isSeeding={isSeeding} />;
+
+  const activeEvents = events.filter(e => !e.isArchived && !isEventExpired(e));
+  const archivedEvents = events.filter(e => e.isArchived || isEventExpired(e));
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-200 font-sans selection:bg-orange-500 selection:text-white">
@@ -221,8 +231,8 @@ export default function App() {
           </nav>
         )}
 
-        {activeTab === 'events' && <EventsView events={events.filter(e => !e.isArchived)} currentUser={currentUser} users={users} dbAppId={appId} db={db} fbUser={fbUser} />}
-        {activeTab === 'archive' && <EventsView events={events.filter(e => e.isArchived)} currentUser={currentUser} isArchive users={users} dbAppId={appId} db={db} fbUser={fbUser} />}
+        {activeTab === 'events' && <EventsView events={activeEvents} currentUser={currentUser} users={users} dbAppId={appId} db={db} fbUser={fbUser} />}
+        {activeTab === 'archive' && <EventsView events={archivedEvents} currentUser={currentUser} isArchive users={users} dbAppId={appId} db={db} fbUser={fbUser} />}
         {activeTab === 'members' && currentUser.role === 'admin' && <MembersView users={users} dbAppId={appId} db={db} fbUser={fbUser} />}
       </main>
     </div>
@@ -546,7 +556,11 @@ function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db
   if (selectedEvent) {
     const currentEventData = events.find(e => e.id === selectedEvent.id);
     if (!currentEventData) { setSelectedEvent(null); return null; }
-    return <EventDetail event={currentEventData} onBack={() => setSelectedEvent(null)} currentUser={currentUser} onArchive={handleArchive} onDelete={handleDeleteEvent} users={users} dbAppId={dbAppId} db={db} fbUser={fbUser} />;
+    
+    // Hilfsfunktion: Prüft ob ein Event abgelaufen ist
+    const isExpired = currentEventData.endDate && new Date(currentEventData.endDate) <= new Date();
+    
+    return <EventDetail event={currentEventData} onBack={() => setSelectedEvent(null)} currentUser={currentUser} onArchive={handleArchive} onDelete={handleDeleteEvent} users={users} dbAppId={dbAppId} db={db} fbUser={fbUser} isAutoArchived={isExpired} />;
   }
 
   return (
@@ -567,19 +581,25 @@ function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {events.map(event => (
-            <div key={event.id} onClick={() => setSelectedEvent(event)} className="bg-gray-900 border border-gray-800 p-5 rounded-2xl cursor-pointer hover:border-orange-500/50 transition-colors group active:scale-[0.98]">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md">{event.category}</span>
-                <ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" />
+          {events.map(event => {
+            const isExpired = event.endDate && new Date(event.endDate) <= new Date();
+            return (
+              <div key={event.id} onClick={() => setSelectedEvent(event)} className="bg-gray-900 border border-gray-800 p-5 rounded-2xl cursor-pointer hover:border-orange-500/50 transition-colors group active:scale-[0.98]">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex flex-wrap gap-2">
+                    <span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md">{event.category}</span>
+                    {isExpired && !event.isArchived && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md flex items-center gap-1"><Clock size={10}/> Automatisch Archiviert</span>}
+                  </div>
+                  <ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" />
+                </div>
+                <h3 className="text-xl font-bold text-white mt-1 mb-4">{event.title}</h3>
+                <div className="flex justify-between text-xs text-gray-500 font-medium">
+                  <span className="flex items-center gap-1"><Calendar size={14} /> {new Date(event.date).toLocaleDateString('de-CH')}</span>
+                  <span className="flex items-center gap-1"><BarChart3 size={14} /> {event.surveys.length} Umfragen</span>
+                </div>
               </div>
-              <h3 className="text-xl font-bold text-white mt-1 mb-4">{event.title}</h3>
-              <div className="flex justify-between text-xs text-gray-500 font-medium">
-                <span className="flex items-center gap-1"><Calendar size={14} /> {new Date(event.date).toLocaleDateString('de-CH')}</span>
-                <span className="flex items-center gap-1"><BarChart3 size={14} /> {event.surveys.length} Umfragen</span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -590,18 +610,19 @@ function CreateEventForm({ onSubmit }) {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [date, setDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [customCategory, setCustomCategory] = useState('');
 
   const submit = (e) => { 
       e.preventDefault(); 
       const finalCategory = category === 'Freitext' ? customCategory.trim() : category;
       if (category === 'Freitext' && !finalCategory) return alert('Bitte eigene Kategorie eingeben.');
-      onSubmit({ title, category: finalCategory, date }); 
+      onSubmit({ title, category: finalCategory, date, endDate }); 
   };
 
   return (
     <form onSubmit={submit} className="bg-gray-900 border border-gray-800 p-6 rounded-2xl mb-8 space-y-4 shadow-xl">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div>
            <label className="block text-xs text-gray-500 mb-1 font-bold uppercase tracking-wider">Titel</label>
            <input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Z.B. Fasnacht 2026" className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none" />
@@ -616,8 +637,13 @@ function CreateEventForm({ onSubmit }) {
            )}
         </div>
         <div>
-           <label className="block text-xs text-gray-500 mb-1 font-bold uppercase tracking-wider">Datum</label>
+           <label className="block text-xs text-gray-500 mb-1 font-bold uppercase tracking-wider">Event Datum</label>
            <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none" />
+        </div>
+        <div>
+           <label className="block text-xs text-gray-500 mb-1 font-bold uppercase tracking-wider">Ende (Archivierungsdatum)</label>
+           <input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none" />
+           <p className="text-[9px] text-gray-600 mt-1 italic">Optional: Event wird danach automatisch archiviert.</p>
         </div>
       </div>
       <div className="flex justify-end pt-2">
@@ -627,7 +653,7 @@ function CreateEventForm({ onSubmit }) {
   );
 }
 
-function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, dbAppId, db, fbUser }) {
+function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, dbAppId, db, fbUser, isAutoArchived }) {
   const [showCreateSurvey, setShowCreateSurvey] = useState(false);
   const getDbRef = () => doc(db, 'artifacts', dbAppId, 'public', 'data', 'events', event.id);
 
@@ -656,6 +682,8 @@ function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, d
     await setDoc(getDbRef(), { ...event, surveys: updatedSurveys });
   };
 
+  const isActuallyArchived = event.isArchived || isAutoArchived;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -663,19 +691,26 @@ function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, d
             <button onClick={onBack} className="text-gray-400 hover:text-white bg-gray-900 p-2 rounded-lg border border-gray-800 transition-all hover:bg-gray-800 active:scale-90"><ChevronRight className="rotate-180" size={20} /></button>
             <div className="flex-1">
                 <h2 className="text-2xl font-bold text-white tracking-tight">{event.title}</h2>
-                <p className="text-sm text-gray-500 font-bold uppercase tracking-wider">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
+                <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-sm text-gray-500 font-bold uppercase tracking-wider">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
+                    {isActuallyArchived && <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-orange-500/20">Archiviert</span>}
+                </div>
             </div>
         </div>
         {currentUser.role === 'admin' && (
           <div className="flex gap-2">
-            <button onClick={() => onArchive(event.id, !event.isArchived)} className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest border bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 flex items-center gap-2"><Archive size={14} /> {event.isArchived ? 'Aktivieren' : 'Archivieren'}</button>
-            <button onClick={() => onDelete(event.id)} className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest border bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 flex items-center gap-2"><Trash2 size={14} /> Löschen</button>
+            <button onClick={() => onArchive(event.id, !event.isArchived)} className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest border bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 flex items-center gap-2">
+                <Archive size={14} /> {event.isArchived ? 'Aktivieren' : 'Archivieren'}
+            </button>
+            <button onClick={() => onDelete(event.id)} className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest border bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 flex items-center gap-2">
+                <Trash2 size={14} /> Löschen
+            </button>
           </div>
         )}
       </div>
-      {currentUser.role === 'admin' && !event.isArchived && (
+      {currentUser.role === 'admin' && !isActuallyArchived && (
         <div className="flex justify-end">
-            <button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg flex items-center gap-2 mb-4 transition-all shadow-lg active:scale-95 uppercase text-xs tracking-widest">
+            <button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 mb-4 transition-colors">
             {showCreateSurvey ? 'Abbrechen' : <><Plus size={18} /> Neue Umfrage</>}
             </button>
         </div>
@@ -685,7 +720,7 @@ function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, d
         {event.surveys.length === 0 ? (
            <p className="text-gray-500 text-center py-12 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800">Keine Umfragen in diesem Event.</p>
         ) : (
-            event.surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} />)
+            event.surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} isArchivedView={isActuallyArchived} />)
         )}
       </div>
     </div>
@@ -777,7 +812,7 @@ function CreateSurveyForm({ onSubmit, isMusicMode }) {
   );
 }
 
-function SurveyCard({ survey, currentUser, onUpdate, onVote, users }) {
+function SurveyCard({ survey, currentUser, onUpdate, onVote, users, isArchivedView }) {
   const [selectedOptions, setSelectedOptions] = useState([]);
   const isEligible = currentUser.role === 'admin' || survey.allowedGroups.some(g => currentUser.groups.includes(g));
   const hasVoted = survey.votedUsers.includes(currentUser.id);
@@ -794,24 +829,29 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users }) {
     else if (selectedOptions.length < max) setSelectedOptions([...selectedOptions, id]);
   };
 
+  // Ergebnisse anzeigen, wenn abgeschlossen, wenn Admin oder wenn das Event im Archiv ist
+  const showResults = survey.status === 'published' || currentUser.role === 'admin' || isArchivedView;
+
   return (
-    <div className={`bg-gray-900 border rounded-2xl overflow-hidden transition-all shadow-md ${survey.status === 'active' ? 'border-orange-500/40 ring-1 ring-orange-500/10' : 'border-gray-800'}`}>
+    <div className={`bg-gray-900 border rounded-2xl overflow-hidden transition-all shadow-md ${survey.status === 'active' && !isArchivedView ? 'border-orange-500/40 ring-1 ring-orange-500/10' : 'border-gray-800'}`}>
       <div className="p-5 border-b border-gray-800 bg-gray-900/50 flex flex-col sm:flex-row sm:justify-between items-start gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2 mb-2">
              {survey.status === 'draft' && <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded font-bold uppercase tracking-widest">Entwurf</span>}
-             {survey.status === 'active' && <span className="text-[10px] bg-green-500/10 text-green-500 px-2 py-0.5 rounded font-bold uppercase tracking-widest flex items-center gap-1 border border-green-500/10"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Aktiv</span>}
-             {survey.status === 'published' && <span className="text-[10px] bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded font-bold uppercase tracking-widest border border-orange-500/10">Abgeschlossen</span>}
+             {survey.status === 'active' && !isArchivedView && <span className="text-[10px] bg-green-500/10 text-green-500 px-2 py-0.5 rounded font-bold uppercase tracking-widest flex items-center gap-1 border border-green-500/10"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Aktiv</span>}
+             {(survey.status === 'published' || isArchivedView) && <span className="text-[10px] bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded font-bold uppercase tracking-widest border border-orange-500/10">Abgeschlossen</span>}
              <span className="text-[10px] text-gray-600 font-black uppercase tracking-[0.1em] ml-1">{max === 1 ? 'Single Choice' : `Max. ${max} Stimmen`}</span>
           </div>
           <h4 className="text-xl font-bold text-white leading-tight">{survey.title}</h4>
         </div>
         {currentUser.role === 'admin' && (
           <div className="flex flex-row sm:flex-col items-center sm:items-end gap-3 sm:gap-2 w-full sm:w-auto justify-between">
-            <div className="flex gap-2">
-                {survey.status === 'draft' && <button onClick={() => onUpdate({ status: 'active' })} className="text-[10px] font-black uppercase tracking-widest bg-green-500 text-gray-950 px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95"><CheckCircle2 size={14}/> Freigeben</button>}
-                {survey.status === 'active' && <button onClick={() => onUpdate({ status: 'published' })} className="text-[10px] font-black uppercase tracking-widest bg-orange-500 hover:bg-orange-600 text-gray-950 px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-orange-500/20"><Eye size={14}/> Beenden</button>}
-            </div>
+            {!isArchivedView && (
+                <div className="flex gap-2">
+                    {survey.status === 'draft' && <button onClick={() => onUpdate({ status: 'active' })} className="text-[10px] font-black uppercase tracking-widest bg-green-500 text-gray-950 px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95"><CheckCircle2 size={14}/> Freigeben</button>}
+                    {survey.status === 'active' && <button onClick={() => onUpdate({ status: 'published' })} className="text-[10px] font-black uppercase tracking-widest bg-orange-500 hover:bg-orange-600 text-gray-950 px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-orange-500/20"><Eye size={14}/> Beenden</button>}
+                </div>
+            )}
             <div className="text-[10px] text-gray-600 font-black uppercase tracking-wider flex items-center gap-2 bg-gray-950 px-2 py-1 rounded border border-gray-800" title="Beteiligung">
                 <Users size={12} className="text-orange-500" /> {survey.votedUsers.length} / {eligibleUsersCount}
             </div>
@@ -819,9 +859,9 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users }) {
         )}
       </div>
       <div className="p-5">
-        {survey.status === 'published' || currentUser.role === 'admin' ? (
+        {showResults ? (
           <div className="space-y-3">
-             {survey.status === 'active' && currentUser.role === 'admin' && (
+             {survey.status === 'active' && !isArchivedView && currentUser.role === 'admin' && (
                  <div className="mb-4 p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl flex items-start gap-3">
                      <AlertCircle className="text-blue-500 mt-0.5 flex-shrink-0" size={18} />
                      <p className="text-[11px] text-blue-400 italic">Administratoren sehen die Resultate in Echtzeit. Mitglieder erst nach Abschluss.</p>
@@ -835,7 +875,7 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users }) {
                     <div className="relative z-10 flex items-center gap-3">
                         <span className="font-bold text-sm text-white">{opt.text}</span>
                         {opt.link && (
-                            <a href={opt.link} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-gray-900 rounded-lg text-gray-500 hover:text-red-500 transition-colors shadow-lg border border-gray-800" title="Song anhören">
+                            <a href={opt.link} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-gray-900 rounded-lg text-gray-500 hover:text-red-500 transition-colors shadow-lg border border-gray-800" title="Anhören">
                                 <Youtube size={14} />
                             </a>
                         )}
