@@ -316,8 +316,8 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl overflow-hidden relative text-center">
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4 text-center">
+      <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl overflow-hidden relative">
         <div className="absolute top-0 left-0 w-full h-1 bg-orange-500"></div>
         <div className="flex flex-col items-center mb-10 mt-4">
             <h1 className="text-4xl font-black mb-1 tracking-tighter">
@@ -505,8 +505,14 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
                           <div className="flex gap-2"><textarea autoFocus value={editingPoint.text} onChange={e => setEditingPoint({...editingPoint, text: e.target.value})} className="flex-1 bg-gray-900 border border-orange-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none transition-all resize-none font-medium" rows={2} /><div className="flex flex-col gap-1"><button type="button" onClick={saveEdit} className="p-2 bg-green-500/20 text-green-500 rounded-lg hover:bg-green-500/30 transition-all"><Check size={16}/></button><button type="button" onClick={() => setEditingPoint({ role: null, index: null, text: '' })} className="p-2 bg-red-500/20 text-red-500 rounded-lg hover:bg-red-500/30 transition-all"><X size={16}/></button></div></div>
                         ) : (
                           <div className="space-y-2">
-                            <div className="flex items-start gap-3"><div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0"></div><p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap leading-relaxed">{point.text}</p>
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all"><button type="button" onClick={() => { setUploadingFor({role, index: idx}); fileInputRef.current?.click(); }} className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg" title="Datei anhängen"><Paperclip size={16} /></button><button type="button" onClick={() => startEditing(role, idx, point.text)} className="p-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg" title="Bearbeiten"><Edit2 size={16} /></button><button type="button" onClick={() => removePoint(role, idx)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg" title="Löschen"><Trash2 size={16} /></button></div>
+                            <div className="flex items-start gap-3">
+                                <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0"></div>
+                                <p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap leading-relaxed">{point.text}</p>
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                    <button type="button" onClick={() => { setUploadingFor({role, index: idx}); fileInputRef.current?.click(); }} className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg" title="Datei anhängen"><Paperclip size={16} /></button>
+                                    <button type="button" onClick={() => startEditing(role, idx, point.text)} className="p-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg" title="Bearbeiten"><Edit2 size={16} /></button>
+                                    <button type="button" onClick={() => removePoint(role, idx)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg" title="Löschen"><Trash2 size={16} /></button>
+                                </div>
                             </div>
                             {point.files && point.files.length > 0 && (<div className="flex flex-wrap gap-2 ml-4">{point.files.map((file, fi) => (<div key={fi} className="flex items-center gap-2 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg group/file shadow-sm"><File size={12} className="text-orange-500/70" /><span className="text-[10px] text-gray-400 font-medium truncate max-w-[120px]">{file.name}</span><div className="flex gap-1"><button type="button" onClick={() => downloadFile(file)} className="p-1 text-gray-500 hover:text-blue-400 transition-colors"><Download size={12}/></button><button type="button" onClick={() => removeFile(role, idx, fi)} className="p-1 text-gray-500 hover:text-red-500 transition-colors"><X size={12}/></button></div></div>))}</div>)}
                           </div>
@@ -597,7 +603,7 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate }) {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-950 border-b border-gray-800 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
-                <th className="p-5">Name</th><th className="p-5">Rolle</th><th className="p-5">Gruppen</th><th className="p-5 text-right">Aktionen</th>
+                <th className="p-5">Name</th><th className="p-5">Rolle</th><th className="p-5">Gruppen</th><th className="p-5 text-right">Verwaltung</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/50">
@@ -606,7 +612,7 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate }) {
                   <td className="p-5 text-white font-bold">{u.lastName} {u.firstName}</td>
                   <td className="p-5"><span className={`text-[10px] px-3 py-1 rounded font-bold uppercase tracking-widest inline-flex items-center gap-2 ${u.role === 'admin' ? 'bg-orange-500/20 text-orange-500 border border-orange-500/20' : 'bg-gray-800/50 text-gray-400'}`}>{u.role}</span></td>
                   <td className="p-5"><div className="flex flex-wrap gap-1">{(u.groups || []).map(g => (<span key={g} className="text-[10px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-400 font-bold">{g}</span>))}</div></td>
-                  <td className="p-5 text-right flex justify-end gap-1 text-left">
+                  <td className="p-5 text-right flex justify-end gap-1">
                       {(u.groups || []).includes('Vorstand') && (
                           <button onClick={() => resetPassword(u)} className="text-gray-500 hover:text-orange-500 p-3 rounded-xl transition-all" title="Passwort zurücksetzen"><Key size={18} /></button>
                       )}
@@ -639,7 +645,13 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6">
         <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Berechtigung</label><div className="bg-gray-950 border border-gray-800 p-1 rounded-2xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-4 py-3 text-white font-bold focus:ring-0 border-none outline-none cursor-pointer"><option value="member" className="bg-gray-900">Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500 font-bold">Administrator</option></select></div></div>
-        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 p-4 rounded-2xl">{GROUPS.map(g => (<label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all"><input type="checkbox" checked={selectedGroups.includes(group)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}</label>))}</div></div>
+        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 p-4 rounded-2xl">
+          {GROUPS.map(g => (
+            <label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all">
+              <input type="checkbox" checked={selectedGroups.includes(g)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}
+            </label>
+          ))}
+        </div></div>
       </div>
       <div className="flex justify-end gap-6 pt-6 border-t border-gray-800"><button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all">Abbrechen</button><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 text-xs uppercase tracking-widest">{initialData ? 'Speichern' : 'Anlegen'}</button></div>
     </form>
@@ -647,7 +659,7 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
 }
 
 function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db, fbUser, isAutoArchived }) {
-  const [showCreate, setShowCreate] = useState(false); const [selectedEvent, setSelectedEvent] = useState(null); const getDbRef = (id) => doc(db, 'artifacts', dbAppId, 'public', 'data', 'events', id);
+  const [showCreate, setShowCreate] = useState(false); const [selectedEvent, setSelectedEvent] = useState(null); const getDbRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'events', id);
   const handleCreateEvent = async (n) => { if (!fbUser) return; const id = Date.now().toString(); await setDoc(getDbRef(id), { ...n, id, isArchived: false, surveys: [] }); setShowCreate(false); };
   const handleArchive = async (id, s) => { if (!fbUser) return; const e = events.find(ev => ev.id === id); if(e) await setDoc(getDbRef(id), { ...e, isArchived: s }); setSelectedEvent(null); };
   const handleDeleteEvent = async (id) => { if (!fbUser || !confirm('Event wirklich löschen?')) return; await deleteDoc(getDbRef(id)); setSelectedEvent(null); };
@@ -694,7 +706,7 @@ function CreateEventForm({ onSubmit }) {
 
 function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, dbAppId, db, fbUser, isAutoArchived }) {
   const [showCreateSurvey, setShowCreateSurvey] = useState(false);
-  const getDbRef = () => doc(db, 'artifacts', dbAppId, 'public', 'data', 'events', event.id);
+  const getDbRef = () => doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
   const handleAddSurvey = async (newSurvey) => { if (!fbUser) return; const updatedSurveys = [...(event.surveys || []), { ...newSurvey, id: Date.now().toString(), status: 'draft', votedUsers: [] }]; await setDoc(getDbRef(), { ...event, surveys: updatedSurveys }); setShowCreateSurvey(false); };
   const updateSurvey = async (surveyId, updates) => { if (!fbUser) return; const updatedSurveys = (event.surveys || []).map(s => s.id === surveyId ? { ...s, ...updates } : s); await setDoc(getDbRef(), { ...event, surveys: updatedSurveys }); };
   const handleVote = async (surveyId, selectedOptionIds) => { if (!fbUser) return; const updatedSurveys = (event.surveys || []).map(s => { if (s.id === surveyId) { const updatedOptions = s.options.map(opt => selectedOptionIds.includes(opt.id) ? { ...opt, votes: (opt.votes || 0) + 1 } : opt); return { ...s, options: updatedOptions, votedUsers: [...(s.votedUsers || []), currentUser.id] }; } return s; }); await setDoc(getDbRef(), { ...event, surveys: updatedSurveys }); };
