@@ -45,7 +45,8 @@ const appId = (typeof __app_id !== 'undefined' ? __app_id : 'ruesssuuger-app').r
 
 const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder', 'Musik'];
 const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitext'];
-const BOARD_ROLES = ['Präsident', 'Vizepräsident', 'Tambourmajor', 'Aktuar', 'Sujetchefin', 'Tourmanagerin'];
+// Ressort Kassier hinzugefügt
+const BOARD_ROLES = ['Präsident', 'Vizepräsident', 'Tambourmajor', 'Aktuar', 'Kassier', 'Sujetchefin', 'Tourmanagerin'];
 
 const INITIAL_USERS = [
   { id: '1', firstName: 'Admin', lastName: 'Suuger', role: 'admin', groups: ['Vorstand', 'Aktive'] },
@@ -289,7 +290,6 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
     if (initialData?.agenda) {
       Object.keys(initialData.agenda).forEach(role => {
         const val = initialData.agenda[role];
-        // Konvertiere alte Strings oder einfache Arrays in das neue Format [{ text, files }]
         base[role] = Array.isArray(val) ? val.map(p => typeof p === 'string' ? { text: p, files: [] } : p) : [];
       });
     }
@@ -349,7 +349,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
     if (!file || role === null || index === null) return;
 
     if (file.size > 800 * 1024) {
-        alert("Datei ist zu gross (max. 800KB). Firestore Dokumente haben ein Limit von 1MB total.");
+        alert("Datei ist zu gross (max. 800KB).");
         return;
     }
 
@@ -358,7 +358,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
         const fileData = {
             name: file.name,
             type: file.type,
-            data: event.target.result // Base64
+            data: event.target.result
         };
 
         setAgenda(prev => ({
@@ -463,7 +463,6 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
                                 </div>
                             </div>
                             
-                            {/* Anhänge pro Punkt */}
                             {point.files && point.files.length > 0 && (
                                 <div className="flex flex-wrap gap-2 ml-4">
                                     {point.files.map((file, fi) => (
