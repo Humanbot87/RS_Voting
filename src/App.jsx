@@ -5,7 +5,7 @@ import {
   UserPlus, Eye, Check, Database, Settings, ShieldAlert, Edit2
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, updateProfile } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 
 // ====================================================================================
@@ -39,8 +39,8 @@ try {
   firebaseInitError = e.message;
 }
 
-// Ensure appId is safe for Firestore paths (no slashes)
-const appId = typeof __app_id !== 'undefined' ? __app_id.replace(/[^a-zA-Z0-9_-]/g, '-') : 'ruesssuuger-app';
+// Bereinigt die App-ID für Firestore Pfade
+const appId = (typeof __app_id !== 'undefined' ? __app_id : 'ruesssuuger-app').replace(/[^a-zA-Z0-9_-]/g, '-');
 
 const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder'];
 const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitext'];
@@ -85,6 +85,7 @@ export default function App() {
   const [authError, setAuthError] = useState(null);
   const [permissionsError, setPermissionsError] = useState(null);
   const [isDBReady, setIsDBReady] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
 
   if (firebaseInitError) {
     return <FatalErrorScreen message={`Kritischer Fehler beim Starten von Firebase: ${firebaseInitError}`} />;
@@ -92,6 +93,7 @@ export default function App() {
 
   if (!isConfigured) return <SetupScreen />;
 
+  // 1. Firebase Authentifizierung
   useEffect(() => {
     if (!auth) return;
     const initAuth = async () => {
@@ -113,6 +115,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // 2. Datenbank-Listener
   useEffect(() => {
     if (!fbUser || !db) return;
     
@@ -120,9 +123,6 @@ export default function App() {
 
     let unsubUsers = () => {};
     let unsubEvents = () => {};
-    
-    // Wir setzen isDBReady nur, wenn der erste Snapshot *erfolgreich* war.
-    // Bei einem Fehler bleibt die Seite blockiert, weil die Rules noch zu sind.
 
     try {
       const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
@@ -159,10 +159,25 @@ export default function App() {
     }
     
     return () => { 
-        if (unsubUsers) unsubUsers(); 
-        if (unsubEvents) unsubEvents(); 
+        unsubUsers(); 
+        unsubEvents(); 
     };
   }, [fbUser]); 
+
+  // 3. Session-Wiederherstellung (Auto-Login)
+  useEffect(() => {
+      let timer;
+      if (isDBReady && fbUser) {
+          if (fbUser.displayName && !currentUser) {
+              const savedUser = users.find(u => u.id === fbUser.displayName);
+              if (savedUser) {
+                  setCurrentUser(savedUser);
+              }
+          }
+          timer = setTimeout(() => setIsCheckingSession(false), 1200); // Etwas länger für das Splash-Gefühl
+      }
+      return () => clearTimeout(timer);
+  }, [isDBReady, fbUser, users, currentUser]); 
 
   const seedDatabase = async () => {
     if (!fbUser) return alert("Bitte warte auf die Firebase-Verbindung.");
@@ -178,33 +193,49 @@ export default function App() {
     setIsSeeding(false);
   };
 
-  const handleLogin = (firstName, lastName) => {
+  const handleLogin = async (firstName, lastName) => {
     const user = users.find(u => u.firstName.toLowerCase() === firstName.toLowerCase() && u.lastName.toLowerCase() === lastName.toLowerCase());
-    if (user) setCurrentUser(user);
-    else alert("Mitglied nicht gefunden. Bitte Vor- und Nachname prüfen.");
+    if (user) {
+        setCurrentUser(user);
+        if (fbUser) {
+            await updateProfile(fbUser, { displayName: user.id });
+        }
+    } else {
+        alert("Mitglied nicht gefunden. Bitte Vor- und Nachname prüfen.");
+    }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setCurrentUser(null);
     setActiveTab('events');
+    if (fbUser) {
+        await updateProfile(fbUser, { displayName: "" });
+    }
   };
 
   if (authError) {
-    return <FatalErrorScreen message={`Anmeldefehler bei Firebase: ${authError}. Bitte prüfe, ob die Anonymous-Anmeldung in der Firebase Console aktiviert ist.`} />;
+    return <FatalErrorScreen message={`Anmeldefehler bei Firebase: ${authError}. Bitte prüfe, ob die Anonymous-Anmeldung aktiviert ist.`} />;
   }
   
   if (permissionsError) {
       return <FatalErrorScreen message={permissionsError} />
   }
 
-  // Wichtig: Wir blockieren das Rendering, bis die DB wirklich ready ist, 
-  // um weiße Screens bei abgewiesenen Promises zu verhindern.
-  if (!fbUser || !isDBReady) {
+  // RüssSuuger Splash-Ladebildschirm
+  if (!fbUser || !isDBReady || isCheckingSession) {
      return (
         <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
-           <div className="animate-pulse flex flex-col items-center">
-              <Database className="text-orange-500 mb-4" size={48} />
-              <p className="text-gray-400">Verbinde zur Datenbank...</p>
+           <div className="flex flex-col items-center animate-in fade-in zoom-in duration-700">
+              <div className="text-5xl sm:text-7xl font-black tracking-tighter mb-6 flex flex-col items-center">
+                 <span className="text-gray-400 drop-shadow-lg">Rüss</span>
+                 <span className="text-orange-500 drop-shadow-[0_0_15px_rgba(249,115,22,0.4)] -mt-2">Suuger</span>
+                 <span className="text-gray-600 text-xl font-bold uppercase tracking-[0.3em] mt-2 drop-shadow-md">Ämme</span>
+              </div>
+              <div className="flex items-center gap-3 mt-4">
+                <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce"></div>
+              </div>
            </div>
         </div>
      );
@@ -214,14 +245,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-200 font-sans selection:bg-orange-500 selection:text-white">
-      <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-10">
+      <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-10 shadow-md">
         <div className="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div>
-              <h1 className="text-xl font-bold tracking-tight">
+              <h1 className="text-xl font-bold tracking-tight leading-tight">
                 <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span> <span className="text-gray-400">Ämme</span>
               </h1>
-              <p className="text-xs text-orange-400 font-medium">Voting Portal</p>
+              <p className="text-[10px] text-orange-400 font-bold uppercase tracking-wider">Voting Portal</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -239,7 +270,7 @@ export default function App() {
       <main className="max-w-5xl mx-auto px-4 py-8">
         {currentUser.role === 'admin' && (
           <nav className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
-            <TabButton active={activeTab === 'events'} onClick={() => setActiveTab('events')} icon={<Calendar size={18} />} label="Aktive Events" />
+            <TabButton active={activeTab === 'events'} onClick={() => setActiveTab('events')} icon={<Calendar size={18} />} label="Events" />
             <TabButton active={activeTab === 'archive'} onClick={() => setActiveTab('archive')} icon={<Archive size={18} />} label="Archiv" />
             <TabButton active={activeTab === 'members'} onClick={() => setActiveTab('members')} icon={<Users size={18} />} label="Stammdaten" />
           </nav>
@@ -258,11 +289,11 @@ function FatalErrorScreen({ message }) {
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
       <div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-2xl p-8 shadow-2xl text-center">
         <ShieldAlert className="mx-auto text-red-500 mb-4" size={48} />
-        <h1 className="text-2xl font-bold text-white mb-2">Berechtigungsfehler</h1>
+        <h1 className="text-2xl font-bold text-white mb-2">Fehler</h1>
         <p className="text-red-300 text-sm mb-6">{message}</p>
         <div className="text-left bg-red-900/50 p-4 rounded-lg border border-red-800 text-xs text-red-200 mt-4 font-mono">
-            <p className="font-bold mb-2 font-sans">Gehe in deine Firebase Console -{'>'} Firestore Database -{'>'} Rules, und füge diesen Code ein:</p>
-            <pre className="whitespace-pre-wrap mt-2 overflow-x-auto bg-gray-950 p-3 rounded text-gray-300">
+            <p className="font-bold mb-2 font-sans text-white">Lösung (Firestore Rules):</p>
+            <pre className="whitespace-pre-wrap mt-2 overflow-x-auto bg-black p-3 rounded text-green-400">
 {`rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -272,7 +303,6 @@ service cloud.firestore {
   }
 }`}
             </pre>
-            <p className="font-sans mt-3 font-bold text-orange-400">Danach oben rechts auf "Publish" klicken und diese Seite neu laden!</p>
         </div>
       </div>
     </div>
@@ -302,25 +332,35 @@ function LoginScreen({ onLogin, users, onSeed, isSeeding }) {
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-2xl">
-        <div className="flex flex-col items-center mb-8">
-          <h1 className="text-3xl font-bold mb-2 text-center"><span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span></h1>
-          <p className="text-gray-400">Voting Portal</p>
+      <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl overflow-hidden relative">
+        <div className="absolute top-0 left-0 w-full h-1 bg-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.5)]"></div>
+        <div className="flex flex-col items-center mb-10 mt-4">
+          <h1 className="text-4xl font-black mb-1 text-center tracking-tighter">
+            <span className="text-gray-400">Rüss</span><span className="text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.3)]">Suuger</span>
+          </h1>
+          <p className="text-gray-500 uppercase text-[10px] font-bold tracking-[0.3em] ml-1">Ämme • Portal</p>
         </div>
+
         {users.length === 0 ? (
           <div className="text-center py-6">
-            <Database className="mx-auto text-gray-600 mb-4" size={48} />
-            <h3 className="text-white font-medium mb-2">Datenbank wird eingerichtet</h3>
-            <p className="text-sm text-gray-400 mb-4">Es wurden noch keine Daten gefunden.</p>
-            <button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-3 rounded-lg mt-4 disabled:opacity-50 transition-colors">
-              {isSeeding ? 'Wird geladen...' : 'Testdaten laden'}
+            <Database className="mx-auto text-gray-700 mb-4" size={48} />
+            <h3 className="text-white font-medium mb-2">Datenbank einrichten</h3>
+            <p className="text-sm text-gray-500 mb-6">Bitte lade die Vereinsdaten für den Start.</p>
+            <button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-3 rounded-xl mt-4 disabled:opacity-50 transition-colors">
+              {isSeeding ? 'Wird geladen...' : 'Vereinsdaten laden'}
             </button>
           </div>
         ) : (
           <form onSubmit={onSubmit} className="space-y-4">
-            <input type="text" required className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" />
-            <input type="text" required className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" />
-            <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-3 rounded-lg mt-2 transition-colors">Anmelden</button>
+            <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-600 uppercase ml-2 tracking-widest">Vorname</label>
+                <input type="text" required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Max" />
+            </div>
+            <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-600 uppercase ml-2 tracking-widest">Nachname</label>
+                <input type="text" required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Muster" />
+            </div>
+            <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4 transition-all shadow-lg shadow-orange-500/10 active:scale-[0.98]">Anmelden</button>
           </form>
         )}
       </div>
@@ -330,7 +370,7 @@ function LoginScreen({ onLogin, users, onSeed, isSeeding }) {
 
 function TabButton({ active, onClick, icon, label }) {
   return (
-    <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${active ? 'bg-orange-500 text-gray-950' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`}>
+    <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${active ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/10' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`}>
       {icon} {label}
     </button>
   );
@@ -373,7 +413,7 @@ function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-white">{isArchive ? 'Archiv' : 'Aktuelle Events'}</h2>
+        <h2 className="text-2xl font-bold text-white tracking-tight">{isArchive ? 'Archiv' : 'Aktuelle Events'}</h2>
         {!isArchive && currentUser.role === 'admin' && (
           <button onClick={() => setShowCreate(!showCreate)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
             {showCreate ? 'Abbrechen' : <><Plus size={18} /> Neuer Event</>}
@@ -384,19 +424,19 @@ function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db
       
       {events.length === 0 ? (
         <div className="text-center py-12 bg-gray-900 rounded-2xl border border-gray-800">
-          <Calendar size={48} className="mx-auto text-gray-600 mb-4" />
-          <p className="text-gray-400 text-lg">Keine Events gefunden.</p>
+          <Calendar size={48} className="mx-auto text-gray-700 mb-4" />
+          <p className="text-gray-500">Keine Events gefunden.</p>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {events.map(event => (
-            <div key={event.id} onClick={() => setSelectedEvent(event)} className="bg-gray-900 border border-gray-800 p-5 rounded-2xl cursor-pointer hover:border-orange-500/50 transition-colors group">
+            <div key={event.id} onClick={() => setSelectedEvent(event)} className="bg-gray-900 border border-gray-800 p-5 rounded-2xl cursor-pointer hover:border-orange-500/50 transition-colors group active:scale-[0.98]">
               <div className="flex justify-between items-start mb-2">
-                <span className="text-xs font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md">{event.category}</span>
-                <ChevronRight className="text-gray-600 group-hover:text-orange-500" />
+                <span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md">{event.category}</span>
+                <ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" />
               </div>
               <h3 className="text-xl font-bold text-white mt-1 mb-4">{event.title}</h3>
-              <div className="flex justify-between text-sm text-gray-400">
+              <div className="flex justify-between text-xs text-gray-500 font-medium">
                 <span className="flex items-center gap-1"><Calendar size={14} /> {new Date(event.date).toLocaleDateString('de-CH')}</span>
                 <span className="flex items-center gap-1"><BarChart3 size={14} /> {event.surveys.length} Umfragen</span>
               </div>
@@ -417,33 +457,33 @@ function CreateEventForm({ onSubmit }) {
   const submit = (e) => { 
       e.preventDefault(); 
       const finalCategory = category === 'Freitext' ? customCategory.trim() : category;
-      if (category === 'Freitext' && !finalCategory) return alert('Bitte eine eigene Kategorie eingeben.');
+      if (category === 'Freitext' && !finalCategory) return alert('Bitte eigene Kategorie eingeben.');
       onSubmit({ title, category: finalCategory, date }); 
   };
 
   return (
-    <form onSubmit={submit} className="bg-gray-900 border border-gray-800 p-6 rounded-2xl mb-8 space-y-4">
+    <form onSubmit={submit} className="bg-gray-900 border border-gray-800 p-6 rounded-2xl mb-8 space-y-4 shadow-xl">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
-           <label className="block text-sm text-gray-400 mb-1">Titel</label>
-           <input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Event Titel" className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors" />
+           <label className="block text-xs text-gray-500 mb-1 font-bold">Titel</label>
+           <input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Z.B. Fasnacht 2026" className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors" />
         </div>
         <div>
-           <label className="block text-sm text-gray-400 mb-1">Kategorie</label>
+           <label className="block text-xs text-gray-500 mb-1 font-bold">Kategorie</label>
            <select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors">
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
            </select>
            {category === 'Freitext' && (
-               <input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Eigene Kategorie" className="w-full mt-2 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors" />
+               <input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Name der Kategorie" className="w-full mt-2 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors" />
            )}
         </div>
         <div>
-           <label className="block text-sm text-gray-400 mb-1">Datum</label>
+           <label className="block text-xs text-gray-500 mb-1 font-bold">Datum</label>
            <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors" />
         </div>
       </div>
       <div className="flex justify-end pt-2">
-        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-6 py-2 rounded-lg transition-colors">Speichern</button>
+        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-6 py-2 rounded-lg transition-colors shadow-lg shadow-orange-500/10">Speichern</button>
       </div>
     </form>
   );
@@ -480,12 +520,15 @@ function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, d
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4 mb-6">
-        <button onClick={onBack} className="text-gray-400 hover:text-white bg-gray-900 p-2 rounded-lg border border-gray-800 transition-colors"><ChevronRight className="rotate-180" size={20} /></button>
-        <div className="flex-1">
-          <h2 className="text-2xl font-bold text-white">{event.title}</h2>
-          <p className="text-sm text-gray-400">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-4">
+            <button onClick={onBack} className="text-gray-400 hover:text-white bg-gray-900 p-2 rounded-lg border border-gray-800 transition-colors"><ChevronRight className="rotate-180" size={20} /></button>
+            <div className="flex-1">
+                <h2 className="text-2xl font-bold text-white">{event.title}</h2>
+                <p className="text-sm text-gray-400">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
+            </div>
         </div>
+        
         {currentUser.role === 'admin' && (
           <div className="flex gap-2">
             <button onClick={() => onArchive(event.id, !event.isArchived)} className="px-4 py-2 rounded-lg text-sm border bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 flex items-center gap-2 transition-colors">
@@ -500,7 +543,7 @@ function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, d
       
       {currentUser.role === 'admin' && !event.isArchived && (
         <div className="flex justify-end">
-            <button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 mb-4 transition-colors">
+            <button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 mb-4 transition-colors shadow-lg shadow-orange-500/10">
             {showCreateSurvey ? 'Abbrechen' : <><Plus size={18} /> Neue Umfrage</>}
             </button>
         </div>
@@ -510,7 +553,7 @@ function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, d
       
       <div className="space-y-6">
         {event.surveys.length === 0 ? (
-           <p className="text-gray-500 text-center py-8">Noch keine Umfragen in diesem Event.</p>
+           <p className="text-gray-500 text-center py-8">Keine Umfragen in diesem Event.</p>
         ) : (
             event.surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} />)
         )}
@@ -534,26 +577,26 @@ function CreateSurveyForm({ onSubmit }) {
     e.preventDefault();
     const validOptions = options.filter(o => o.text.trim() !== '').map((o, i) => ({ id: `o${i}`, text: o.text.trim(), votes: 0 }));
     if (validOptions.length < 2) return alert('Min. 2 Optionen.');
-    if (allowedGroups.length === 0) return alert('Bitte wähle mindestens eine Gruppe aus.');
+    if (allowedGroups.length === 0) return alert('Bitte mindestens eine Gruppe wählen.');
     onSubmit({ title, maxAnswers, allowedGroups, options: validOptions });
   };
 
   return (
-    <form onSubmit={submit} className="bg-gray-900 border border-gray-700 p-6 rounded-2xl mb-8">
+    <form onSubmit={submit} className="bg-gray-900 border border-gray-700 p-6 rounded-2xl mb-8 shadow-xl">
       <h3 className="text-lg font-bold text-white mb-4">Neue Umfrage erstellen</h3>
       
       <div className="space-y-4">
         <div>
-            <label className="block text-sm text-gray-400 mb-1">Frage</label>
-            <input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Z.B. Wer wird Präsident?" className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500" />
+            <label className="block text-xs text-gray-500 mb-1 font-bold">Frage</label>
+            <input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Z.B. Welches Sujet wählen wir?" className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500 transition-colors" />
         </div>
         
         <div>
-            <label className="block text-sm text-gray-400 mb-2">Antworten (Max. 10)</label>
+            <label className="block text-xs text-gray-500 mb-2 font-bold">Antworten (Max. 10)</label>
             <div className="space-y-2">
                 {options.map((opt, i) => (
                     <div key={opt.id} className="flex gap-2">
-                        <input type="text" required value={opt.text} onChange={e => handleOptionChange(opt.id, e.target.value)} placeholder={`Option ${i + 1}`} className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500" />
+                        <input type="text" required value={opt.text} onChange={e => handleOptionChange(opt.id, e.target.value)} placeholder={`Option ${i + 1}`} className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500 transition-colors" />
                         <button type="button" onClick={() => removeOption(opt.id)} disabled={options.length <= 2} className="p-2 text-gray-500 hover:text-red-500 disabled:opacity-50 transition-colors">
                             <Trash2 size={20} />
                         </button>
@@ -561,7 +604,7 @@ function CreateSurveyForm({ onSubmit }) {
                 ))}
             </div>
             {options.length < 10 && (
-                <button type="button" onClick={addOption} className="text-orange-500 text-sm mt-2 flex items-center gap-1 hover:text-orange-400 transition-colors">
+                <button type="button" onClick={addOption} className="text-orange-500 text-xs mt-2 flex items-center gap-1 hover:text-orange-400 transition-colors">
                     <Plus size={16}/> Weitere Option
                 </button>
             )}
@@ -569,15 +612,15 @@ function CreateSurveyForm({ onSubmit }) {
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-gray-800 pt-4 mt-4">
             <div>
-                <label className="block text-sm text-gray-400 mb-2">Max. Antworten pro Person</label>
-                <input type="number" min="1" max="10" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500" />
-                <p className="text-xs text-gray-500 mt-1">{maxAnswers === 1 ? 'Single Choice' : 'Multiple Choice'}</p>
+                <label className="block text-xs text-gray-500 mb-2 font-bold">Max. Stimmen pro Person</label>
+                <input type="number" min="1" max="10" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500 transition-colors" />
+                <p className="text-[10px] text-gray-600 mt-1 italic">{maxAnswers === 1 ? 'Single Choice Modus' : 'Multiple Choice Modus'}</p>
             </div>
             <div>
-                <label className="block text-sm text-gray-400 mb-2">Berechtigte Gruppen</label>
+                <label className="block text-xs text-gray-500 mb-2 font-bold">Berechtigte Gruppen</label>
                 <div className="grid grid-cols-2 gap-2">
                     {GROUPS.map(g => (
-                        <label key={g} className="text-sm text-gray-300 flex items-center gap-2 cursor-pointer">
+                        <label key={g} className="text-xs text-gray-400 flex items-center gap-2 cursor-pointer hover:text-white transition-colors">
                             <input type="checkbox" checked={allowedGroups.includes(g)} onChange={() => handleGroupToggle(g)} className="accent-orange-500 rounded" />
                             {g}
                         </label>
@@ -587,7 +630,7 @@ function CreateSurveyForm({ onSubmit }) {
         </div>
       </div>
       <div className="flex justify-end mt-6">
-        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-6 py-2 rounded-lg transition-colors">Umfrage speichern</button>
+        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-6 py-2 rounded-lg transition-colors">Speichern</button>
       </div>
     </form>
   );
@@ -612,23 +655,25 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users }) {
   };
 
   return (
-    <div className={`bg-gray-900 border rounded-2xl overflow-hidden transition-colors ${survey.status === 'active' ? 'border-orange-500/50' : 'border-gray-800'}`}>
-      <div className="p-5 border-b border-gray-800 bg-gray-900/50 flex justify-between items-start">
+    <div className={`bg-gray-900 border rounded-2xl overflow-hidden transition-colors shadow-md ${survey.status === 'active' ? 'border-orange-500/50' : 'border-gray-800'}`}>
+      <div className="p-5 border-b border-gray-800 bg-gray-900/50 flex flex-col sm:flex-row sm:justify-between items-start gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-2">
-             {survey.status === 'draft' && <span className="text-xs bg-gray-800 text-gray-400 px-2 py-1 rounded-md font-medium uppercase">Entwurf</span>}
-             {survey.status === 'active' && <span className="text-xs bg-green-500/10 text-green-500 px-2 py-1 rounded-md font-medium uppercase flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Aktiv</span>}
-             {survey.status === 'published' && <span className="text-xs bg-orange-500/10 text-orange-500 px-2 py-1 rounded-md font-medium uppercase">Veröffentlicht</span>}
-             <span className="text-xs text-gray-500 ml-2">{max === 1 ? 'Single Choice' : `Max. ${max} Antworten`}</span>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+             {survey.status === 'draft' && <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-1 rounded font-bold uppercase tracking-wider">Entwurf</span>}
+             {survey.status === 'active' && <span className="text-[10px] bg-green-500/10 text-green-500 px-2 py-1 rounded font-bold uppercase tracking-wider flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Aktiv</span>}
+             {survey.status === 'published' && <span className="text-[10px] bg-orange-500/10 text-orange-500 px-2 py-1 rounded font-bold uppercase tracking-wider">Veröffentlicht</span>}
+             <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">{max === 1 ? 'Single Choice' : `Max. ${max} Stimmen`}</span>
           </div>
-          <h4 className="text-xl font-bold text-white">{survey.title}</h4>
+          <h4 className="text-xl font-bold text-white leading-tight">{survey.title}</h4>
         </div>
         {currentUser.role === 'admin' && (
-          <div className="flex flex-col items-end gap-2">
-            {survey.status === 'draft' && <button onClick={() => onUpdate({ status: 'active' })} className="text-sm bg-green-500/20 text-green-500 hover:bg-green-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors"><CheckCircle2 size={16}/> Freigeben</button>}
-            {survey.status === 'active' && <button onClick={() => onUpdate({ status: 'published' })} className="text-sm bg-orange-500 hover:bg-orange-600 text-gray-950 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition-colors"><Eye size={16}/> Beenden</button>}
-            <div className="text-xs text-gray-400 mt-1 flex items-center gap-1" title="Anzahl Abstimmungen / Wahlberechtigte">
-                <Users size={14} /> {survey.votedUsers.length} / {eligibleUsersCount}
+          <div className="flex flex-row sm:flex-col items-center sm:items-end gap-3 sm:gap-2 w-full sm:w-auto justify-between">
+            <div className="flex gap-2">
+                {survey.status === 'draft' && <button onClick={() => onUpdate({ status: 'active' })} className="text-xs bg-green-500/20 text-green-500 hover:bg-green-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors"><CheckCircle2 size={16}/> Freigeben</button>}
+                {survey.status === 'active' && <button onClick={() => onUpdate({ status: 'published' })} className="text-xs bg-orange-500 hover:bg-orange-600 text-gray-950 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition-colors active:scale-95"><Eye size={16}/> Beenden</button>}
+            </div>
+            <div className="text-[10px] text-gray-500 font-bold flex items-center gap-1" title="Teilnahme">
+                <Users size={12} /> {survey.votedUsers.length} / {eligibleUsersCount}
             </div>
           </div>
         )}
@@ -637,42 +682,44 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users }) {
         {survey.status === 'published' || currentUser.role === 'admin' ? (
           <div className="space-y-3">
              {survey.status === 'active' && currentUser.role === 'admin' && (
-                 <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-start gap-3">
-                     <AlertCircle className="text-blue-500 mt-0.5" size={18} />
-                     <p className="text-sm text-blue-400">Mitglieder stimmen ab. Resultate sind momentan nur für Admins sichtbar.</p>
+                 <div className="mb-4 p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg flex items-start gap-3">
+                     <AlertCircle className="text-blue-500 mt-0.5 flex-shrink-0" size={18} />
+                     <p className="text-[11px] text-blue-400 italic">Resultate sind live nur für Admins sichtbar.</p>
                  </div>
              )}
              {survey.options.map(opt => {
                 const pct = totalVotes === 0 ? 0 : Math.round((opt.votes / totalVotes) * 100);
                 return (
-                  <div key={opt.id} className="relative w-full bg-gray-950 rounded-lg overflow-hidden border border-gray-800 p-3 flex justify-between items-center">
-                    <div className="absolute top-0 left-0 h-full bg-orange-500/20 transition-all duration-500" style={{ width: `${pct}%` }} />
-                    <span className="relative z-10 font-medium text-white">{opt.text}</span>
-                    <span className="relative z-10 text-sm text-gray-400">{opt.votes} Stimmen ({pct}%)</span>
+                  <div key={opt.id} className="relative w-full bg-black/20 border border-gray-800 rounded-xl overflow-hidden p-3 flex justify-between items-center group">
+                    <div className="absolute top-0 left-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
+                    <span className="relative z-10 font-medium text-sm text-white group-hover:translate-x-1 transition-transform">{opt.text}</span>
+                    <span className="relative z-10 text-xs text-gray-500 font-bold">{pct}% ({opt.votes})</span>
                   </div>
                 )
              })}
           </div>
         ) : hasVoted ? (
-          <div className="flex flex-col items-center justify-center py-6 text-center">
+          <div className="flex flex-col items-center justify-center py-6 text-center animate-in fade-in duration-500">
               <div className="w-12 h-12 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-3">
                   <Check size={24} />
               </div>
-              <h5 className="text-lg font-bold text-white">Danke für deine Stimme!</h5>
+              <h5 className="text-lg font-bold text-white">Abgestimmt!</h5>
+              <p className="text-xs text-gray-500 mt-1 italic">Danke für deine Teilnahme.</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {survey.options.map(opt => (
-              <div key={opt.id} onClick={() => toggleOption(opt.id)} className={`flex items-center gap-3 p-4 rounded-lg border cursor-pointer transition-colors ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-300 hover:border-gray-600'}`}>
-                <div className={`w-5 h-5 flex items-center justify-center border ${max > 1 ? 'rounded' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-gray-950' : 'border-gray-600'}`}>
+              <div key={opt.id} onClick={() => toggleOption(opt.id)} className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all active:scale-[0.99] ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-600 hover:bg-black/20'}`}>
+                <div className={`w-5 h-5 flex items-center justify-center border transition-colors ${max > 1 ? 'rounded' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-gray-950' : 'border-gray-600'}`}>
                     {selectedOptions.includes(opt.id) && <Check size={14} className="stroke-[3]" />}
                 </div>
-                <span className="font-medium">{opt.text}</span>
+                <span className="font-bold">{opt.text}</span>
               </div>
             ))}
-            <div className="pt-4 flex justify-end">
-                <button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="bg-orange-500 hover:bg-orange-600 disabled:bg-gray-800 disabled:text-gray-600 text-gray-950 font-bold px-8 py-3 rounded-lg transition-colors">
-                    Jetzt abstimmen
+            <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest italic">{selectedOptions.length} von {max} gewählt</p>
+                <button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 disabled:bg-gray-800 disabled:text-gray-600 text-gray-950 font-bold px-8 py-3 rounded-xl transition-all shadow-lg shadow-orange-500/10 active:scale-95">
+                    Stimme abgeben
                 </button>
             </div>
           </div>
@@ -700,7 +747,7 @@ function MembersView({ users, dbAppId, db, fbUser }) {
 
   const removeUser = async (id) => {
     if (!fbUser) return;
-    if (confirm('Möchtest du dieses Mitglied wirklich löschen?')) {
+    if (confirm('Mitglied wirklich löschen?')) {
         await deleteDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', id));
     }
   };
@@ -708,47 +755,47 @@ function MembersView({ users, dbAppId, db, fbUser }) {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-white">Stammdaten</h2>
-        <button onClick={() => { setShowAdd(!showAdd); setEditingUser(null); }} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
-            {showAdd ? 'Abbrechen' : <><UserPlus size={18} /> Mitglied hinzufügen</>}
+        <h2 className="text-2xl font-bold text-white tracking-tight">Stammdaten</h2>
+        <button onClick={() => { setShowAdd(!showAdd); setEditingUser(null); }} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors active:scale-95">
+            {showAdd ? 'Abbrechen' : <><UserPlus size={18} /> Hinzufügen</>}
         </button>
       </div>
       
       {showAdd && <MemberForm onSubmit={handleAddUser} onCancel={() => setShowAdd(false)} />}
       {editingUser && <MemberForm initialData={editingUser} onSubmit={handleUpdateUser} onCancel={() => setEditingUser(null)} />}
       
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-2xl">
+        <div className="overflow-x-auto scrollbar-hide">
             <table className="w-full text-left border-collapse">
             <thead>
-                <tr className="bg-gray-950/50 border-b border-gray-800 text-gray-400 text-sm">
-                    <th className="p-4 font-medium">Name</th>
-                    <th className="p-4 font-medium">Rolle</th>
-                    <th className="p-4 font-medium">Gruppen</th>
-                    <th className="p-4 font-medium text-right">Aktionen</th>
+                <tr className="bg-gray-950 border-b border-gray-800 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
+                    <th className="p-4">Name</th>
+                    <th className="p-4">Rolle</th>
+                    <th className="p-4">Gruppen</th>
+                    <th className="p-4 text-right">Verwaltung</th>
                 </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
-                {users.map(u => (
-                <tr key={u.id} className="hover:bg-gray-800/50 transition-colors">
-                    <td className="p-4 text-white font-medium">{u.firstName} {u.lastName}</td>
+            <tbody className="divide-y divide-gray-800/50">
+                {users.sort((a,b) => a.lastName.localeCompare(b.lastName)).map(u => (
+                <tr key={u.id} className="hover:bg-black/20 transition-colors">
+                    <td className="p-4 text-white font-bold whitespace-nowrap">{u.lastName} {u.firstName}</td>
                     <td className="p-4">
-                        <span className={`text-xs px-2 py-1 rounded-md font-bold uppercase ${u.role === 'admin' ? 'bg-orange-500/20 text-orange-500' : 'bg-gray-800 text-gray-400'}`}>
-                            {u.role}
+                        <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase tracking-widest inline-flex items-center gap-2 ${u.role === 'admin' ? 'bg-orange-500/20 text-orange-500 border border-orange-500/20' : 'bg-gray-800/50 text-gray-500'}`}>
+                            {u.role === 'admin' && <ShieldAlert size={10}/>} {u.role}
                         </span>
                     </td>
                     <td className="p-4">
                         <div className="flex flex-wrap gap-1">
                             {u.groups.map(g => (
-                                <span key={g} className="text-xs bg-gray-950 border border-gray-700 px-2 py-1 rounded-md text-gray-300">{g}</span>
+                                <span key={g} className="text-[10px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-400 font-bold">{g}</span>
                             ))}
                         </div>
                     </td>
                     <td className="p-4 text-right flex justify-end gap-1">
-                        <button onClick={() => { setEditingUser(u); setShowAdd(false); }} className="text-gray-500 hover:text-orange-500 transition-colors p-2 rounded-lg" title="Mitglied bearbeiten">
+                        <button onClick={() => { setEditingUser(u); setShowAdd(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-gray-500 hover:text-orange-500 transition-colors p-2 rounded-lg" title="Bearbeiten">
                             <Edit2 size={18} />
                         </button>
-                        <button onClick={() => removeUser(u.id)} className="text-gray-500 hover:text-red-500 transition-colors p-2 rounded-lg" title="Mitglied löschen">
+                        <button onClick={() => removeUser(u.id)} className="text-gray-500 hover:text-red-500 transition-colors p-2 rounded-lg" title="Löschen">
                             <Trash2 size={18} />
                         </button>
                     </td>
@@ -786,40 +833,35 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
   };
 
   return (
-    <form onSubmit={submit} className="bg-gray-900 border border-gray-700 p-6 rounded-2xl mb-8">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-bold text-white">{initialData ? 'Mitglied bearbeiten' : 'Neues Mitglied'}</h3>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <div>
-            <label className="block text-sm text-gray-400 mb-1">Vorname</label>
-            <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="z.B. Max" className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500 transition-colors" />
-        </div>
-        <div>
-            <label className="block text-sm text-gray-400 mb-1">Nachname</label>
-            <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="z.B. Muster" className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500 transition-colors" />
-        </div>
+    <form onSubmit={submit} className="bg-gray-900 border-2 border-orange-500/10 p-6 rounded-2xl mb-8 shadow-2xl relative overflow-hidden">
+      <h3 className="text-xl font-bold text-white mb-6 tracking-tight">{initialData ? 'Mitglied bearbeiten' : 'Neues Mitglied'}</h3>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
+        <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 border-t border-gray-800 pt-4">
-        <div>
-          <label className="block text-sm text-gray-400 mb-2">Rolle</label>
-          <select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500 transition-colors">
-            <option value="member">Mitglied</option>
-            <option value="admin">Administrator</option>
-          </select>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6">
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-gray-500 uppercase block mb-2">Berechtigungs-Level</label>
+          <div className="bg-gray-950 border border-gray-800 p-1 rounded-xl">
+              <select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent border-none px-3 py-2 text-white font-bold focus:ring-0 cursor-pointer">
+                <option value="member" className="bg-gray-900">Standard Mitglied</option>
+                <option value="admin" className="bg-gray-900 text-orange-500">Administrator</option>
+              </select>
+          </div>
         </div>
         
-        <div>
-          <label className="block text-sm text-gray-400 mb-2">Gruppen</label>
-          <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-gray-500 uppercase block mb-2">Sektionen / Gruppen</label>
+          <div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 p-4 rounded-xl">
             {GROUPS.map(group => (
-              <label key={group} className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+              <label key={group} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all">
                 <input 
                     type="checkbox" 
                     checked={selectedGroups.includes(group)} 
                     onChange={() => toggleGroup(group)} 
-                    className="accent-orange-500 rounded" 
+                    className="w-4 h-4 accent-orange-500 rounded" 
                 />
                 {group}
               </label>
@@ -828,12 +870,12 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
         </div>
       </div>
 
-      <div className="flex justify-end pt-2 gap-3">
-        <button type="button" onClick={onCancel} className="text-gray-400 hover:text-white px-4 py-2 rounded-lg transition-colors">
+      <div className="flex justify-end items-center pt-4 gap-4 border-t border-gray-800">
+        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all">
             Abbrechen
         </button>
-        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-6 py-2 rounded-lg transition-colors">
-            {initialData ? 'Änderungen speichern' : 'Speichern'}
+        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-8 py-3 rounded-xl transition-all shadow-lg active:scale-95 uppercase tracking-widest text-xs">
+            {initialData ? 'Speichern' : 'Anlegen'}
         </button>
       </div>
     </form>
