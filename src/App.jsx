@@ -4,7 +4,7 @@ import {
   ChevronRight, BarChart3, AlertCircle, CheckCircle2, 
   UserPlus, Eye, Check, Database, Settings, ShieldAlert, 
   Edit2, FileSpreadsheet, Upload, X, Info, Youtube, ExternalLink, Clock,
-  FileText, ClipboardCheck, Save
+  FileText, ClipboardCheck, Save, ListPlus
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, updateProfile } from 'firebase/auth';
@@ -283,14 +283,46 @@ function MinutesView({ minutes, users, dbAppId, db, fbUser }) {
 function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
   const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState(initialData?.attendance || {});
-  const [agenda, setAgenda] = useState(initialData?.agenda || BOARD_ROLES.reduce((acc, role) => ({ ...acc, [role]: '' }), {}));
+  
+  // Agenda initialisieren: Entweder aus den initialen Daten oder als leere Arrays pro Rolle
+  const [agenda, setAgenda] = useState(() => {
+    const base = BOARD_ROLES.reduce((acc, role) => ({ ...acc, [role]: [] }), {});
+    if (initialData?.agenda) {
+      Object.keys(initialData.agenda).forEach(role => {
+        const val = initialData.agenda[role];
+        // Rückwärtskompatibilität: Falls vorher ein String gespeichert war, wandle ihn in ein Array um
+        base[role] = Array.isArray(val) ? val : (val ? [val] : []);
+      });
+    }
+    return base;
+  });
+
+  // Lokaler State für das Eingabefeld eines neuen Punktes pro Rolle
+  const [newPoints, setNewPoints] = useState(BOARD_ROLES.reduce((acc, role) => ({ ...acc, [role]: '' }), {}));
 
   const toggleAttendance = (userId) => {
     setAttendance(prev => ({ ...prev, [userId]: !prev[userId] }));
   };
 
-  const handleAgendaChange = (role, val) => {
-    setAgenda(prev => ({ ...prev, [role]: val }));
+  const handleNewPointChange = (role, val) => {
+    setNewPoints(prev => ({ ...prev, [role]: val }));
+  };
+
+  const addPoint = (role) => {
+    const text = newPoints[role].trim();
+    if (!text) return;
+    setAgenda(prev => ({
+        ...prev,
+        [role]: [...prev[role], text]
+    }));
+    setNewPoints(prev => ({ ...prev, [role]: '' }));
+  };
+
+  const removePoint = (role, index) => {
+    setAgenda(prev => ({
+        ...prev,
+        [role]: prev[role].filter((_, i) => i !== index)
+    }));
   };
 
   const submit = (e) => {
@@ -317,7 +349,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
 
           <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl">
             <h3 className="text-sm font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2"><ClipboardCheck size={16} className="text-orange-500" /> Anwesenheit</h3>
-            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 scrollbar-hide">
+            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-hide">
               {boardMembers.map(m => (
                 <div key={m.id} onClick={() => toggleAttendance(m.id)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${attendance[m.id] ? 'bg-orange-500/10 border-orange-500/30' : 'bg-gray-950 border-gray-800 opacity-60 hover:opacity-100'}`}>
                   <span className="text-sm font-bold text-white">{m.firstName} {m.lastName}</span>
@@ -333,17 +365,46 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl">
             <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6 flex items-center gap-2"><FileText size={16} className="text-orange-500" /> Traktanden nach Ressort</h3>
-            <div className="space-y-6">
+            <div className="space-y-8">
               {BOARD_ROLES.map(role => (
-                <div key={role} className="space-y-2 group">
-                  <label className="block text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] ml-1 group-focus-within:text-orange-500 transition-colors">{role}</label>
-                  <textarea 
-                    value={agenda[role]} 
-                    onChange={e => handleAgendaChange(role, e.target.value)} 
-                    placeholder={`Informationen aus dem Ressort ${role}...`}
-                    rows={4}
-                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:border-orange-500 focus:outline-none transition-all resize-none"
-                  />
+                <div key={role} className="space-y-4 pb-6 border-b border-gray-800 last:border-0">
+                  <label className="block text-[10px] font-black text-orange-500 uppercase tracking-[0.2em] ml-1">{role}</label>
+                  
+                  {/* Liste der Punkte */}
+                  <div className="space-y-2">
+                    {agenda[role].map((point, idx) => (
+                      <div key={idx} className="flex items-start gap-3 p-3 bg-gray-950 border border-gray-800 rounded-xl group transition-all hover:border-gray-700">
+                        <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0"></div>
+                        <p className="text-sm text-gray-300 flex-1">{point}</p>
+                        <button 
+                            type="button" 
+                            onClick={() => removePoint(role, idx)}
+                            className="p-1 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                            <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Input für neuen Punkt */}
+                  <div className="flex gap-2">
+                    <input 
+                      type="text"
+                      value={newPoints[role]} 
+                      onChange={e => handleNewPointChange(role, e.target.value)} 
+                      onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addPoint(role))}
+                      placeholder="Neuer Punkt für dieses Ressort..."
+                      className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:border-orange-500 focus:outline-none transition-all"
+                    />
+                    <button 
+                        type="button" 
+                        onClick={() => addPoint(role)}
+                        className="bg-gray-800 hover:bg-gray-700 text-orange-500 p-2.5 rounded-xl transition-all"
+                    >
+                        <ListPlus size={20} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -499,7 +560,7 @@ function CreateEventForm({ onSubmit }) {
   const [date, setDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [customCategory, setCustomCategory] = useState('');
-  const submit = (e) => { e.preventDefault(); const finalCategory = category === 'Freitext' ? customCategory.trim() : category; if (category === 'Freitext' && !finalCategory) return alert('Bitte eigene Kategorie eingeben.'); onSubmit({ title, category: finalCategory, date, endDate }); };
+  const submit = (e) => { e.preventDefault(); const finalCategory = category === 'Freitext' ? customCategory.trim() : category; if (category === 'Freitext' && !finalCategory) return alert('Bitte eine eigene Kategorie eingeben.'); onSubmit({ title, category: finalCategory, date, endDate }); };
   return (
     <form onSubmit={submit} className="bg-gray-900 border border-gray-800 p-6 rounded-2xl mb-8 space-y-4 shadow-xl">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
