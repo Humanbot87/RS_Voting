@@ -292,11 +292,11 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
       (u.lastName || '').toLowerCase() === lastName.trim().toLowerCase()
     );
 
-    if (!user) return alert("Mitglied nicht gefunden.");
+    if (!user) return alert("Mitglied nicht gefunden. Bitte Schreibweise prüfen.");
 
     const session = activeSessions.find(s => s.id === user.id);
     if (session && (Date.now() - session.lastSeen < 60000)) {
-        return alert("Dieses Mitglied ist bereits an einem anderen Gerät angemeldet.");
+        return alert("Dieser Account ist bereits auf einem anderen Gerät aktiv.");
     }
 
     const isBoard = (user.groups || []).includes('Vorstand');
@@ -314,7 +314,7 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
     if (password === deobfuscate(tempUser.password)) {
         onLogin(tempUser);
     } else {
-        alert("Passwort falsch.");
+        alert("Passwort nicht korrekt.");
     }
   };
 
@@ -347,9 +347,9 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
           <>
             {step === 'name' && (
               <form onSubmit={checkName} className="space-y-4">
-                <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" />
-                <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" />
-                <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4 transition-all shadow-lg shadow-orange-500/10">Anmelden</button>
+                <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
+                <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
+                <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4 transition-all uppercase text-xs tracking-widest">Anmelden</button>
               </form>
             )}
 
@@ -358,8 +358,8 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
                 <div className="flex items-center gap-3 mb-4 p-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl text-orange-400">
                     <Lock size={20} /> <span className="text-xs font-bold uppercase tracking-wider">Vorstand Login</span>
                 </div>
-                <input type="password" required autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Vorstands-Passwort" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors text-center tracking-widest" />
-                <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4 transition-all">Sitzung entsperren</button>
+                <input type="password" required autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Passwort" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors text-center tracking-widest font-bold" />
+                <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4 transition-all uppercase text-xs tracking-widest">Entsperren</button>
                 <button type="button" onClick={() => setStep('name')} className="w-full text-gray-500 text-xs font-bold uppercase tracking-widest mt-4">Abbrechen</button>
               </form>
             )}
@@ -367,161 +367,16 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
             {step === 'setup' && (
               <form onSubmit={handleSetupSubmit} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="flex items-center gap-3 mb-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-blue-400">
-                    <ShieldAlert size={20} /> <div><span className="text-xs font-bold block uppercase tracking-wider">Erstanmeldung Vorstand</span><span className="text-[10px] opacity-70 italic">Bitte setze ein Passwort für den internen Bereich.</span></div>
+                    <ShieldAlert size={20} /> <div><span className="text-xs font-bold block uppercase tracking-wider">Passwort festlegen</span><span className="text-[10px] opacity-70 italic">Sicherheitsmassnahme für Vorstand.</span></div>
                 </div>
-                <input type="password" required autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Passwort wählen" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors text-center tracking-widest" />
-                <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4 transition-all">Passwort speichern</button>
+                <input type="password" required autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Neues Passwort" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors text-center tracking-widest font-bold" />
+                <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4 transition-all uppercase text-xs tracking-widest">Speichern & Login</button>
               </form>
             )}
           </>
         )}
       </div>
     </div>
-  );
-}
-
-// --- PROTOKOLLE ---
-function MinutesView({ minutes, users, dbAppId, db, fbUser }) {
-  const [editingMinute, setEditingMinute] = useState(null);
-  const [isCreating, setIsCreating] = useState(false);
-
-  const handleSave = async (data) => {
-    if (!fbUser) return;
-    const id = data.id || Date.now().toString();
-    await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'minutes', id), { ...data, id });
-    setIsCreating(false);
-    setEditingMinute(null);
-  };
-
-  const handleDelete = async (id) => {
-    if (confirm('Protokoll unwiderruflich löschen?')) await deleteDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'minutes', id));
-  };
-
-  if (isCreating || editingMinute) {
-    return <MinutesForm initialData={editingMinute} boardMembers={users.filter(u => (u.groups || []).includes('Vorstand'))} onSave={handleSave} onCancel={() => { setIsCreating(false); setEditingMinute(null); }} />;
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center"><h2 className="text-2xl font-bold text-white tracking-tight">Sitzungsprotokolle</h2><button onClick={() => setIsCreating(true)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all"><Plus size={18} /> Neue Sitzung</button></div>
-      {minutes.length === 0 ? (<div className="text-center py-16 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800"><FileText size={48} className="mx-auto text-gray-700 mb-4" /><p className="text-gray-500">Noch keine Protokolle vorhanden.</p></div>) : (
-        <div className="grid gap-4">{minutes.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(m => (
-            <div key={m.id} className="bg-gray-900 border border-gray-800 p-5 rounded-2xl flex justify-between items-center group hover:border-orange-500/30 transition-all">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gray-950 rounded-xl flex items-center justify-center text-orange-500 border border-gray-800"><Calendar size={20} /></div>
-                <div><h3 className="text-lg font-bold text-white">Sitzung vom {new Date(m.date).toLocaleDateString('de-CH')}</h3><p className="text-xs text-gray-500 uppercase font-black tracking-widest mt-1">Internes Dokument</p></div>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => setEditingMinute(m)} className="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg transition-all" title="Bearbeiten"><Edit2 size={18} /></button>
-                <button onClick={() => handleDelete(m.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all" title="Löschen"><Trash2 size={18} /></button>
-              </div>
-            </div>
-          ))}</div>
-      )}
-    </div>
-  );
-}
-
-function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
-  const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
-  const [attendance, setAttendance] = useState(initialData?.attendance || {});
-  const [agenda, setAgenda] = useState(() => {
-    const base = BOARD_ROLES.reduce((acc, role) => ({ ...acc, [role]: [] }), {});
-    if (initialData?.agenda) {
-      Object.keys(initialData.agenda).forEach(role => {
-        const val = initialData.agenda[role];
-        base[role] = Array.isArray(val) ? val.map(p => typeof p === 'string' ? { text: p, files: [] } : p) : [];
-      });
-    }
-    return base;
-  });
-
-  const [newPoints, setNewPoints] = useState(BOARD_ROLES.reduce((acc, role) => ({ ...acc, [role]: '' }), {}));
-  const [editingPoint, setEditingPoint] = useState({ role: null, index: null, text: '' });
-  const fileInputRef = useRef(null);
-  const [uploadingFor, setUploadingFor] = useState({ role: null, index: null });
-
-  const toggleAttendance = (userId) => setAttendance(prev => ({ ...prev, [userId]: !prev[userId] }));
-  const handleNewPointChange = (role, val) => setNewPoints(prev => ({ ...prev, [role]: val }));
-  const addPoint = (role) => { const text = newPoints[role].trim(); if (!text) return; setAgenda(prev => ({ ...prev, [role]: [...(prev[role] || []), { text, files: [] }] })); setNewPoints(prev => ({ ...prev, [role]: '' })); };
-  const removePoint = (role, index) => setAgenda(prev => ({ ...prev, [role]: prev[role].filter((_, i) => i !== index) }));
-  const startEditing = (role, index, text) => setEditingPoint({ role, index, text });
-  const saveEdit = () => { const { role, index, text } = editingPoint; if (!role || index === null || !text.trim()) { setEditingPoint({ role: null, index: null, text: '' }); return; } setAgenda(prev => ({ ...prev, [role]: prev[role].map((p, i) => i === index ? { ...p, text: text.trim() } : p) })); setEditingPoint({ role: null, index: null, text: '' }); };
-
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    const { role, index } = uploadingFor;
-    if (!file || !role || index === null) return;
-    if (file.size > 800 * 1024) return alert("Datei zu gross (max 800KB).");
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-        setAgenda(prev => ({ ...prev, [role]: prev[role].map((p, i) => i === index ? { ...p, files: [...(p.files || []), { name: file.name, type: file.type, data: ev.target.result }] } : p) }));
-        setUploadingFor({ role: null, index: null });
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
-
-  const removeFile = (role, pointIndex, fileIndex) => setAgenda(prev => ({ ...prev, [role]: prev[role].map((p, i) => i === pointIndex ? { ...p, files: p.files.filter((_, fi) => fi !== fileIndex) } : p) }));
-  const downloadFile = (file) => { const link = document.createElement('a'); link.href = file.data; link.download = file.name; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
-
-  return (
-    <form onSubmit={(e) => { e.preventDefault(); onSave({ id: initialData?.id, date, attendance, agenda }); }} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4"><button type="button" onClick={onCancel} className="text-gray-400 hover:text-white bg-gray-900 p-2 rounded-lg border border-gray-800 transition-all"><ChevronRight className="rotate-180" size={20} /></button><h2 className="text-2xl font-bold text-white tracking-tight">{initialData ? 'Protokoll bearbeiten' : 'Neue Sitzung'}</h2></div>
-        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-6 py-3 rounded-xl flex items-center gap-2 shadow-lg"><Save size={18} /> Protokoll speichern</button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl">
-            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 ml-1">Sitzungsdatum</label>
-            <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 focus:outline-none transition-all" />
-          </div>
-          <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl">
-            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2"><ClipboardCheck size={16} className="text-orange-500" /> Anwesenheit</h3>
-            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-hide">
-              {boardMembers.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(m => (
-                <div key={m.id} onClick={() => toggleAttendance(m.id)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${attendance[m.id] ? 'bg-orange-500/10 border-orange-500/30' : 'bg-gray-950 border-gray-800 opacity-60 hover:opacity-100'}`}>
-                  <span className="text-sm font-bold text-white">{m.firstName} {m.lastName}</span>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${attendance[m.id] ? 'bg-orange-500 border-orange-500' : 'border-gray-700'}`}>{attendance[m.id] && <Check size={12} className="text-gray-950 stroke-[4]" />}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="lg:col-span-2 space-y-4">
-          <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl">
-            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6 flex items-center gap-2"><FileText size={16} className="text-orange-500" /> Traktanden nach Ressort</h3>
-            <div className="space-y-8">
-              {BOARD_ROLES.map(role => (
-                <div key={role} className="space-y-4 pb-6 border-b border-gray-800 last:border-0">
-                  <label className="block text-[10px] font-black text-orange-500 uppercase tracking-[0.2em] ml-1">{role}</label>
-                  <div className="space-y-3">
-                    {(agenda[role] || []).map((point, idx) => (
-                      <div key={idx} className="flex flex-col gap-3 p-4 bg-gray-950 border border-gray-800 rounded-xl group hover:border-gray-700 transition-all shadow-sm">
-                        {editingPoint.role === role && editingPoint.index === idx ? (
-                          <div className="flex gap-2"><textarea autoFocus value={editingPoint.text} onChange={e => setEditingPoint({...editingPoint, text: e.target.value})} className="flex-1 bg-gray-900 border border-orange-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none transition-all resize-none font-medium" rows={2} /><div className="flex flex-col gap-1"><button type="button" onClick={saveEdit} className="p-2 bg-green-500/20 text-green-500 rounded-lg hover:bg-green-500/30 transition-all"><Check size={16}/></button><button type="button" onClick={() => setEditingPoint({ role: null, index: null, text: '' })} className="p-2 bg-red-500/20 text-red-500 rounded-lg hover:bg-red-500/30 transition-all"><X size={16}/></button></div></div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="flex items-start gap-3"><div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0"></div><p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap leading-relaxed">{point.text}</p>
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all"><button type="button" onClick={() => { setUploadingFor({role, index: idx}); fileInputRef.current?.click(); }} className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg" title="Datei anhängen"><Paperclip size={16} /></button><button type="button" onClick={() => startEditing(role, idx, point.text)} className="p-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg" title="Bearbeiten"><Edit2 size={16} /></button><button type="button" onClick={() => removePoint(role, idx)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg" title="Löschen"><Trash2 size={16} /></button></div>
-                            </div>
-                            {point.files && point.files.length > 0 && (<div className="flex flex-wrap gap-2 ml-4">{point.files.map((file, fi) => (<div key={fi} className="flex items-center gap-2 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg group/file shadow-sm"><File size={12} className="text-orange-500/70" /><span className="text-[10px] text-gray-400 font-medium truncate max-w-[120px]">{file.name}</span><div className="flex gap-1"><button type="button" onClick={() => downloadFile(file)} className="p-1 text-gray-500 hover:text-blue-400 transition-colors"><Download size={12}/></button><button type="button" onClick={() => removeFile(role, idx, fi)} className="p-1 text-gray-500 hover:text-red-500 transition-colors"><X size={12}/></button></div></div>))}</div>)}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2 mt-4"><input type="text" value={newPoints[role]} onChange={e => handleNewPointChange(role, e.target.value)} onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addPoint(role))} placeholder="Punkt erfassen..." className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:border-orange-500 focus:outline-none transition-all shadow-inner" /><button type="button" onClick={() => addPoint(role)} className="bg-gray-800 hover:bg-gray-700 text-orange-500 p-2.5 rounded-xl transition-all shadow-sm"><ListPlus size={20} /></button></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </form>
   );
 }
 
@@ -532,12 +387,26 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate }) {
   const [editingUser, setEditingUser] = useState(null);
   const fileInputRef = useRef(null);
 
-  const handleAddUser = async (user) => { if (!fbUser) return; await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', Date.now().toString()), { ...user, id: Date.now().toString() }); setShowAdd(false); };
-  const handleUpdateUser = async (user) => { if (!fbUser) return; await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', user.id), user); setEditingUser(null); };
-  const removeUser = async (id) => { if (!fbUser || !confirm('Mitglied wirklich löschen?')) return; await deleteDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', id)); };
+  const handleAddUser = async (user) => { 
+    if (!fbUser) return; 
+    const id = Date.now().toString();
+    await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', id), { ...user, id }); 
+    setShowAdd(false); 
+  };
+
+  const handleUpdateUser = async (user) => { 
+    if (!fbUser) return; 
+    await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', user.id), user); 
+    setEditingUser(null); 
+  };
+
+  const removeUser = async (id) => { 
+    if (!fbUser || !confirm('Mitglied wirklich löschen?')) return; 
+    await deleteDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', id)); 
+  };
   
   const resetPassword = async (user) => {
-    if (!confirm(`Passwort für ${user.firstName} ${user.lastName} wirklich zurücksetzen? Die Person muss beim nächsten Login ein neues setzen.`)) return;
+    if (!confirm(`Passwort für ${user.firstName} ${user.lastName} zurücksetzen? Die Person muss beim nächsten Login ein neues setzen.`)) return;
     await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', user.id), { ...user, password: "" });
     alert("Passwort wurde zurückgesetzt.");
   };
@@ -548,27 +417,65 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate }) {
       const rows = e.target.result.split(/\r?\n/).filter(row => row.trim() !== '');
       const imported = rows.map((row, index) => {
         const columns = row.split(/[;,]/).map(col => col.trim()); if (columns.length < 2) return null;
-        const matched = GROUPS.filter(g => columns[2]?.toLowerCase().includes(g.toLowerCase()));
+        const matched = GROUPS.filter(g => (columns[2] || '').toLowerCase().includes(g.toLowerCase()));
         return { id: `import-${Date.now()}-${index}`, firstName: columns[0], lastName: columns[1], role: 'member', groups: matched.length > 0 ? matched : [], password: "" };
       }).filter(Boolean);
       if (confirm(`${imported.length} Mitglieder importieren?`)) { for (const m of imported) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', m.id), m); setShowImport(false); }
     };
     reader.readAsText(file); event.target.value = "";
   };
+
   return (
-    <div className="space-y-6"><div className="flex flex-wrap justify-between items-center gap-4"><h2 className="text-2xl font-bold text-white tracking-tight">Stammdaten</h2><div className="flex gap-2"><button onClick={() => setShowImport(!showImport)} className="bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"><FileSpreadsheet size={18} /> Import</button><button onClick={() => { setShowAdd(!showAdd); setEditingUser(null); }} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all">{showAdd ? 'Abbrechen' : <><UserPlus size={18} /> Hinzufügen</>}</button></div></div>
-      {showImport && (<div className="bg-gray-900 border-2 border-dashed border-gray-700 p-8 rounded-3xl text-center animate-in fade-in slide-in-from-top-2 duration-300"><Upload className="mx-auto text-orange-500 mb-4" size={40} /><h3 className="text-white font-bold text-lg mb-2">CSV Import</h3><input type="file" ref={fileInputRef} accept=".csv" onChange={handleCsvUpload} className="hidden" /><button onClick={() => fileInputRef.current?.click()} className="bg-orange-500 text-gray-950 font-bold px-8 py-3 rounded-xl shadow-lg shadow-orange-500/10">Datei auswählen</button></div>)}
-      {showAdd && <MemberForm onSubmit={handleAddUser} onCancel={() => setShowAdd(false)} />}{editingUser && <MemberForm initialData={editingUser} onSubmit={handleUpdateUser} onCancel={() => setEditingUser(null)} />}
-      <div className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-2xl"><div className="overflow-x-auto scrollbar-hide"><table className="w-full text-left border-collapse"><thead><tr className="bg-gray-950 border-b border-gray-800 text-gray-500 text-[10px] font-bold uppercase tracking-wider"><th className="p-5">Name</th><th className="p-5">Rolle</th><th className="p-5">Gruppen</th><th className="p-5 text-right">Verwaltung</th></tr></thead><tbody className="divide-y divide-gray-800/50">
-        {users.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(u => (<tr key={u.id} className="hover:bg-black/20 transition-colors group"><td className="p-5 text-white font-bold">{u.lastName} {u.firstName}</td><td className="p-5"><span className={`text-[10px] px-3 py-1 rounded font-bold uppercase tracking-widest inline-flex items-center gap-2 ${u.role === 'admin' ? 'bg-orange-500/20 text-orange-500 border border-orange-500/20' : 'bg-gray-800/50 text-gray-500'}`}>{u.role}</span></td><td className="p-5"><div className="flex flex-wrap gap-1">{(u.groups || []).map(g => (<span key={g} className="text-[10px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-400 font-bold">{g}</span>))}</div></td>
-                    <td className="p-5 text-right flex justify-end gap-1">
-                        {(u.groups || []).includes('Vorstand') && (
-                            <button onClick={() => resetPassword(u)} className="text-gray-500 hover:text-orange-500 p-3 rounded-xl transition-all" title="Passwort zurücksetzen"><Key size={18} /></button>
-                        )}
-                        <button onClick={() => setEditingUser(u)} className="text-gray-500 hover:text-orange-500 p-3 rounded-xl transition-all" title="Bearbeiten"><Edit2 size={18} /></button>
-                        <button onClick={() => removeUser(u.id)} className="text-gray-500 hover:text-red-500 p-3 rounded-xl transition-all" title="Löschen"><Trash2 size={18} /></button>
-                    </td></tr>))}
-      </tbody></table></div></div></div>
+    <div className="space-y-6">
+      <div className="flex flex-wrap justify-between items-center gap-4">
+        <h2 className="text-2xl font-bold text-white tracking-tight">Stammdaten</h2>
+        <div className="flex gap-2">
+            <button onClick={() => setShowImport(!showImport)} className="bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"><FileSpreadsheet size={18} /> Import</button>
+            <button onClick={() => { setShowAdd(true); setEditingUser(null); }} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all"><UserPlus size={18} /> Hinzufügen</button>
+        </div>
+      </div>
+      
+      {showImport && (
+        <div className="bg-gray-900 border-2 border-dashed border-gray-700 p-8 rounded-3xl text-center animate-in fade-in slide-in-from-top-2 duration-300">
+            <Upload className="mx-auto text-orange-500 mb-4" size={40} />
+            <h3 className="text-white font-bold text-lg mb-2">Excel / CSV Mitglieder-Import</h3>
+            <p className="text-gray-400 text-sm mb-6 max-w-md mx-auto">Format: Vorname, Nachname, Gruppe</p>
+            <input type="file" ref={fileInputRef} accept=".csv" onChange={handleCsvUpload} className="hidden" />
+            <button onClick={() => fileInputRef.current?.click()} className="bg-orange-500 text-gray-950 font-bold px-8 py-3 rounded-xl shadow-lg">Datei auswählen</button>
+        </div>
+      )}
+
+      {showAdd && <MemberForm onSubmit={handleAddUser} onCancel={() => setShowAdd(false)} />}
+      {editingUser && <MemberForm initialData={editingUser} onSubmit={handleUpdateUser} onCancel={() => setEditingUser(null)} />}
+      
+      <div className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-2xl">
+        <div className="overflow-x-auto scrollbar-hide">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-950 border-b border-gray-800 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
+                <th className="p-5">Name</th><th className="p-5">Rolle</th><th className="p-5">Gruppen</th><th className="p-5 text-right">Verwaltung</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-800/50">
+              {users.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(u => (
+                <tr key={u.id} className="hover:bg-black/20 transition-colors group">
+                  <td className="p-5 text-white font-bold">{u.lastName} {u.firstName}</td>
+                  <td className="p-5"><span className={`text-[10px] px-3 py-1 rounded font-bold uppercase tracking-widest inline-flex items-center gap-2 ${u.role === 'admin' ? 'bg-orange-500/20 text-orange-500 border border-orange-500/20' : 'bg-gray-800/50 text-gray-500'}`}>{u.role}</span></td>
+                  <td className="p-5"><div className="flex flex-wrap gap-1">{(u.groups || []).map(g => (<span key={g} className="text-[10px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-400 font-bold">{g}</span>))}</div></td>
+                  <td className="p-5 text-right flex justify-end gap-1">
+                      {(u.groups || []).includes('Vorstand') && (
+                          <button onClick={() => resetPassword(u)} className="text-gray-500 hover:text-orange-500 p-3 rounded-xl transition-all" title="Passwort zurücksetzen"><Key size={18} /></button>
+                      )}
+                      <button onClick={() => setEditingUser(u)} className="text-gray-500 hover:text-orange-500 p-3 rounded-xl transition-all" title="Bearbeiten"><Edit2 size={18} /></button>
+                      <button onClick={() => removeUser(u.id)} className="text-gray-500 hover:text-red-500 p-3 rounded-xl transition-all" title="Löschen"><Trash2 size={18} /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -577,13 +484,32 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
   const [lastName, setLastName] = useState(initialData?.lastName || '');
   const [role, setRole] = useState(initialData?.role || 'member');
   const [selectedGroups, setSelectedGroups] = useState(initialData?.groups || []);
+  
   const toggleGroup = (group) => setSelectedGroups(p => p.includes(group) ? p.filter(g => g !== group) : [...p, group]);
+  
+  const submit = (e) => { 
+    e.preventDefault(); 
+    onSubmit({ 
+      firstName: firstName.trim(), 
+      lastName: lastName.trim(), 
+      role, 
+      groups: selectedGroups, 
+      password: initialData?.password || "" 
+    }); 
+  };
+
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSubmit({ ...initialData, firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups, password: initialData?.password || "" }); }} className="bg-gray-900 border-2 border-orange-500/10 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden">
+    <form onSubmit={submit} className="bg-gray-900 border-2 border-orange-500/10 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4">
       <h3 className="text-xl font-bold text-white mb-6 tracking-tight">{initialData ? 'Mitglied bearbeiten' : 'Neues Mitglied erfassen'}</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"><input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" /><input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" /></div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6"><div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 ml-1">Berechtigung</label><div className="bg-gray-950 border border-gray-800 p-1 rounded-2xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-4 py-3 text-white font-bold focus:ring-0 border-none outline-none"><option value="member" className="bg-gray-900">Standard Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500 font-bold">Administrator</option></select></div></div><div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 ml-1">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 p-4 rounded-2xl">{GROUPS.map(g => (<label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all"><input type="checkbox" checked={selectedGroups.includes(group)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}</label>))}</div></div></div>
-      <div className="flex justify-end gap-6 pt-6 border-t border-gray-800"><button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all">Abbrechen</button><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 text-xs uppercase tracking-widest active:scale-95">{initialData ? 'Änderungen Speichern' : 'Mitglied Anlegen'}</button></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 font-bold focus:outline-none transition-colors" />
+        <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 font-bold focus:outline-none transition-colors" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6">
+        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 ml-1 tracking-widest">Berechtigung</label><div className="bg-gray-950 border border-gray-800 p-1 rounded-2xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-4 py-3 text-white font-bold focus:ring-0 border-none outline-none"><option value="member" className="bg-gray-900">Standard Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500 font-bold">Administrator</option></select></div></div>
+        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 ml-1 tracking-widest">Sektionen / Gruppen</label><div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 p-4 rounded-2xl">{GROUPS.map(g => (<label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all"><input type="checkbox" checked={selectedGroups.includes(g)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}</label>))}</div></div>
+      </div>
+      <div className="flex justify-end gap-6 pt-6 border-t border-gray-800"><button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all">Abbrechen</button><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 text-xs uppercase tracking-widest">{initialData ? 'Speichern' : 'Anlegen'}</button></div>
     </form>
   );
 }
@@ -592,20 +518,21 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
 function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db, fbUser, isAutoArchived }) {
   const [showCreate, setShowCreate] = useState(false); const [selectedEvent, setSelectedEvent] = useState(null); const getDbRef = (id) => doc(db, 'artifacts', dbAppId, 'public', 'data', 'events', id);
   const handleCreateEvent = async (n) => { if (!fbUser) return; const id = Date.now().toString(); await setDoc(getDbRef(id), { ...n, id, isArchived: false, surveys: [] }); setShowCreate(false); };
-  const handleArchive = async (id, s) => { if (!fbUser) return; const e = events.find(ev => ev.evId === id); if(e) await setDoc(getDbRef(id), { ...e, isArchived: s }); setSelectedEvent(null); };
+  const handleArchive = async (id, s) => { if (!fbUser) return; const e = events.find(ev => ev.id === id); if(e) await setDoc(getDbRef(id), { ...e, isArchived: s }); setSelectedEvent(null); };
   const handleDeleteEvent = async (id) => { if (!fbUser || !confirm('Soll dieser Event gelöscht werden?')) return; await deleteDoc(getDbRef(id)); setSelectedEvent(null); };
   
   if (selectedEvent) { 
       const evData = events.find(e => e.id === selectedEvent.id); 
       if (evData) {
           const isExp = evData.endDate && new Date(evData.endDate) <= new Date(); 
-          return <EventDetail event={evData} onBack={() => setSelectedEvent(null)} currentUser={currentUser} onArchive={handleArchive} onDelete={handleDeleteEvent} users={users} dbAppId={appId} db={db} fbUser={fbUser} isAutoArchived={isExp} />; 
+          return <EventDetail event={evData} onBack={() => setSelectedEvent(null)} currentUser={currentUser} onArchive={handleArchive} onDelete={handleDeleteEvent} users={users} dbAppId={dbAppId} db={db} fbUser={fbUser} isAutoArchived={isExp} />; 
       }
   }
   
   return (
-    <div className="space-y-6"><div className="flex justify-between items-center"><h2 className="text-2xl font-bold text-white tracking-tight">{isArchive ? 'Archiv' : 'Aktuelle Events'}</h2>{!isArchive && currentUser.role === 'admin' && (<button onClick={() => setShowCreate(!showCreate)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg active:scale-95">{showCreate ? 'Abbrechen' : <><Plus size={18} /> Neuer Event</>}</button>)}</div>
-      {showCreate && <CreateEventForm onSubmit={handleCreateEvent} />}{events.length === 0 ? (<div className="text-center py-16 bg-gray-900/50 rounded-3xl border border-dashed border-gray-800"><Calendar size={48} className="mx-auto text-gray-800 mb-4" /><p className="text-gray-500 font-bold uppercase tracking-widest text-xs italic">Momentan keine Einträge vorhanden.</p></div>) : (<div className="grid gap-4 md:grid-cols-2">{events.map(e => { const isExp = e.endDate && new Date(e.endDate) <= new Date(); return (<div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl cursor-pointer hover:border-orange-500/50 transition-colors group active:scale-[0.98] shadow-lg"><div className="flex justify-between items-start mb-2"><div className="flex flex-wrap gap-2"><span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20">{e.category}</span>{(isExp && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1"><Clock size={10}/> Automatisch Archiviert</span>}</div><ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" /></div><h3 className="text-xl font-bold text-white mt-1 mb-4 group-hover:text-orange-50 transition-colors">{e.title}</h3><div className="flex justify-between text-xs text-gray-500 font-bold pt-4 border-t border-gray-800/50"><span className="flex items-center gap-1"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span><span className="flex items-center gap-1"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span></div></div>); })}</div>)}
+    <div className="space-y-6">
+      <div className="flex justify-between items-center"><h2 className="text-2xl font-bold text-white tracking-tight">{isArchive ? 'Archiv' : 'Aktuelle Events'}</h2>{!isArchive && currentUser.role === 'admin' && (<button onClick={() => setShowCreate(!showCreate)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg active:scale-95">{showCreate ? 'Abbrechen' : <><Plus size={18} /> Neuer Event</>}</button>)}</div>
+      {showCreate && <CreateEventForm onSubmit={handleCreateEvent} />}{events.length === 0 ? (<div className="text-center py-16 bg-gray-900/50 rounded-3xl border border-dashed border-gray-800"><Calendar size={48} className="mx-auto text-gray-800 mb-4" /><p className="text-gray-500 font-bold uppercase tracking-widest text-xs italic">Keine Einträge vorhanden.</p></div>) : (<div className="grid gap-4 md:grid-cols-2">{events.map(e => { const isExp = e.endDate && new Date(e.endDate) <= new Date(); return (<div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl cursor-pointer hover:border-orange-500/50 transition-colors group active:scale-[0.98] shadow-lg"><div className="flex justify-between items-start mb-2"><div className="flex flex-wrap gap-2"><span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20">{e.category}</span>{(isExp && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1"><Clock size={10}/> Automatisch Archiviert</span>}</div><ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" /></div><h3 className="text-xl font-bold text-white mt-1 mb-4 group-hover:text-orange-50 transition-colors">{e.title}</h3><div className="flex justify-between text-xs text-gray-500 font-bold pt-4 border-t border-gray-800/50"><span className="flex items-center gap-1"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span><span className="flex items-center gap-1"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span></div></div>); })}</div>)}
     </div>
   );
 }
@@ -618,13 +545,13 @@ function CreateEventForm({ onSubmit }) {
   const [customCategory, setCustomCategory] = useState('');
   const submit = (e) => { e.preventDefault(); const finalCategory = category === 'Freitext' ? customCategory.trim() : category; if (category === 'Freitext' && !finalCategory) return alert('Bitte eine eigene Kategorie eingeben.'); onSubmit({ title, category: finalCategory, date, endDate }); };
   return (
-    <form onSubmit={submit} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-6 shadow-xl relative overflow-hidden">
+    <form onSubmit={submit} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-6 shadow-xl relative overflow-hidden animate-in fade-in slide-in-from-top-4">
       <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-3xl rounded-full"></div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1">Event Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Z.B. Fasnacht 2026" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1">Kategorie</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>{category === 'Freitext' && (<input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Kategorie Name" className="w-full mt-2 bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold" />)}</div>
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1">Datum</label><input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1">Ende (Archivierung)</label><input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /><p className="text-[9px] text-gray-600 mt-1 italic ml-1">Optionale automatische Archivierung.</p></div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Event Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Z.B. Fasnacht 2026" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none transition-colors" /></div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Kategorie</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none transition-colors">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>{category === 'Freitext' && (<input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Kategorie Name" className="w-full mt-2 bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold" />)}</div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Datum</label><input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none transition-colors" /></div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Ende (Archiv)</label><input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none transition-colors" /><p className="text-[9px] text-gray-600 mt-1 italic ml-1 uppercase">Optionale Archivierung.</p></div>
       </div>
       <div className="flex justify-end pt-2"><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest">Event Speichern</button></div>
     </form>
