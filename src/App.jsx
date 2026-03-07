@@ -51,6 +51,7 @@ const INITIAL_USERS = [
   { id: '1', firstName: 'Admin', lastName: 'Suuger', role: 'admin', groups: ['Vorstand', 'Aktive'], password: "" },
 ];
 
+// Hilfsfunktionen für Passwort-Verschleierung
 const obfuscate = (str) => btoa(str || "");
 const deobfuscate = (str) => {
     try { return atob(str || ""); } catch(e) { return ""; }
@@ -70,6 +71,7 @@ export default function App() {
   const [isDBReady, setIsDBReady] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
+  // 1. Firebase Auth Initialisierung
   useEffect(() => {
     if (!auth) return;
     const initAuth = async () => {
@@ -91,6 +93,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // 2. Echtzeit-Datenbank-Synchronisierung
   useEffect(() => {
     if (!fbUser || !db) return;
     setPermissionsError(null);
@@ -114,7 +117,6 @@ export default function App() {
       );
       unsubEvents = onSnapshot(eventsRef, (snap) => {
           setEvents(snap.docs.map(d => d.data()));
-          setIsDBReady(true);
         }
       );
       unsubMinutes = onSnapshot(minutesRef, (snap) => {
@@ -129,40 +131,51 @@ export default function App() {
     return () => { unsubUsers(); unsubEvents(); unsubMinutes(); unsubSessions(); };
   }, [fbUser]); 
 
+  // 3. Sitzungswiederherstellung nach Refresh
   useEffect(() => {
       let timer;
       if (isDBReady && fbUser) {
           if (fbUser.displayName && !currentUser) {
               const savedUser = users.find(u => u.id === fbUser.displayName);
               if (savedUser) {
+                  // Bei Vorstand prüfen wir kurz die Session-Gültigkeit in activeSessions
                   const session = activeSessions.find(s => s.id === savedUser.id);
                   const isBoard = (savedUser.groups || []).includes('Vorstand');
-                  if (!isBoard || (session && Date.now() - session.lastSeen < 120000)) {
+                  
+                  // Wenn es kein Vorstand ist oder die Session noch frisch in der DB ist, einloggen
+                  if (!isBoard || (session && Date.now() - session.lastSeen < 300000)) { // 5 Min Toleranz für Reconnect
                       setCurrentUser(savedUser);
                   }
               }
           }
-          timer = setTimeout(() => setIsCheckingSession(false), 1200);
+          // Kurzer Timeout für flüssigen Übergang
+          timer = setTimeout(() => setIsCheckingSession(false), 800);
       }
       return () => clearTimeout(timer);
   }, [isDBReady, fbUser, users, currentUser, activeSessions]); 
 
+  // Heartbeat: Hält die Sitzung in der Datenbank aktuell
   useEffect(() => {
     if (!currentUser || !db || !fbUser) return;
+
     const updateSession = async () => {
       try {
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'active_sessions', currentUser.id), {
             id: currentUser.id,
             lastSeen: Date.now()
         });
-      } catch (e) { console.error("Session heartbeat error", e); }
+      } catch (e) { console.error("Heartbeat error", e); }
     };
+
     updateSession();
     const interval = setInterval(updateSession, 45000); 
+
     const handleUnload = () => {
-        deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'active_sessions', currentUser.id));
+        // Wir löschen die Session nicht hart bei unload, um Refresh zu erlauben
+        // Stattdessen vertrauen wir auf den lastSeen Zeitstempel
     };
     window.addEventListener('beforeunload', handleUnload);
+
     return () => {
       clearInterval(interval);
       window.removeEventListener('beforeunload', handleUnload);
@@ -184,17 +197,17 @@ export default function App() {
   };
 
   const seedDatabase = async () => {
-    if (!fbUser) return;
+    if (!fbUser) return alert("Warte auf Verbindung...");
     setIsSeeding(true);
     try {
       for (const u of INITIAL_USERS) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id), u);
-    } catch (err) { console.error(err); }
+    } catch (err) { alert(`Fehler: ${err.message}`); }
     setIsSeeding(false);
   };
 
-  if (firebaseInitError) return <FatalErrorScreen message={`Firebase Fehler: ${firebaseInitError}`} />;
   if (authError || permissionsError) return <FatalErrorScreen message={authError || permissionsError} />;
 
+  // Ladebildschirm / Splash
   if (!fbUser || !isDBReady || isCheckingSession) {
      return (
         <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
@@ -224,9 +237,9 @@ export default function App() {
       <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-10 shadow-md">
         <div className="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="flex flex-col">
+            <div className="flex flex-col text-left">
               <h1 className="text-xl font-bold tracking-tight leading-tight cursor-default">
-                <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
+                <span className="text-gray-400">RüssSuuger</span>
                 <span className="text-gray-400 font-medium ml-1">Ämme</span>
               </h1>
               <p className="text-[10px] text-orange-500 font-bold uppercase tracking-widest -mt-0.5 ml-0.5">Voting App</p>
@@ -321,7 +334,7 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
         <div className="absolute top-0 left-0 w-full h-1 bg-orange-500"></div>
         <div className="flex flex-col items-center mb-10 mt-4">
             <h1 className="text-4xl font-black mb-1 tracking-tighter">
-                <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
+                <span className="text-gray-400">RüssSuuger</span>
             </h1>
             <span className="text-gray-400 text-sm font-bold uppercase tracking-[0.3em]">Ämme</span>
         </div>
@@ -397,7 +410,7 @@ function MinutesView({ minutes, users, dbAppId, db, fbUser }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-left">
       <div className="flex justify-between items-center"><h2 className="text-2xl font-bold text-white tracking-tight">Sitzungsprotokolle</h2><button onClick={() => setIsCreating(true)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg active:scale-95"><Plus size={18} /> Neue Sitzung</button></div>
       {minutes.length === 0 ? (<div className="text-center py-16 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800"><FileText size={48} className="mx-auto text-gray-700 mb-4" /><p className="text-gray-500 font-bold uppercase tracking-widest text-xs italic">Noch keine Protokolle vorhanden.</p></div>) : (
         <div className="grid gap-4">{minutes.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(m => (
@@ -504,7 +517,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
                         {editingPoint.role === role && editingPoint.index === idx ? (
                           <div className="flex gap-2"><textarea autoFocus value={editingPoint.text} onChange={e => setEditingPoint({...editingPoint, text: e.target.value})} className="flex-1 bg-gray-900 border border-orange-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none transition-all resize-none font-medium" rows={2} /><div className="flex flex-col gap-1"><button type="button" onClick={saveEdit} className="p-2 bg-green-500/20 text-green-500 rounded-lg hover:bg-green-500/30 transition-all"><Check size={16}/></button><button type="button" onClick={() => setEditingPoint({ role: null, index: null, text: '' })} className="p-2 bg-red-500/20 text-red-500 rounded-lg hover:bg-red-500/30 transition-all"><X size={16}/></button></div></div>
                         ) : (
-                          <div className="space-y-2">
+                          <div className="space-y-2 text-left">
                             <div className="flex items-start gap-3">
                                 <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0"></div>
                                 <p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap leading-relaxed">{point.text}</p>
@@ -577,7 +590,7 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-left">
       <div className="flex flex-wrap justify-between items-center gap-4">
         <h2 className="text-2xl font-bold text-white tracking-tight">Stammdaten</h2>
         <div className="flex gap-2">
@@ -587,7 +600,7 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate }) {
       </div>
       
       {showImport && (
-        <div className="bg-gray-900 border-2 border-dashed border-gray-700 p-8 rounded-3xl text-center animate-in fade-in slide-in-from-top-2 duration-300 shadow-xl">
+        <div className="bg-gray-900 border border-gray-800 p-8 rounded-3xl text-center animate-in fade-in slide-in-from-top-2 duration-300 shadow-xl">
             <Upload className="mx-auto text-orange-500 mb-4" size={40} />
             <h3 className="text-white font-bold text-lg mb-2">CSV Import</h3>
             <input type="file" ref={fileInputRef} accept=".csv" onChange={handleCsvUpload} className="hidden" />
@@ -640,14 +653,14 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
     <form onSubmit={(e) => { e.preventDefault(); onSubmit({ ...(initialData || {}), firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups, password: initialData?.password || "" }); }} className="bg-gray-900 border-2 border-orange-500/10 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
       <h3 className="text-xl font-bold text-white mb-6 tracking-tight">{initialData ? 'Mitglied bearbeiten' : 'Neues Mitglied erfassen'}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 font-bold focus:outline-none" />
+        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
         <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6">
         <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Berechtigung</label><div className="bg-gray-950 border border-gray-800 p-1 rounded-2xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-4 py-3 text-white font-bold focus:ring-0 border-none outline-none cursor-pointer"><option value="member" className="bg-gray-900">Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500 font-bold">Administrator</option></select></div></div>
         <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 p-4 rounded-2xl">
           {GROUPS.map(g => (
-            <label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all">
+            <label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all text-left">
               <input type="checkbox" checked={selectedGroups.includes(g)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}
             </label>
           ))}
@@ -676,9 +689,9 @@ function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db
   }
   
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-left">
       <div className="flex justify-between items-center"><h2 className="text-2xl font-bold text-white tracking-tight">{isArchive ? 'Archiv' : 'Aktuelle Events'}</h2>{!isArchive && currentUser.role === 'admin' && (<button onClick={() => setShowCreate(!showCreate)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg active:scale-95">{showCreate ? 'Abbrechen' : <><Plus size={18} /> Neuer Event</>}</button>)}</div>
-      {showCreate && <CreateEventForm onSubmit={handleCreateEvent} />}{events.length === 0 ? (<div className="text-center py-16 bg-gray-900/50 rounded-3xl border border-dashed border-gray-800"><Calendar size={48} className="mx-auto text-gray-800 mb-4" /><p className="text-gray-500 font-bold uppercase tracking-widest text-xs italic">Momentan keine Einträge vorhanden.</p></div>) : (<div className="grid gap-4 md:grid-cols-2">{events.map(e => { const isExp = e.endDate && new Date(e.endDate) <= new Date(); return (<div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl cursor-pointer hover:border-orange-500/50 transition-colors group active:scale-[0.98] shadow-lg"><div className="flex justify-between items-start mb-2"><div className="flex flex-wrap gap-2"><span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20">{e.category}</span>{(isExp && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1"><Clock size={10}/> Automatisch Archiviert</span>}</div><ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" /></div><h3 className="text-xl font-bold text-white mt-1 mb-4 group-hover:text-orange-50 transition-colors">{e.title}</h3><div className="flex justify-between text-xs text-gray-500 font-bold pt-4 border-t border-gray-800/50"><span className="flex items-center gap-1"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span><span className="flex items-center gap-1"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span></div></div>); })}</div>)}
+      {showCreate && <CreateEventForm onSubmit={handleCreateEvent} />}{events.length === 0 ? (<div className="text-center py-16 bg-gray-900/50 rounded-3xl border border-dashed border-gray-800"><Calendar size={48} className="mx-auto text-gray-800 mb-4" /><p className="text-gray-500 font-bold uppercase tracking-widest text-xs italic">Momentan keine Einträge vorhanden.</p></div>) : (<div className="grid gap-4 md:grid-cols-2">{events.map(e => { const isExp = e.endDate && new Date(e.endDate) <= new Date(); return (<div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl cursor-pointer hover:border-orange-500/50 transition-colors group active:scale-[0.98] shadow-lg text-left"><div className="flex justify-between items-start mb-2"><div className="flex flex-wrap gap-2"><span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20">{e.category}</span>{(isExp && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1"><Clock size={10}/> Automatisch Archiviert</span>}</div><ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" /></div><h3 className="text-xl font-bold text-white mt-1 mb-4 group-hover:text-orange-50 transition-colors">{e.title}</h3><div className="flex justify-between text-xs text-gray-500 font-bold pt-4 border-t border-gray-800/50"><span className="flex items-center gap-1"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span><span className="flex items-center gap-1"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span></div></div>); })}</div>)}
     </div>
   );
 }
@@ -693,7 +706,7 @@ function CreateEventForm({ onSubmit }) {
   return (
     <form onSubmit={submit} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-6 shadow-xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
       <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-3xl rounded-full"></div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Event Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Titel" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
         <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Kategorie</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>{category === 'Freitext' && (<input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Kategorie Name" className="w-full mt-2 bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold" />)}</div>
         <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Datum</label><input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
@@ -713,11 +726,11 @@ function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, d
   const isActuallyArchived = event.isArchived || isAutoArchived;
   const surveys = event.surveys || [];
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 text-left">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10"><div className="flex items-center gap-5"><button onClick={onBack} className="text-gray-400 hover:text-white bg-gray-900 p-3 rounded-2xl border border-gray-800 transition-all hover:bg-gray-800 active:scale-90 shadow-lg"><ChevronRight className="rotate-180" size={24} /></button><div className="flex-1 text-left"><h2 className="text-3xl font-black text-white tracking-tight">{event.title}</h2><div className="flex flex-wrap items-center gap-3"><p className="text-sm text-gray-500 font-bold uppercase tracking-widest">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>{isActuallyArchived && <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black uppercase px-3 py-1 rounded-lg border border-orange-500/20 tracking-wider">Archiviert</span>}</div></div></div>{currentUser.role === 'admin' && (<div className="flex gap-2"><button onClick={() => onArchive(event.id, !event.isArchived)} className="px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider border bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 flex items-center gap-2 transition-all"><Archive size={16} /> {event.isArchived ? 'Aktivieren' : 'Archivieren'}</button><button onClick={() => onDelete(event.id)} className="px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider border bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 flex items-center gap-2 transition-all"><Trash2 size={16} /> Löschen</button></div>)}</div>
       {currentUser.role === 'admin' && !isActuallyArchived && (<div className="flex justify-end"><button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-6 py-3 rounded-2xl flex items-center gap-2 mb-4 transition-all shadow-xl active:scale-95 uppercase text-xs tracking-widest">{showCreateSurvey ? 'Abbrechen' : <><Plus size={20} /> Neue Umfrage</>}</button></div>)}
       {showCreateSurvey && <CreateSurveyForm onSubmit={handleAddSurvey} isMusicMode={event.category === 'Liederwahl'} />}
-      <div className="space-y-8">{surveys.length === 0 ? (<p className="text-gray-500 text-center py-20 bg-gray-900/30 rounded-[2.5rem] border border-dashed border-gray-800 font-bold uppercase text-[10px] tracking-[0.2em] italic">Keine Umfragen erfasst.</p>) : (surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} isArchivedView={isActuallyArchived} />))}</div>
+      <div className="space-y-8">{surveys.length === 0 ? (<p className="text-gray-500 text-center py-20 bg-gray-900/30 rounded-[2.5rem] border border-dashed border-gray-800 font-bold uppercase text-[10px] tracking-[0.2em] italic text-left">Keine Umfragen erfasst.</p>) : (surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} isArchivedView={isActuallyArchived} />))}</div>
     </div>
   );
 }
@@ -733,12 +746,12 @@ function CreateSurveyForm({ onSubmit, isMusicMode }) {
   const removeOption = (id) => { if (options.length > 2) setOptions(prev => prev.filter(o => o.id !== id)); };
   const submit = (e) => { e.preventDefault(); const validOptions = options.filter(o => o.text.trim() !== '').map((o, i) => ({ id: `o${i}-${Date.now()}`, text: o.text.trim(), link: o.link.trim(), votes: 0 })); if (validOptions.length < 2) return alert('Min. 2 Optionen.'); if (allowedGroups.length === 0) return alert('Bitte mindestens eine Gruppe wählen.'); onSubmit({ title, maxAnswers, allowedGroups, options: validOptions }); };
   return (
-    <form onSubmit={submit} className="bg-gray-900 border border-gray-700 p-6 rounded-2xl mb-8 shadow-xl animate-in slide-in-from-top-4 duration-300">
+    <form onSubmit={submit} className="bg-gray-900 border border-gray-700 p-6 rounded-2xl mb-8 shadow-xl animate-in slide-in-from-top-4 duration-300 text-left">
       <h3 className="text-lg font-bold text-white mb-6 uppercase tracking-wider border-b border-gray-800 pb-3">Umfrage Details</h3>
       <div className="space-y-6">
         <div><label className="block text-[10px] font-black text-gray-500 uppercase mb-1 ml-1 tracking-widest">Frage / Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder={isMusicMode ? "Z.B. Welches Lied spielen wir?" : "Frage eingeben..."} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none transition-all font-bold" /></div>
         <div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest">Antworten (Max. 10)</label><div className="space-y-3">{options.map((opt, i) => (<div key={opt.id} className="space-y-2 p-3 bg-gray-950 border border-gray-800 rounded-xl shadow-inner"><div className="flex gap-2"><input type="text" required value={opt.text} onChange={e => handleOptionChange(opt.id, 'text', e.target.value)} placeholder={isMusicMode ? "Name des Liedes" : `Option ${i + 1}`} className="flex-1 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 text-sm focus:outline-none" /><button type="button" onClick={() => removeOption(opt.id)} disabled={options.length <= 2} className="p-2 text-gray-600 hover:text-red-500 disabled:opacity-30 transition-all"><Trash2 size={20} /></button></div><div className="flex items-center gap-2 bg-gray-900 border border-gray-800 rounded-lg px-3 py-1.5 focus-within:border-orange-500 transition-all"><Youtube size={14} className="text-gray-600" /><input type="url" value={opt.link} onChange={e => handleOptionChange(opt.id, 'link', e.target.value)} placeholder="YouTube Link (optional)" className="flex-1 bg-transparent border-none text-[11px] text-gray-400 focus:ring-0 focus:outline-none font-mono" /></div></div>))}</div>{options.length < 10 && (<button type="button" onClick={addOption} className="text-orange-500 text-[10px] font-black uppercase tracking-widest mt-4 flex items-center gap-2 hover:text-orange-400 transition-all ml-1"><Plus size={16} className="bg-orange-500/10 rounded-full p-0.5"/> Weitere Option</button>)}</div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-gray-800 pt-6 mt-4"><div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest">Max. Stimmen</label><input type="number" min="1" max="10" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 text-white focus:border-orange-500 transition-all font-bold focus:outline-none shadow-inner" /></div><div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest">Wahlberechtigte</label><div className="grid grid-cols-2 gap-2 p-3 bg-gray-950 border border-gray-800 rounded-xl shadow-inner">{GROUPS.map(g => (<label key={g} className="text-[11px] text-gray-400 font-bold flex items-center gap-2 cursor-pointer hover:text-white transition-all"><input type="checkbox" checked={allowedGroups.includes(g)} onChange={() => handleGroupToggle(g)} className="w-3.5 h-3.5 accent-orange-500 rounded" />{g}</label>))}</div></div></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-gray-800 pt-6 mt-4 text-left"><div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest">Max. Stimmen</label><input type="number" min="1" max="10" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 text-white focus:border-orange-500 transition-all font-bold focus:outline-none shadow-inner" /></div><div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest">Wahlberechtigte</label><div className="grid grid-cols-2 gap-2 p-3 bg-gray-950 border border-gray-800 rounded-xl shadow-inner">{GROUPS.map(g => (<label key={g} className="text-[11px] text-gray-400 font-bold flex items-center gap-2 cursor-pointer hover:text-white transition-all"><input type="checkbox" checked={allowedGroups.includes(g)} onChange={() => handleGroupToggle(g)} className="w-3.5 h-3.5 accent-orange-500 rounded" />{g}</label>))}</div></div></div>
       </div>
       <div className="flex justify-end mt-8"><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-8 py-3 rounded-xl transition-all shadow-lg active:scale-95 uppercase text-xs tracking-widest">Umfrage speichern</button></div>
     </form>
@@ -760,7 +773,7 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users, isArchivedVi
   const toggleOption = (id) => { if (selectedOptions.includes(id)) setSelectedOptions(prev => prev.filter(x => x !== id)); else if (max === 1) setSelectedOptions([id]); else if (selectedOptions.length < max) setSelectedOptions([...selectedOptions, id]); };
   const showResults = survey.status === 'published' || isArchivedView || (currentUser.role === 'admin' && hasVoted);
   return (
-    <div className={`bg-gray-900 border rounded-2xl overflow-hidden transition-all shadow-md ${survey.status === 'active' && !isArchivedView ? 'border-orange-500/40 ring-1 ring-orange-500/10' : 'border-gray-800'}`}>
+    <div className={`bg-gray-900 border rounded-2xl overflow-hidden transition-all shadow-md ${survey.status === 'active' && !isArchivedView ? 'border-orange-500/40 ring-1 ring-orange-500/10' : 'border-gray-800'} text-left`}>
       <div className="p-5 border-b border-gray-800 bg-gray-900/50 flex flex-col sm:flex-row sm:justify-between items-start gap-4 text-left">
         <div>
           <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -784,11 +797,8 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users, isArchivedVi
              {survey.status === 'active' && !isArchivedView && currentUser.role === 'admin' && (<div className="mb-4 p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl flex items-start gap-3"><AlertCircle className="text-blue-500 mt-0.5 flex-shrink-0" size={18} /><p className="text-[11px] text-blue-400 italic">Administratoren sehen die Resultate live.</p></div>)}
              {options.map(opt => { const pct = totalVotes === 0 ? 0 : Math.round(((opt.votes || 0) / totalVotes) * 100); return (<div key={opt.id} className="relative w-full bg-black/20 border border-gray-800 rounded-xl overflow-hidden p-3 flex justify-between items-center group transition-all shadow-inner"><div className="absolute top-0 left-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} /><div className="relative z-10 flex items-center gap-3"><span className="font-bold text-sm text-white">{opt.text}</span>{opt.link && (<a href={opt.link} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-gray-900 rounded-lg text-gray-500 hover:text-red-500 transition-colors shadow-lg border border-gray-800"><Youtube size={14} /></a>)}</div><span className="relative z-10 text-xs text-gray-500 font-black font-mono">{pct}% <span className="text-[10px] text-gray-700 ml-1">({opt.votes || 0})</span></span></div>); })}
           </div>
-        ) : hasVoted ? (<div className="flex flex-col items-center justify-center py-8 text-center animate-in fade-in zoom-in duration-500"><div className="w-14 h-14 bg-green-500/10 text-green-500 rounded-2xl flex items-center justify-center mb-4 border border-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.1)]"><Check size={28} className="stroke-[3]" /></div><h5 className="text-xl font-bold text-white tracking-tight uppercase">Erfolgreich Abgestimmt!</h5><p className="text-xs text-gray-600 mt-1 italic font-medium tracking-wide">Deine Stimme wurde bei den RüssSuugern gezählt.</p></div>) : (
-          <div className="space-y-3">
-            {options.map(opt => (<div key={opt.id} className="flex gap-2"><div onClick={() => toggleOption(opt.id)} className={`flex-1 flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all active:scale-[0.99] ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg shadow-orange-500/5' : 'bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-700 hover:bg-black/20'}`}><div className={`w-5 h-5 flex items-center justify-center border-2 transition-all ${max > 1 ? 'rounded' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-gray-950' : 'border-gray-700'}`}>{selectedOptions.includes(opt.id) && <Check size={14} className="stroke-[4]" />}</div><span className="font-bold text-sm sm:text-base">{opt.text}</span></div>{opt.link && (<a href={opt.link} target="_blank" rel="noopener noreferrer" className="p-4 bg-gray-950 border border-gray-800 rounded-2xl flex items-center justify-center text-gray-600 hover:text-red-500 transition-all group group-hover:scale-110 shadow-lg"><Youtube size={22} /></a>)}</div>))}<div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-800/50 mt-4 text-left"><p className="text-[10px] font-black text-gray-600 uppercase tracking-widest italic">{selectedOptions.length} / {max} Stimmen gewählt</p><button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 disabled:bg-gray-800 disabled:text-gray-600 text-gray-950 font-black px-10 py-3.5 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest transition-all">Stimme jetzt abgeben</button></div>
-          </div>
-        )}
+        ) : hasVoted ? (<div className="flex flex-col items-center justify-center py-8 text-center animate-in fade-in zoom-in duration-500"><div className="w-14 h-14 bg-green-500/10 text-green-500 rounded-2xl flex items-center justify-center mb-4 border border-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.1)]"><Check size={28} className="stroke-[3]" /></div><h5 className="text-xl font-bold text-white tracking-tight uppercase text-center">Erfolgreich Abgestimmt!</h5><p className="text-xs text-gray-600 mt-1 italic font-medium tracking-wide text-center">Deine Stimme wurde bei den RüssSuugern gezählt.</p></div>) : (<div className="space-y-3">
+            {options.map(opt => (<div key={opt.id} className="flex gap-2"><div onClick={() => toggleOption(opt.id)} className={`flex-1 flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all active:scale-[0.99] ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg shadow-orange-500/5' : 'bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-700 hover:bg-black/20'}`}><div className={`w-5 h-5 flex items-center justify-center border-2 transition-all ${max > 1 ? 'rounded' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-gray-950' : 'border-gray-700'}`}>{selectedOptions.includes(opt.id) && <Check size={14} className="stroke-[4]" />}</div><span className="font-bold text-sm sm:text-base">{opt.text}</span></div>{opt.link && (<a href={opt.link} target="_blank" rel="noopener noreferrer" className="p-4 bg-gray-950 border border-gray-800 rounded-2xl flex items-center justify-center text-gray-600 hover:text-red-500 transition-all group group-hover:scale-110 shadow-lg"><Youtube size={22} /></a>)}</div>))}<div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-800/50 mt-4 text-left"><p className="text-[10px] font-black text-gray-600 uppercase tracking-widest italic">{selectedOptions.length} / {max} Stimmen gewählt</p><button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 disabled:bg-gray-800 disabled:text-gray-600 text-gray-950 font-black px-10 py-3.5 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest transition-all">Stimme jetzt abgeben</button></div></div>)}
       </div>
     </div>
   );
