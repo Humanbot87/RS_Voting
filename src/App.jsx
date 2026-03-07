@@ -4,7 +4,7 @@ import {
   ChevronRight, BarChart3, AlertCircle, CheckCircle2, 
   UserPlus, Eye, Check, Database, Settings, ShieldAlert, 
   Edit2, FileSpreadsheet, Upload, X, Info, Youtube, ExternalLink, Clock,
-  FileText, ClipboardCheck, Save, ListPlus
+  FileText, ClipboardCheck, Save, ListPlus, Paperclip, Download, File
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, updateProfile } from 'firebase/auth';
@@ -284,21 +284,22 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
   const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState(initialData?.attendance || {});
   
-  // Agenda initialisieren
   const [agenda, setAgenda] = useState(() => {
     const base = BOARD_ROLES.reduce((acc, role) => ({ ...acc, [role]: [] }), {});
     if (initialData?.agenda) {
       Object.keys(initialData.agenda).forEach(role => {
         const val = initialData.agenda[role];
-        base[role] = Array.isArray(val) ? val : (val ? [val] : []);
+        // Konvertiere alte Strings oder einfache Arrays in das neue Format [{ text, files }]
+        base[role] = Array.isArray(val) ? val.map(p => typeof p === 'string' ? { text: p, files: [] } : p) : [];
       });
     }
     return base;
   });
 
-  // State für neue Punkte und Bearbeitung bestehender Punkte
   const [newPoints, setNewPoints] = useState(BOARD_ROLES.reduce((acc, role) => ({ ...acc, [role]: '' }), {}));
   const [editingPoint, setEditingPoint] = useState({ role: null, index: null, text: '' });
+  const fileInputRef = useRef(null);
+  const [uploadingFor, setUploadingFor] = useState({ role: null, index: null });
 
   const toggleAttendance = (userId) => {
     setAttendance(prev => ({ ...prev, [userId]: !prev[userId] }));
@@ -313,7 +314,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
     if (!text) return;
     setAgenda(prev => ({
         ...prev,
-        [role]: [...prev[role], text]
+        [role]: [...prev[role], { text, files: [] }]
     }));
     setNewPoints(prev => ({ ...prev, [role]: '' }));
   };
@@ -337,9 +338,53 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
     }
     setAgenda(prev => ({
         ...prev,
-        [role]: prev[role].map((p, i) => i === index ? text.trim() : p)
+        [role]: prev[role].map((p, i) => i === index ? { ...p, text: text.trim() } : p)
     }));
     setEditingPoint({ role: null, index: null, text: '' });
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    const { role, index } = uploadingFor;
+    if (!file || role === null || index === null) return;
+
+    if (file.size > 800 * 1024) {
+        alert("Datei ist zu gross (max. 800KB). Firestore Dokumente haben ein Limit von 1MB total.");
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        const fileData = {
+            name: file.name,
+            type: file.type,
+            data: event.target.result // Base64
+        };
+
+        setAgenda(prev => ({
+            ...prev,
+            [role]: prev[role].map((p, i) => i === index ? { ...p, files: [...(p.files || []), fileData] } : p)
+        }));
+        setUploadingFor({ role: null, index: null });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const removeFile = (role, pointIndex, fileIndex) => {
+    setAgenda(prev => ({
+        ...prev,
+        [role]: prev[role].map((p, i) => i === pointIndex ? { ...p, files: p.files.filter((_, fi) => fi !== fileIndex) } : p)
+    }));
+  };
+
+  const downloadFile = (file) => {
+    const link = document.createElement('a');
+    link.href = file.data;
+    link.download = file.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const submit = (e) => {
@@ -348,7 +393,9 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
   };
 
   return (
-    <form onSubmit={submit} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <form onSubmit={submit} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+      <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+      
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <button type="button" onClick={onCancel} className="text-gray-400 hover:text-white bg-gray-900 p-2 rounded-lg border border-gray-800 transition-all"><ChevronRight className="rotate-180" size={20} /></button>
@@ -387,20 +434,15 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
                 <div key={role} className="space-y-4 pb-6 border-b border-gray-800 last:border-0">
                   <label className="block text-[10px] font-black text-orange-500 uppercase tracking-[0.2em] ml-1">{role}</label>
                   
-                  {/* Liste der Punkte */}
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {agenda[role].map((point, idx) => (
-                      <div key={idx} className="flex flex-col gap-2 p-3 bg-gray-950 border border-gray-800 rounded-xl group transition-all hover:border-gray-700">
+                      <div key={idx} className="flex flex-col gap-3 p-4 bg-gray-950 border border-gray-800 rounded-xl group transition-all hover:border-gray-700">
                         {editingPoint.role === role && editingPoint.index === idx ? (
                           <div className="flex gap-2">
                             <textarea 
                               autoFocus
                               value={editingPoint.text}
                               onChange={e => setEditingPoint({...editingPoint, text: e.target.value})}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); }
-                                if (e.key === 'Escape') setEditingPoint({ role: null, index: null, text: '' });
-                              }}
                               className="flex-1 bg-gray-900 border border-orange-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none transition-all resize-none"
                               rows={2}
                             />
@@ -410,50 +452,48 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
                             </div>
                           </div>
                         ) : (
-                          <div className="flex items-start gap-3">
-                            <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0"></div>
-                            <p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap">{point}</p>
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                                <button 
-                                    type="button" 
-                                    onClick={() => startEditing(role, idx, point)}
-                                    className="p-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg transition-all"
-                                    title="Punkt bearbeiten"
-                                >
-                                    <Edit2 size={16} />
-                                </button>
-                                <button 
-                                    type="button" 
-                                    onClick={() => removePoint(role, idx)}
-                                    className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                                    title="Punkt löschen"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
+                          <div className="space-y-2">
+                            <div className="flex items-start gap-3">
+                                <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0"></div>
+                                <p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap">{point.text}</p>
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                    <button type="button" onClick={() => { setUploadingFor({role, index: idx}); fileInputRef.current?.click(); }} className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg" title="Datei anhängen"><Paperclip size={16} /></button>
+                                    <button type="button" onClick={() => startEditing(role, idx, point.text)} className="p-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg" title="Bearbeiten"><Edit2 size={16} /></button>
+                                    <button type="button" onClick={() => removePoint(role, idx)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg" title="Löschen"><Trash2 size={16} /></button>
+                                </div>
                             </div>
+                            
+                            {/* Anhänge pro Punkt */}
+                            {point.files && point.files.length > 0 && (
+                                <div className="flex flex-wrap gap-2 ml-4">
+                                    {point.files.map((file, fi) => (
+                                        <div key={fi} className="flex items-center gap-2 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg group/file">
+                                            <File size={12} className="text-orange-500/70" />
+                                            <span className="text-[10px] text-gray-400 font-medium truncate max-w-[100px]">{file.name}</span>
+                                            <div className="flex gap-1">
+                                                <button type="button" onClick={() => downloadFile(file)} className="p-1 text-gray-500 hover:text-blue-400 transition-colors"><Download size={12}/></button>
+                                                <button type="button" onClick={() => removeFile(role, idx, fi)} className="p-1 text-gray-500 hover:text-red-500 transition-colors"><X size={12}/></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                           </div>
                         )}
                       </div>
                     ))}
                   </div>
 
-                  {/* Input für neuen Punkt */}
                   <div className="flex gap-2">
                     <input 
                       type="text"
                       value={newPoints[role]} 
                       onChange={e => handleNewPointChange(role, e.target.value)} 
                       onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addPoint(role))}
-                      placeholder="Neuer Punkt für dieses Ressort..."
+                      placeholder="Neuer Punkt..."
                       className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:border-orange-500 focus:outline-none transition-all"
                     />
-                    <button 
-                        type="button" 
-                        onClick={() => addPoint(role)}
-                        className="bg-gray-800 hover:bg-gray-700 text-orange-500 p-2.5 rounded-xl transition-all"
-                    >
-                        <ListPlus size={20} />
-                    </button>
+                    <button type="button" onClick={() => addPoint(role)} className="bg-gray-800 hover:bg-gray-700 text-orange-500 p-2.5 rounded-xl transition-all"><ListPlus size={20} /></button>
                   </div>
                 </div>
               ))}
@@ -570,8 +610,8 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
     <form onSubmit={submit} className="bg-gray-900 border-2 border-orange-500/10 p-6 rounded-2xl mb-8 shadow-2xl relative overflow-hidden">
       <h3 className="text-xl font-bold text-white mb-6 tracking-tight">{initialData ? 'Mitglied bearbeiten' : 'Neues Mitglied'}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 font-bold" />
-        <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 font-bold" />
+        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 font-bold" />
+        <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 font-bold" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6">
         <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2">Berechtigung</label><div className="bg-gray-950 border border-gray-800 p-1 rounded-xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent border-none px-3 py-2 text-white font-bold focus:ring-0"><option value="member" className="bg-gray-900">Standard Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500">Administrator</option></select></div></div>
