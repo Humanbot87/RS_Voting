@@ -286,10 +286,10 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
       (u.lastName || '').toLowerCase() === lastName.trim().toLowerCase()
     );
 
-    if (!user) return;
+    if (!user) return alert("Mitglied nicht gefunden.");
 
     const session = activeSessions.find(s => s.id === user.id);
-    if (session && (Date.now() - session.lastSeen < 60000)) return;
+    if (session && (Date.now() - session.lastSeen < 60000)) return alert("Dieses Mitglied ist bereits an einem anderen Gerät angemeldet.");
 
     const isBoard = (user.groups || []).includes('Vorstand');
     if (isBoard) {
@@ -305,12 +305,14 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
     e.preventDefault();
     if (password === deobfuscate(tempUser.password)) {
         onLogin(tempUser);
+    } else {
+        alert("Passwort falsch.");
     }
   };
 
   const handleSetupSubmit = async (e) => {
     e.preventDefault();
-    if (password.length < 4) return;
+    if (password.length < 4) return alert("Min. 4 Zeichen.");
     const updatedUser = { ...tempUser, password: obfuscate(password) };
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', tempUser.id), updatedUser);
     onLogin(updatedUser);
@@ -336,9 +338,15 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
         ) : (
           <>
             {step === 'name' && (
-              <form onSubmit={checkName} className="space-y-4">
-                <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
-                <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
+              <form onSubmit={checkName} className="space-y-4 text-left">
+                <div>
+                   <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 tracking-widest">Vorname</label>
+                   <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Max" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
+                </div>
+                <div>
+                   <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 tracking-widest">Nachname</label>
+                   <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Muster" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
+                </div>
                 <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4 uppercase text-xs tracking-widest">Anmelden</button>
               </form>
             )}
@@ -384,7 +392,7 @@ function MinutesView({ minutes, users, dbAppId, db, fbUser }) {
   };
 
   const handleDelete = async (id) => {
-    if (!fbUser) return;
+    if (!fbUser || !confirm('Protokoll unwiderruflich löschen?')) return;
     await deleteDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'minutes', id));
   };
 
@@ -395,12 +403,12 @@ function MinutesView({ minutes, users, dbAppId, db, fbUser }) {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center"><h2 className="text-2xl font-bold text-white tracking-tight">Sitzungsprotokolle</h2><button onClick={() => setIsCreating(true)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg active:scale-95"><Plus size={18} /> Neue Sitzung</button></div>
-      {minutes.length === 0 ? (<div className="text-center py-16 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800"><FileText size={48} className="mx-auto text-gray-700 mb-4" /><p className="text-gray-500">Noch keine Protokolle vorhanden.</p></div>) : (
+      {minutes.length === 0 ? (<div className="text-center py-16 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800"><FileText size={48} className="mx-auto text-gray-700 mb-4" /><p className="text-gray-500 font-bold uppercase tracking-widest text-xs italic">Noch keine Protokolle vorhanden.</p></div>) : (
         <div className="grid gap-4">{minutes.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(m => (
             <div key={m.id} className="bg-gray-900 border border-gray-800 p-5 rounded-2xl flex justify-between items-center group hover:border-orange-500/30 transition-all shadow-md">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-gray-950 rounded-xl flex items-center justify-center text-orange-500 border border-gray-800"><Calendar size={20} /></div>
-                <div><h3 className="text-lg font-bold text-white">Sitzung vom {new Date(m.date).toLocaleDateString('de-CH')}</h3><p className="text-xs text-gray-500 uppercase font-black tracking-widest mt-1">Internes Dokument</p></div>
+                <div><h3 className="text-lg font-bold text-white">Sitzung vom {new Date(m.date).toLocaleDateString('de-CH')}</h3><p className="text-xs text-gray-500 uppercase font-black tracking-widest mt-1">Vorstandsprotokoll</p></div>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setEditingMinute(m)} className="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg transition-all" title="Bearbeiten"><Edit2 size={18} /></button>
@@ -448,7 +456,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
     const file = e.target.files[0];
     const { role, index } = uploadingFor;
     if (!file || !role || index === null) return;
-    if (file.size > 800 * 1024) return;
+    if (file.size > 800 * 1024) return alert("Datei zu gross (max 800KB).");
     const reader = new FileReader();
     reader.onload = (ev) => {
         setAgenda(prev => ({ ...prev, [role]: prev[role].map((p, i) => i === index ? { ...p, files: [...(p.files || []), { name: file.name, type: file.type, data: ev.target.result }] } : p) }));
@@ -465,7 +473,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
     <form onSubmit={(e) => { e.preventDefault(); onSave({ id: initialData?.id, date, attendance, agenda }); }} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
       <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4"><button type="button" onClick={onCancel} className="text-gray-400 hover:text-white bg-gray-900 p-2 rounded-lg border border-gray-800 transition-all"><ChevronRight className="rotate-180" size={20} /></button><h2 className="text-2xl font-bold text-white tracking-tight">{initialData ? 'Protokoll bearbeiten' : 'Neue Sitzung erfassen'}</h2></div>
+        <div className="flex items-center gap-4"><button type="button" onClick={onCancel} className="text-gray-400 hover:text-white bg-gray-900 p-2 rounded-lg border border-gray-800 transition-all"><ChevronRight className="rotate-180" size={20} /></button><h2 className="text-2xl font-bold text-white tracking-tight">{initialData ? 'Protokoll bearbeiten' : 'Neue Sitzung'}</h2></div>
         <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-6 py-3 rounded-xl flex items-center gap-2 shadow-lg"><Save size={18} /> Protokoll speichern</button>
       </div>
 
@@ -501,7 +509,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
                           <div className="flex gap-2"><textarea autoFocus value={editingPoint.text} onChange={e => setEditingPoint({...editingPoint, text: e.target.value})} className="flex-1 bg-gray-900 border border-orange-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none transition-all resize-none font-medium" rows={2} /><div className="flex flex-col gap-1"><button type="button" onClick={saveEdit} className="p-2 bg-green-500/20 text-green-500 rounded-lg hover:bg-green-500/30 transition-all"><Check size={16}/></button><button type="button" onClick={() => setEditingPoint({ role: null, index: null, text: '' })} className="p-2 bg-red-500/20 text-red-500 rounded-lg hover:bg-red-500/30 transition-all"><X size={16}/></button></div></div>
                         ) : (
                           <div className="space-y-2">
-                            <div className="flex items-start gap-3"><div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0"></div><p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap">{point.text}</p>
+                            <div className="flex items-start gap-3"><div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0"></div><p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap leading-relaxed">{point.text}</p>
                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all"><button type="button" onClick={() => { setUploadingFor({role, index: idx}); fileInputRef.current?.click(); }} className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg" title="Datei anhängen"><Paperclip size={16} /></button><button type="button" onClick={() => startEditing(role, idx, point.text)} className="p-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg" title="Bearbeiten"><Edit2 size={16} /></button><button type="button" onClick={() => removePoint(role, index)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg" title="Löschen"><Trash2 size={16} /></button></div>
                             </div>
                             {point.files && point.files.length > 0 && (<div className="flex flex-wrap gap-2 ml-4">{point.files.map((file, fi) => (<div key={fi} className="flex items-center gap-2 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg group/file shadow-sm"><File size={12} className="text-orange-500/70" /><span className="text-[10px] text-gray-400 font-medium truncate max-w-[120px]">{file.name}</span><div className="flex gap-1"><button type="button" onClick={() => downloadFile(file)} className="p-1 text-gray-500 hover:text-blue-400 transition-colors"><Download size={12}/></button><button type="button" onClick={() => removeFile(role, idx, fi)} className="p-1 text-gray-500 hover:text-red-500 transition-colors"><X size={12}/></button></div></div>))}</div>)}
@@ -582,7 +590,7 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate }) {
             <Upload className="mx-auto text-orange-500 mb-4" size={40} />
             <h3 className="text-white font-bold text-lg mb-2">CSV Import</h3>
             <input type="file" ref={fileInputRef} accept=".csv" onChange={handleCsvUpload} className="hidden" />
-            <button onClick={() => fileInputRef.current?.click()} className="bg-orange-500 text-gray-950 font-bold px-8 py-3 rounded-xl">Datei auswählen</button>
+            <button onClick={() => fileInputRef.current?.click()} className="bg-orange-500 text-gray-950 font-bold px-8 py-3 rounded-xl shadow-lg">Datei auswählen</button>
         </div>
       )}
 
@@ -594,7 +602,7 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate }) {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-950 border-b border-gray-800 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
-                <th className="p-5">Name</th><th className="p-5">Rolle</th><th className="p-5">Gruppen</th><th className="p-5 text-right">Aktionen</th>
+                <th className="p-5">Name</th><th className="p-5">Rolle</th><th className="p-5">Gruppen</th><th className="p-5 text-right">Verwaltung</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/50">
@@ -631,12 +639,12 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
     <form onSubmit={(e) => { e.preventDefault(); onSubmit({ firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups, password: initialData?.password || "" }); }} className="bg-gray-900 border-2 border-orange-500/10 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4">
       <h3 className="text-xl font-bold text-white mb-6 tracking-tight">{initialData ? 'Mitglied bearbeiten' : 'Neues Mitglied erfassen'}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 font-bold focus:outline-none" />
-        <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 font-bold focus:outline-none" />
+        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
+        <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6 text-left">
         <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Berechtigung</label><div className="bg-gray-950 border border-gray-800 p-1 rounded-2xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-4 py-3 text-white font-bold focus:ring-0 border-none outline-none cursor-pointer"><option value="member" className="bg-gray-900">Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500 font-bold">Administrator</option></select></div></div>
-        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 p-4 rounded-2xl">{GROUPS.map(g => (<label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all"><input type="checkbox" checked={selectedGroups.includes(g)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}</label>))}</div></div>
+        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 p-4 rounded-2xl">{GROUPS.map(g => (<label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all"><input type="checkbox" checked={selectedGroups.includes(group)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}</label>))}</div></div>
       </div>
       <div className="flex justify-end gap-6 pt-6 border-t border-gray-800"><button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all">Abbrechen</button><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 text-xs uppercase tracking-widest">{initialData ? 'Speichern' : 'Anlegen'}</button></div>
     </form>
@@ -655,6 +663,9 @@ function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db
       if (evData) {
           const isExp = evData.endDate && new Date(evData.endDate) <= new Date(); 
           return <EventDetail event={evData} onBack={() => setSelectedEvent(null)} currentUser={currentUser} onArchive={handleArchive} onDelete={handleDeleteEvent} users={users} dbAppId={dbAppId} db={db} fbUser={fbUser} isAutoArchived={isExp} />; 
+      } else {
+          setSelectedEvent(null);
+          return null;
       }
   }
   
@@ -683,6 +694,47 @@ function CreateEventForm({ onSubmit }) {
         <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Ende (Archiv)</label><input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
       </div>
       <div className="flex justify-end pt-2"><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest">Event Speichern</button></div>
+    </form>
+  );
+}
+
+function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, dbAppId, db, fbUser, isAutoArchived }) {
+  const [showCreateSurvey, setShowCreateSurvey] = useState(false);
+  const getDbRef = () => doc(db, 'artifacts', dbAppId, 'public', 'data', 'events', event.id);
+  const handleAddSurvey = async (newSurvey) => { if (!fbUser) return; const updatedSurveys = [...(event.surveys || []), { ...newSurvey, id: Date.now().toString(), status: 'draft', votedUsers: [] }]; await setDoc(getDbRef(), { ...event, surveys: updatedSurveys }); setShowCreateSurvey(false); };
+  const updateSurvey = async (surveyId, updates) => { if (!fbUser) return; const updatedSurveys = (event.surveys || []).map(s => s.id === surveyId ? { ...s, ...updates } : s); await setDoc(getDbRef(), { ...event, surveys: updatedSurveys }); };
+  const handleVote = async (surveyId, selectedOptionIds) => { if (!fbUser) return; const updatedSurveys = (event.surveys || []).map(s => { if (s.id === surveyId) { const updatedOptions = s.options.map(opt => selectedOptionIds.includes(opt.id) ? { ...opt, votes: (opt.votes || 0) + 1 } : opt); return { ...s, options: updatedOptions, votedUsers: [...(s.votedUsers || []), currentUser.id] }; } return s; }); await setDoc(getDbRef(), { ...event, surveys: updatedSurveys }); };
+  const isActuallyArchived = event.isArchived || isAutoArchived;
+  const surveys = event.surveys || [];
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10"><div className="flex items-center gap-5"><button onClick={onBack} className="text-gray-400 hover:text-white bg-gray-900 p-3 rounded-2xl border border-gray-800 transition-all hover:bg-gray-800 active:scale-90 shadow-lg"><ChevronRight className="rotate-180" size={24} /></button><div className="flex-1"><h2 className="text-3xl font-black text-white tracking-tight">{event.title}</h2><div className="flex flex-wrap items-center gap-3"><p className="text-sm text-gray-500 font-bold uppercase tracking-widest">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>{isActuallyArchived && <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black uppercase px-3 py-1 rounded-lg border border-orange-500/20 tracking-wider">Archiviert</span>}</div></div></div>{currentUser.role === 'admin' && (<div className="flex gap-2"><button onClick={() => onArchive(event.id, !event.isArchived)} className="px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider border bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 flex items-center gap-2 transition-all"><Archive size={16} /> {event.isArchived ? 'Aktivieren' : 'Archivieren'}</button><button onClick={() => onDelete(event.id)} className="px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider border bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 flex items-center gap-2 transition-all"><Trash2 size={16} /> Löschen</button></div>)}</div>
+      {currentUser.role === 'admin' && !isActuallyArchived && (<div className="flex justify-end"><button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-6 py-3 rounded-2xl flex items-center gap-2 mb-4 transition-all shadow-xl active:scale-95 uppercase text-xs tracking-widest">{showCreateSurvey ? 'Abbrechen' : <><Plus size={20} /> Neue Umfrage</>}</button></div>)}
+      {showCreateSurvey && <CreateSurveyForm onSubmit={handleAddSurvey} isMusicMode={event.category === 'Liederwahl'} />}
+      <div className="space-y-8">{surveys.length === 0 ? (<p className="text-gray-500 text-center py-20 bg-gray-900/30 rounded-[2.5rem] border border-dashed border-gray-800 font-bold uppercase text-[10px] tracking-[0.2em] italic">Keine Umfragen erfasst.</p>) : (surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} isArchivedView={isActuallyArchived} />))}</div>
+    </div>
+  );
+}
+
+function CreateSurveyForm({ onSubmit, isMusicMode }) {
+  const [title, setTitle] = useState('');
+  const [maxAnswers, setMaxAnswers] = useState(1);
+  const [allowedGroups, setAllowedGroups] = useState(GROUPS); 
+  const [options, setOptions] = useState([{ id: '1', text: '', link: '' }, { id: '2', text: '', link: '' }]);
+  const handleGroupToggle = (group) => setAllowedGroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
+  const handleOptionChange = (id, field, value) => setOptions(prev => prev.map(o => o.id === id ? { ...o, [field]: value } : o));
+  const addOption = () => { if (options.length < 10) setOptions([...options, { id: Date.now().toString(), text: '', link: '' }]); };
+  const removeOption = (id) => { if (options.length > 2) setOptions(prev => prev.filter(o => o.id !== id)); };
+  const submit = (e) => { e.preventDefault(); const validOptions = options.filter(o => o.text.trim() !== '').map((o, i) => ({ id: `o${i}-${Date.now()}`, text: o.text.trim(), link: o.link.trim(), votes: 0 })); if (validOptions.length < 2) return alert('Min. 2 Optionen.'); if (allowedGroups.length === 0) return alert('Bitte mindestens eine Gruppe wählen.'); onSubmit({ title, maxAnswers, allowedGroups, options: validOptions }); };
+  return (
+    <form onSubmit={submit} className="bg-gray-900 border border-gray-700 p-6 rounded-2xl mb-8 shadow-xl animate-in slide-in-from-top-4 duration-300">
+      <h3 className="text-lg font-bold text-white mb-6 uppercase tracking-wider border-b border-gray-800 pb-3">Umfrage Details</h3>
+      <div className="space-y-6">
+        <div><label className="block text-[10px] font-black text-gray-500 uppercase mb-1 ml-1 tracking-widest">Frage / Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder={isMusicMode ? "Z.B. Welches Lied spielen wir?" : "Frage eingeben..."} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none transition-all font-bold" /></div>
+        <div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest">Antworten (Max. 10)</label><div className="space-y-3">{options.map((opt, i) => (<div key={opt.id} className="space-y-2 p-3 bg-gray-950 border border-gray-800 rounded-xl shadow-inner"><div className="flex gap-2"><input type="text" required value={opt.text} onChange={e => handleOptionChange(opt.id, 'text', e.target.value)} placeholder={isMusicMode ? "Name des Liedes" : `Option ${i + 1}`} className="flex-1 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 text-sm focus:outline-none" /><button type="button" onClick={() => removeOption(opt.id)} disabled={options.length <= 2} className="p-2 text-gray-600 hover:text-red-500 disabled:opacity-30 transition-all"><Trash2 size={20} /></button></div><div className="flex items-center gap-2 bg-gray-900 border border-gray-800 rounded-lg px-3 py-1.5 focus-within:border-orange-500 transition-all"><Youtube size={14} className="text-gray-600" /><input type="url" value={opt.link} onChange={e => handleOptionChange(opt.id, 'link', e.target.value)} placeholder="YouTube Link (optional)" className="flex-1 bg-transparent border-none text-[11px] text-gray-400 focus:ring-0 focus:outline-none font-mono" /></div></div>))}</div>{options.length < 10 && (<button type="button" onClick={addOption} className="text-orange-500 text-[10px] font-black uppercase tracking-widest mt-4 flex items-center gap-2 hover:text-orange-400 transition-all ml-1"><Plus size={16} className="bg-orange-500/10 rounded-full p-0.5"/> Weitere Option</button>)}</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-gray-800 pt-6 mt-4"><div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest">Max. Stimmen</label><input type="number" min="1" max="10" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 text-white focus:border-orange-500 transition-all font-bold focus:outline-none shadow-inner" /></div><div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest">Wahlberechtigte</label><div className="grid grid-cols-2 gap-2 p-3 bg-gray-950 border border-gray-800 rounded-xl shadow-inner">{GROUPS.map(g => (<label key={g} className="text-[11px] text-gray-400 font-bold flex items-center gap-2 cursor-pointer hover:text-white transition-all"><input type="checkbox" checked={allowedGroups.includes(g)} onChange={() => handleGroupToggle(g)} className="w-3.5 h-3.5 accent-orange-500 rounded" />{g}</label>))}</div></div></div>
+      </div>
+      <div className="flex justify-end mt-8"><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-8 py-3 rounded-xl transition-all shadow-lg active:scale-95 uppercase text-xs tracking-widest">Umfrage speichern</button></div>
     </form>
   );
 }
