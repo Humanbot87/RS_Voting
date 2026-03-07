@@ -3,7 +3,7 @@ import {
   Users, Calendar, Archive, LogOut, Plus, Trash2, 
   ChevronRight, BarChart3, AlertCircle, CheckCircle2, 
   UserPlus, Eye, Check, Database, Settings, ShieldAlert, 
-  Edit2, FileSpreadsheet, Upload, X, Info
+  Edit2, FileSpreadsheet, Upload, X, Info, Youtube, ExternalLink
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, updateProfile } from 'firebase/auth';
@@ -171,7 +171,7 @@ export default function App() {
      return (
         <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
            <div className="flex flex-col items-center animate-in fade-in zoom-in duration-700">
-              <div className="text-5xl sm:text-7xl font-black tracking-tighter mb-6 flex flex-col items-center">
+              <div className="text-5xl sm:text-7xl font-black tracking-tighter mb-6 flex flex-col items-center text-center">
                  <span className="text-gray-400 drop-shadow-lg">Rüss</span>
                  <span className="text-orange-500 drop-shadow-[0_0_15px_rgba(249,115,22,0.4)] -mt-2">Suuger</span>
                  <span className="text-gray-600 text-xl font-bold uppercase tracking-[0.3em] mt-2 drop-shadow-md">Ämme</span>
@@ -269,7 +269,7 @@ function LoginScreen({ onLogin, users, onSeed, isSeeding }) {
           <h1 className="text-4xl font-black mb-1 text-center tracking-tighter">
             <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
           </h1>
-          <p className="text-gray-500 uppercase text-[10px] font-bold tracking-[0.3em] ml-1">Ämme • Portal</p>
+          <p className="text-gray-500 uppercase text-[10px] font-bold tracking-[0.3em] ml-1 text-center">Ämme • Portal</p>
         </div>
         {users.length === 0 ? (
           <div className="text-center py-6">
@@ -330,7 +330,6 @@ function MembersView({ users, dbAppId, db, fbUser }) {
       const rows = text.split(/\r?\n/).filter(row => row.trim() !== '');
       
       const importedMembers = rows.map((row, index) => {
-        // Erkennt Komma oder Semikolon als Trenner
         const columns = row.split(/[;,]/).map(col => col.trim());
         if (columns.length < 2) return null;
 
@@ -338,7 +337,6 @@ function MembersView({ users, dbAppId, db, fbUser }) {
         const lastName = columns[1];
         const groupRaw = columns[2] || '';
         
-        // Versucht die Gruppe in der Liste der erlaubten Gruppen zu finden
         const matchedGroups = GROUPS.filter(g => 
           groupRaw.toLowerCase().includes(g.toLowerCase()) || 
           g.toLowerCase().includes(groupRaw.toLowerCase())
@@ -367,7 +365,6 @@ function MembersView({ users, dbAppId, db, fbUser }) {
       }
     };
     reader.readAsText(file);
-    // Reset file input
     event.target.value = "";
   };
 
@@ -392,7 +389,7 @@ function MembersView({ users, dbAppId, db, fbUser }) {
       </div>
       
       {showImport && (
-        <div className="bg-gray-900 border-2 border-dashed border-gray-700 p-8 rounded-2xl text-center">
+        <div className="bg-gray-900 border-2 border-dashed border-gray-700 p-8 rounded-2xl text-center animate-in fade-in slide-in-from-top-2 duration-300">
             <Upload className="mx-auto text-orange-500 mb-4" size={40} />
             <h3 className="text-white font-bold text-lg mb-2">Excel / CSV Mitglieder-Import</h3>
             <p className="text-gray-400 text-sm mb-6 max-w-md mx-auto">
@@ -416,10 +413,6 @@ function MembersView({ users, dbAppId, db, fbUser }) {
                 </button>
                 <button onClick={() => setShowImport(false)} className="text-gray-500 hover:text-gray-300 text-xs uppercase tracking-widest font-bold">Schliessen</button>
             </div>
-            <div className="mt-6 p-4 bg-gray-950/50 rounded-xl border border-gray-800 text-left flex items-start gap-3">
-                <Info className="text-blue-500 shrink-0" size={18} />
-                <p className="text-[10px] text-gray-500 italic">Hinweis: Falls ein Mitglied bereits existiert, wird ein Duplikat erstellt (basierend auf neuer ID). Die Gruppenerkennung ist flexibel (z.B. "aktiv" wird als "Aktive" erkannt).</p>
-            </div>
         </div>
       )}
 
@@ -431,10 +424,10 @@ function MembersView({ users, dbAppId, db, fbUser }) {
             <table className="w-full text-left border-collapse">
             <thead>
                 <tr className="bg-gray-950 border-b border-gray-800 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
-                    <th className="p-4">Name</th>
-                    <th className="p-4">Rolle</th>
-                    <th className="p-4">Gruppen</th>
-                    <th className="p-4 text-right">Verwaltung</th>
+                    <th className="p-4 font-medium whitespace-nowrap">Name</th>
+                    <th className="p-4 font-medium">Rolle</th>
+                    <th className="p-4 font-medium min-w-[200px]">Gruppen</th>
+                    <th className="p-4 font-medium text-right">Aktionen</th>
                 </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/50">
@@ -517,7 +510,7 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
       </div>
       <div className="flex justify-end items-center pt-4 gap-4 border-t border-gray-800">
         <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all">Abbrechen</button>
-        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-8 py-3 rounded-xl transition-all shadow-lg active:scale-95 text-xs">
+        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-8 py-3 rounded-xl transition-all shadow-lg active:scale-95 text-xs uppercase">
             {initialData ? 'Speichern' : 'Anlegen'}
         </button>
       </div>
@@ -610,11 +603,11 @@ function CreateEventForm({ onSubmit }) {
     <form onSubmit={submit} className="bg-gray-900 border border-gray-800 p-6 rounded-2xl mb-8 space-y-4 shadow-xl">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
-           <label className="block text-xs text-gray-500 mb-1 font-bold">Titel</label>
+           <label className="block text-xs text-gray-500 mb-1 font-bold uppercase tracking-wider">Titel</label>
            <input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Z.B. Fasnacht 2026" className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none" />
         </div>
         <div>
-           <label className="block text-xs text-gray-500 mb-1 font-bold">Kategorie</label>
+           <label className="block text-xs text-gray-500 mb-1 font-bold uppercase tracking-wider">Kategorie</label>
            <select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
            </select>
@@ -623,12 +616,12 @@ function CreateEventForm({ onSubmit }) {
            )}
         </div>
         <div>
-           <label className="block text-xs text-gray-500 mb-1 font-bold">Datum</label>
+           <label className="block text-xs text-gray-500 mb-1 font-bold uppercase tracking-wider">Datum</label>
            <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none" />
         </div>
       </div>
       <div className="flex justify-end pt-2">
-        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-6 py-2 rounded-lg transition-colors shadow-lg">Speichern</button>
+        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-6 py-2 rounded-lg transition-colors shadow-lg uppercase text-xs tracking-widest">Event Speichern</button>
       </div>
     </form>
   );
@@ -667,32 +660,120 @@ function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, d
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-4">
-            <button onClick={onBack} className="text-gray-400 hover:text-white bg-gray-900 p-2 rounded-lg border border-gray-800"><ChevronRight className="rotate-180" size={20} /></button>
+            <button onClick={onBack} className="text-gray-400 hover:text-white bg-gray-900 p-2 rounded-lg border border-gray-800 transition-all hover:bg-gray-800 active:scale-90"><ChevronRight className="rotate-180" size={20} /></button>
             <div className="flex-1">
-                <h2 className="text-2xl font-bold text-white">{event.title}</h2>
-                <p className="text-sm text-gray-400">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
+                <h2 className="text-2xl font-bold text-white tracking-tight">{event.title}</h2>
+                <p className="text-sm text-gray-500 font-bold uppercase tracking-wider">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
             </div>
         </div>
         {currentUser.role === 'admin' && (
           <div className="flex gap-2">
-            <button onClick={() => onArchive(event.id, !event.isArchived)} className="px-4 py-2 rounded-lg text-sm border bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 flex items-center gap-2"><Archive size={16} /> {event.isArchived ? 'Aktivieren' : 'Archivieren'}</button>
-            <button onClick={() => onDelete(event.id)} className="px-4 py-2 rounded-lg text-sm border bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 flex items-center gap-2"><Trash2 size={16} /> Löschen</button>
+            <button onClick={() => onArchive(event.id, !event.isArchived)} className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest border bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 flex items-center gap-2"><Archive size={14} /> {event.isArchived ? 'Aktivieren' : 'Archivieren'}</button>
+            <button onClick={() => onDelete(event.id)} className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest border bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 flex items-center gap-2"><Trash2 size={14} /> Löschen</button>
           </div>
         )}
       </div>
       {currentUser.role === 'admin' && !event.isArchived && (
         <div className="flex justify-end">
-            <button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 mb-4 transition-colors">
+            <button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-4 py-2 rounded-lg flex items-center gap-2 mb-4 transition-all shadow-lg active:scale-95 uppercase text-xs tracking-widest">
             {showCreateSurvey ? 'Abbrechen' : <><Plus size={18} /> Neue Umfrage</>}
             </button>
         </div>
       )}
-      {showCreateSurvey && <CreateSurveyForm onSubmit={handleAddSurvey} />}
+      {showCreateSurvey && <CreateSurveyForm onSubmit={handleAddSurvey} isMusicMode={event.category === 'Liederwahl'} />}
       <div className="space-y-6">
-        {event.surveys.length === 0 ? <p className="text-gray-500 text-center py-8">Keine Umfragen in diesem Event.</p> : 
-            event.surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} />)}
+        {event.surveys.length === 0 ? (
+           <p className="text-gray-500 text-center py-12 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800">Keine Umfragen in diesem Event.</p>
+        ) : (
+            event.surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} />)
+        )}
       </div>
     </div>
+  );
+}
+
+function CreateSurveyForm({ onSubmit, isMusicMode }) {
+  const [title, setTitle] = useState('');
+  const [maxAnswers, setMaxAnswers] = useState(1);
+  const [allowedGroups, setAllowedGroups] = useState(GROUPS); 
+  const [options, setOptions] = useState([{ id: '1', text: '', link: '' }, { id: '2', text: '', link: '' }]);
+
+  const handleGroupToggle = (group) => setAllowedGroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
+  const handleOptionChange = (id, field, value) => setOptions(prev => prev.map(o => o.id === id ? { ...o, [field]: value } : o));
+  const addOption = () => { if (options.length < 10) setOptions([...options, { id: Date.now().toString(), text: '', link: '' }]); };
+  const removeOption = (id) => { if (options.length > 2) setOptions(prev => prev.filter(o => o.id !== id)); };
+
+  const submit = (e) => {
+    e.preventDefault();
+    const validOptions = options.filter(o => o.text.trim() !== '').map((o, i) => ({ 
+        id: `o${i}-${Date.now()}`, 
+        text: o.text.trim(), 
+        link: o.link.trim(),
+        votes: 0 
+    }));
+    if (validOptions.length < 2) return alert('Min. 2 Optionen.');
+    if (allowedGroups.length === 0) return alert('Bitte mindestens eine Gruppe wählen.');
+    onSubmit({ title, maxAnswers, allowedGroups, options: validOptions });
+  };
+
+  return (
+    <form onSubmit={submit} className="bg-gray-900 border border-gray-700 p-6 rounded-2xl mb-8 shadow-xl animate-in slide-in-from-top-4 duration-300">
+      <h3 className="text-lg font-bold text-white mb-6 uppercase tracking-wider border-b border-gray-800 pb-3">Umfrage Details</h3>
+      
+      <div className="space-y-6">
+        <div>
+            <label className="block text-[10px] font-black text-gray-500 uppercase mb-1 ml-1 tracking-widest">Frage / Titel</label>
+            <input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder={isMusicMode ? "Z.B. Welches Lied spielen wir?" : "Frage eingeben..."} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none transition-all font-bold" />
+        </div>
+        
+        <div>
+            <label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest">Antworten (Max. 10)</label>
+            <div className="space-y-3">
+                {options.map((opt, i) => (
+                    <div key={opt.id} className="space-y-2 p-3 bg-gray-950 border border-gray-800 rounded-xl">
+                        <div className="flex gap-2">
+                            <input type="text" required value={opt.text} onChange={e => handleOptionChange(opt.id, 'text', e.target.value)} placeholder={isMusicMode ? "Name des Liedes" : `Option ${i + 1}`} className="flex-1 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none text-sm" />
+                            <button type="button" onClick={() => removeOption(opt.id)} disabled={options.length <= 2} className="p-2 text-gray-600 hover:text-red-500 disabled:opacity-30 transition-all">
+                                <Trash2 size={20} />
+                            </button>
+                        </div>
+                        <div className="flex items-center gap-2 bg-gray-900 border border-gray-800 rounded-lg px-3 py-1.5 group focus-within:border-orange-500 transition-all">
+                            <Youtube size={14} className="text-gray-600 group-focus-within:text-orange-500" />
+                            <input type="url" value={opt.link} onChange={e => handleOptionChange(opt.id, 'link', e.target.value)} placeholder="Link (optional, z.B. YouTube)" className="flex-1 bg-transparent border-none text-[11px] text-gray-400 focus:ring-0 focus:outline-none" />
+                        </div>
+                    </div>
+                ))}
+            </div>
+            {options.length < 10 && (
+                <button type="button" onClick={addOption} className="text-orange-500 text-[10px] font-black uppercase tracking-widest mt-4 flex items-center gap-2 hover:text-orange-400 transition-all ml-1">
+                    <Plus size={16} className="bg-orange-500/10 rounded-full p-0.5"/> Weitere Option hinzufügen
+                </button>
+            )}
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-gray-800 pt-6 mt-4">
+            <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest">Max. Stimmen pro Person</label>
+                <input type="number" min="1" max="10" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-orange-500 transition-all font-bold" />
+                <p className="text-[10px] text-gray-600 mt-2 italic flex items-center gap-1 ml-1"><Info size={12}/> {maxAnswers === 1 ? 'Jeder darf genau ein Element wählen.' : `Jeder darf bis zu ${maxAnswers} Elemente wählen.`}</p>
+            </div>
+            <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest">Berechtigte Gruppen</label>
+                <div className="grid grid-cols-2 gap-2 p-3 bg-gray-950 border border-gray-800 rounded-xl">
+                    {GROUPS.map(g => (
+                        <label key={g} className="text-[11px] text-gray-400 font-bold flex items-center gap-2 cursor-pointer hover:text-white transition-all">
+                            <input type="checkbox" checked={allowedGroups.includes(g)} onChange={() => handleGroupToggle(g)} className="w-3.5 h-3.5 accent-orange-500 rounded" />
+                            {g}
+                        </label>
+                    ))}
+                </div>
+            </div>
+        </div>
+      </div>
+      <div className="flex justify-end mt-8">
+        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-8 py-3 rounded-xl transition-all shadow-lg active:scale-95 uppercase text-xs tracking-widest">Umfrage speichern</button>
+      </div>
+    </form>
   );
 }
 
@@ -714,24 +795,26 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users }) {
   };
 
   return (
-    <div className={`bg-gray-900 border rounded-2xl overflow-hidden transition-colors shadow-md ${survey.status === 'active' ? 'border-orange-500/50' : 'border-gray-800'}`}>
+    <div className={`bg-gray-900 border rounded-2xl overflow-hidden transition-all shadow-md ${survey.status === 'active' ? 'border-orange-500/40 ring-1 ring-orange-500/10' : 'border-gray-800'}`}>
       <div className="p-5 border-b border-gray-800 bg-gray-900/50 flex flex-col sm:flex-row sm:justify-between items-start gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2 mb-2">
-             {survey.status === 'draft' && <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-1 rounded font-bold uppercase tracking-wider">Entwurf</span>}
-             {survey.status === 'active' && <span className="text-[10px] bg-green-500/10 text-green-500 px-2 py-1 rounded font-bold uppercase tracking-wider flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Aktiv</span>}
-             {survey.status === 'published' && <span className="text-[10px] bg-orange-500/10 text-orange-500 px-2 py-1 rounded font-bold uppercase tracking-wider">Veröffentlicht</span>}
-             <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">{max === 1 ? 'Single Choice' : `Max. ${max} Stimmen`}</span>
+             {survey.status === 'draft' && <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded font-bold uppercase tracking-widest">Entwurf</span>}
+             {survey.status === 'active' && <span className="text-[10px] bg-green-500/10 text-green-500 px-2 py-0.5 rounded font-bold uppercase tracking-widest flex items-center gap-1 border border-green-500/10"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Aktiv</span>}
+             {survey.status === 'published' && <span className="text-[10px] bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded font-bold uppercase tracking-widest border border-orange-500/10">Abgeschlossen</span>}
+             <span className="text-[10px] text-gray-600 font-black uppercase tracking-[0.1em] ml-1">{max === 1 ? 'Single Choice' : `Max. ${max} Stimmen`}</span>
           </div>
           <h4 className="text-xl font-bold text-white leading-tight">{survey.title}</h4>
         </div>
         {currentUser.role === 'admin' && (
           <div className="flex flex-row sm:flex-col items-center sm:items-end gap-3 sm:gap-2 w-full sm:w-auto justify-between">
             <div className="flex gap-2">
-                {survey.status === 'draft' && <button onClick={() => onUpdate({ status: 'active' })} className="text-sm bg-green-500/20 text-green-500 hover:bg-green-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1"><CheckCircle2 size={16}/> Freigeben</button>}
-                {survey.status === 'active' && <button onClick={() => onUpdate({ status: 'published' })} className="text-sm bg-orange-500 hover:bg-orange-600 text-gray-950 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1"><Eye size={16}/> Beenden</button>}
+                {survey.status === 'draft' && <button onClick={() => onUpdate({ status: 'active' })} className="text-[10px] font-black uppercase tracking-widest bg-green-500 text-gray-950 px-4 py-2 rounded-lg flex items-center gap-2 transition-all active:scale-95"><CheckCircle2 size={14}/> Freigeben</button>}
+                {survey.status === 'active' && <button onClick={() => onUpdate({ status: 'published' })} className="text-[10px] font-black uppercase tracking-widest bg-orange-500 hover:bg-orange-600 text-gray-950 px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-orange-500/20"><Eye size={14}/> Beenden</button>}
             </div>
-            <div className="text-[10px] text-gray-500 font-bold flex items-center gap-1"><Users size={12} /> {survey.votedUsers.length} / {eligibleUsersCount}</div>
+            <div className="text-[10px] text-gray-600 font-black uppercase tracking-wider flex items-center gap-2 bg-gray-950 px-2 py-1 rounded border border-gray-800" title="Beteiligung">
+                <Users size={12} className="text-orange-500" /> {survey.votedUsers.length} / {eligibleUsersCount}
+            </div>
           </div>
         )}
       </div>
@@ -739,40 +822,68 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users }) {
         {survey.status === 'published' || currentUser.role === 'admin' ? (
           <div className="space-y-3">
              {survey.status === 'active' && currentUser.role === 'admin' && (
-                 <div className="mb-4 p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg flex items-start gap-3">
+                 <div className="mb-4 p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl flex items-start gap-3">
                      <AlertCircle className="text-blue-500 mt-0.5 flex-shrink-0" size={18} />
-                     <p className="text-[11px] text-blue-400 italic">Resultate live nur für Admins sichtbar.</p>
+                     <p className="text-[11px] text-blue-400 italic">Administratoren sehen die Resultate in Echtzeit. Mitglieder erst nach Abschluss.</p>
                  </div>
              )}
              {survey.options.map(opt => {
                 const pct = totalVotes === 0 ? 0 : Math.round((opt.votes / totalVotes) * 100);
                 return (
-                  <div key={opt.id} className="relative w-full bg-black/20 border border-gray-800 rounded-xl overflow-hidden p-3 flex justify-between items-center group">
+                  <div key={opt.id} className="relative w-full bg-black/20 border border-gray-800 rounded-xl overflow-hidden p-3 flex justify-between items-center group transition-all">
                     <div className="absolute top-0 left-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
-                    <span className="relative z-10 font-medium text-sm text-white">{opt.text}</span>
-                    <span className="relative z-10 text-xs text-gray-500 font-bold">{pct}% ({opt.votes})</span>
+                    <div className="relative z-10 flex items-center gap-3">
+                        <span className="font-bold text-sm text-white">{opt.text}</span>
+                        {opt.link && (
+                            <a href={opt.link} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-gray-900 rounded-lg text-gray-500 hover:text-red-500 transition-colors shadow-lg border border-gray-800" title="Song anhören">
+                                <Youtube size={14} />
+                            </a>
+                        )}
+                    </div>
+                    <span className="relative z-10 text-xs text-gray-500 font-black font-mono">{pct}% <span className="text-[10px] text-gray-700 ml-1">({opt.votes})</span></span>
                   </div>
                 )
              })}
           </div>
         ) : hasVoted ? (
-          <div className="flex flex-col items-center justify-center py-6 text-center">
-              <div className="w-12 h-12 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-3"><Check size={24} /></div>
-              <h5 className="text-lg font-bold text-white">Abgestimmt!</h5>
+          <div className="flex flex-col items-center justify-center py-8 text-center animate-in fade-in zoom-in duration-500">
+              <div className="w-14 h-14 bg-green-500/10 text-green-500 rounded-2xl flex items-center justify-center mb-4 border border-green-500/10 shadow-[0_0_20px_rgba(34,197,94,0.1)]">
+                  <Check size={28} className="stroke-[3]" />
+              </div>
+              <h5 className="text-xl font-bold text-white tracking-tight uppercase">Abstimmung gespeichert!</h5>
+              <p className="text-xs text-gray-600 mt-1 italic font-medium">Deine Stimme wurde bei den RüssSuugern gezählt.</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {survey.options.map(opt => (
-              <div key={opt.id} onClick={() => toggleOption(opt.id)} className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all active:scale-[0.99] ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-600'}`}>
-                <div className={`w-5 h-5 flex items-center justify-center border transition-colors ${max > 1 ? 'rounded' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-gray-950' : 'border-gray-600'}`}>
-                    {selectedOptions.includes(opt.id) && <Check size={14} className="stroke-[3]" />}
+              <div key={opt.id} className="flex gap-2">
+                <div 
+                    onClick={() => toggleOption(opt.id)} 
+                    className={`flex-1 flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all active:scale-[0.99] ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg shadow-orange-500/5' : 'bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-700 hover:bg-black/20'}`}
+                >
+                    <div className={`w-5 h-5 flex items-center justify-center border-2 transition-all ${max > 1 ? 'rounded' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-gray-950' : 'border-gray-700'}`}>
+                        {selectedOptions.includes(opt.id) && <Check size={14} className="stroke-[4]" />}
+                    </div>
+                    <span className="font-bold text-sm sm:text-base">{opt.text}</span>
                 </div>
-                <span className="font-bold">{opt.text}</span>
+                {opt.link && (
+                    <a 
+                        href={opt.link} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="p-4 bg-gray-950 border border-gray-800 rounded-2xl flex items-center justify-center text-gray-600 hover:text-red-500 hover:border-red-500/30 transition-all group"
+                        title="Song anhören"
+                    >
+                        <Youtube size={22} className="group-hover:scale-110 transition-transform" />
+                    </a>
+                )}
               </div>
             ))}
-            <div className="pt-4 flex justify-between gap-4">
-                <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest italic">{selectedOptions.length} / {max} Stimmen</p>
-                <button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="bg-orange-500 hover:bg-orange-600 disabled:bg-gray-800 disabled:text-gray-600 text-gray-950 font-bold px-8 py-3 rounded-xl shadow-lg active:scale-95">Stimme abgeben</button>
+            <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-800/50 mt-4">
+                <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest italic">{selectedOptions.length} / {max} Stimmen gewählt</p>
+                <button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 disabled:bg-gray-800 disabled:text-gray-600 text-gray-950 font-black px-10 py-3.5 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest">
+                    Stimme jetzt abgeben
+                </button>
             </div>
           </div>
         )}
