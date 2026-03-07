@@ -4,7 +4,7 @@ import {
   ChevronRight, BarChart3, AlertCircle, CheckCircle2, 
   UserPlus, Eye, Check, Database, Settings, ShieldAlert, 
   Edit2, FileSpreadsheet, Upload, X, Info, Youtube, ExternalLink, Clock,
-  FileText, ClipboardCheck, Save, ListPlus, Paperclip, Download, File
+  FileText, ClipboardCheck, Save, ListPlus, Paperclip, Download, File, Key, Lock
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, updateProfile } from 'firebase/auth';
@@ -48,7 +48,7 @@ const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitex
 const BOARD_ROLES = ['Präsident', 'Vizepräsident', 'Tambourmajor', 'Aktuar', 'Kassier', 'Sujetchefin', 'Tourmanagerin'];
 
 const INITIAL_USERS = [
-  { id: '1', firstName: 'Admin', lastName: 'Suuger', role: 'admin', groups: ['Vorstand', 'Aktive'] },
+  { id: '1', firstName: 'Admin', lastName: 'Suuger', role: 'admin', groups: ['Vorstand', 'Aktive'], password: "" },
 ];
 
 export default function App() {
@@ -71,7 +71,6 @@ export default function App() {
 
   if (!isConfigured) return <SetupScreen />;
 
-  // 1. Authentifizierung
   useEffect(() => {
     if (!auth) return;
     const initAuth = async () => {
@@ -93,7 +92,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Datenbank-Snapshot-Listener
   useEffect(() => {
     if (!fbUser || !db) return;
     setPermissionsError(null);
@@ -112,7 +110,6 @@ export default function App() {
           setUsers(snap.docs.map(d => d.data()));
           setIsDBReady(true);
         }, (err) => {
-          console.error("User Sync Error:", err);
           if (err.code === 'permission-denied') setPermissionsError("Fehlende Berechtigungen.");
         }
       );
@@ -135,7 +132,6 @@ export default function App() {
     return () => { unsubUsers(); unsubEvents(); unsubMinutes(); unsubSessions(); };
   }, [fbUser]); 
 
-  // 3. Auto-Login Prüfung & Heartbeat Management
   useEffect(() => {
       let timer;
       if (isDBReady && fbUser) {
@@ -148,10 +144,8 @@ export default function App() {
       return () => clearTimeout(timer);
   }, [isDBReady, fbUser, users, currentUser]); 
 
-  // Heartbeat für aktive Sitzung
   useEffect(() => {
     if (!currentUser || !db || !fbUser) return;
-
     const updateSession = async () => {
       try {
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'active_sessions', currentUser.id), {
@@ -160,43 +154,21 @@ export default function App() {
         });
       } catch (e) { console.error("Session heartbeat error", e); }
     };
-
     updateSession();
     const interval = setInterval(updateSession, 45000); 
-
     const handleUnload = () => {
         deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'active_sessions', currentUser.id));
     };
     window.addEventListener('beforeunload', handleUnload);
-
     return () => {
       clearInterval(interval);
       window.removeEventListener('beforeunload', handleUnload);
     };
   }, [currentUser, fbUser]);
 
-  const handleLogin = async (firstName, lastName) => {
-    const user = users.find(u => 
-      (u.firstName || '').toLowerCase() === firstName.toLowerCase() && 
-      (u.lastName || '').toLowerCase() === lastName.toLowerCase()
-    );
-    if (user) {
-        const session = activeSessions.find(s => s.id === user.id);
-        if (session && (Date.now() - session.lastSeen < 60000)) {
-             alert("Diese Person ist bereits an einem anderen Gerät oder Tab angemeldet.");
-             return;
-        }
-
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'active_sessions', user.id), {
-            id: user.id,
-            lastSeen: Date.now()
-        });
-
-        setCurrentUser(user);
-        if (fbUser) await updateProfile(fbUser, { displayName: user.id });
-    } else {
-        alert("Mitglied nicht gefunden.");
-    }
+  const handleLogin = async (foundUser) => {
+      setCurrentUser(foundUser);
+      if (fbUser) await updateProfile(fbUser, { displayName: foundUser.id });
   };
 
   const handleLogout = async () => {
@@ -219,7 +191,6 @@ export default function App() {
 
   if (authError || permissionsError) return <FatalErrorScreen message={authError || permissionsError} />;
 
-  // Splash Screen mit angepasstem Logo
   if (!fbUser || !isDBReady || isCheckingSession) {
      return (
         <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
@@ -240,7 +211,7 @@ export default function App() {
      );
   }
 
-  if (!currentUser) return <LoginScreen onLogin={handleLogin} users={users} onSeed={seedDatabase} isSeeding={isSeeding} />;
+  if (!currentUser) return <LoginScreen onLogin={handleLogin} users={users} activeSessions={activeSessions} onSeed={seedDatabase} isSeeding={isSeeding} db={db} appId={appId} />;
 
   const isBoardMember = (currentUser.groups || []).includes('Vorstand');
 
@@ -289,6 +260,107 @@ function TabButton({ active, onClick, icon, label }) {
     <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${active ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/10' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`}>
       {icon} {label}
     </button>
+  );
+}
+
+// --- LOGIN SCREEN ---
+function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, appId }) {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [step, setStep] = useState('name'); // 'name', 'password', 'setup'
+  const [password, setPassword] = useState('');
+  const [tempUser, setTempUser] = useState(null);
+
+  const checkName = (e) => {
+    e.preventDefault();
+    const user = users.find(u => 
+      (u.firstName || '').toLowerCase() === firstName.trim().toLowerCase() && 
+      (u.lastName || '').toLowerCase() === lastName.trim().toLowerCase()
+    );
+
+    if (!user) return alert("Mitglied nicht gefunden.");
+
+    const session = activeSessions.find(s => s.id === user.id);
+    if (session && (Date.now() - session.lastSeen < 60000)) {
+        return alert("Diese Person ist bereits angemeldet.");
+    }
+
+    const isBoard = (user.groups || []).includes('Vorstand');
+    if (isBoard) {
+        setTempUser(user);
+        if (!user.password) setStep('setup');
+        else setStep('password');
+    } else {
+        onLogin(user);
+    }
+  };
+
+  const handlePasswordSubmit = (e) => {
+    e.preventDefault();
+    if (password === tempUser.password) {
+        onLogin(tempUser);
+    } else {
+        alert("Passwort falsch.");
+    }
+  };
+
+  const handleSetupSubmit = async (e) => {
+    e.preventDefault();
+    if (password.length < 4) return alert("Das Passwort muss mindestens 4 Zeichen lang sein.");
+    const updatedUser = { ...tempUser, password: password };
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', tempUser.id), updatedUser);
+    onLogin(updatedUser);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
+      <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl overflow-hidden relative">
+        <div className="absolute top-0 left-0 w-full h-1 bg-orange-500"></div>
+        <div className="flex flex-col items-center mb-10 mt-4">
+            <h1 className="text-4xl font-black mb-1 tracking-tighter"><span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span></h1>
+            <span className="text-gray-400 text-sm font-bold uppercase tracking-[0.3em]">Ämme</span>
+        </div>
+
+        {users.length === 0 ? (
+          <div className="text-center py-6">
+            <Database className="mx-auto text-gray-700 mb-4" size={48} />
+            <h3 className="text-white font-medium mb-2">Datenbank einrichten</h3>
+            <button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-3 rounded-xl mt-4">Vereinsdaten laden</button>
+          </div>
+        ) : (
+          <>
+            {step === 'name' && (
+              <form onSubmit={checkName} className="space-y-4">
+                <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" />
+                <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" />
+                <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4 transition-all">Anmelden</button>
+              </form>
+            )}
+
+            {step === 'password' && (
+              <form onSubmit={handlePasswordSubmit} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex items-center gap-3 mb-4 p-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl text-orange-400">
+                    <Lock size={20} /> <span className="text-xs font-bold uppercase">Vorstand Login erforderlich</span>
+                </div>
+                <input type="password" required autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Dein Vorstand-Passwort" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors text-center tracking-widest" />
+                <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4 transition-all">Entsperren</button>
+                <button type="button" onClick={() => setStep('name')} className="w-full text-gray-500 text-xs font-bold uppercase tracking-widest mt-4">Zurück</button>
+              </form>
+            )}
+
+            {step === 'setup' && (
+              <form onSubmit={handleSetupSubmit} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex items-center gap-3 mb-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-blue-400">
+                    <ShieldAlert size={20} /> <div><span className="text-xs font-bold block uppercase">Passwort einrichten</span><span className="text-[10px] opacity-70">Wähle ein Passwort für den Vorstandszugriff.</span></div>
+                </div>
+                <input type="password" required autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Neues Passwort wählen" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors text-center tracking-widest" />
+                <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4 transition-all">Passwort speichern & Login</button>
+              </form>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -443,9 +515,17 @@ function MembersView({ users, dbAppId, db, fbUser }) {
   const [showImport, setShowImport] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const fileInputRef = useRef(null);
+
   const handleAddUser = async (user) => { if (!fbUser) return; await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', Date.now().toString()), { ...user, id: Date.now().toString() }); setShowAdd(false); };
   const handleUpdateUser = async (user) => { if (!fbUser) return; await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', user.id), user); setEditingUser(null); };
   const removeUser = async (id) => { if (!fbUser || !confirm('Löschen?')) return; await deleteDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', id)); };
+  
+  const resetPassword = async (user) => {
+    if (!confirm(`Passwort für ${user.firstName} ${user.lastName} zurücksetzen? Die Person muss beim nächsten Login ein neues setzen.`)) return;
+    await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', user.id), { ...user, password: "" });
+    alert("Passwort wurde zurückgesetzt.");
+  };
+
   const handleCsvUpload = (event) => {
     const file = event.target.files[0]; if (!file) return;
     const reader = new FileReader(); reader.onload = async (e) => {
@@ -453,9 +533,9 @@ function MembersView({ users, dbAppId, db, fbUser }) {
       const imported = rows.map((row, index) => {
         const columns = row.split(/[;,]/).map(col => col.trim()); if (columns.length < 2) return null;
         const matched = GROUPS.filter(g => columns[2]?.toLowerCase().includes(g.toLowerCase()));
-        return { id: `import-${Date.now()}-${index}`, firstName: columns[0], lastName: columns[1], role: 'member', groups: matched.length > 0 ? matched : [] };
+        return { id: `import-${Date.now()}-${index}`, firstName: columns[0], lastName: columns[1], role: 'member', groups: matched.length > 0 ? matched : [], password: "" };
       }).filter(Boolean);
-      if (confirm(`${imported.length} importieren?`)) { for (const m of imported) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', m.id), m); setShowImport(false); }
+      if (confirm(`${imported.length} importieren?`)) { for (const m of imported) await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', m.id), m); setShowImport(false); }
     };
     reader.readAsText(file); event.target.value = "";
   };
@@ -464,7 +544,14 @@ function MembersView({ users, dbAppId, db, fbUser }) {
       {showImport && (<div className="bg-gray-900 border-2 border-dashed border-gray-700 p-8 rounded-2xl text-center animate-in fade-in slide-in-from-top-2 duration-300"><Upload className="mx-auto text-orange-500 mb-4" size={40} /><h3 className="text-white font-bold text-lg mb-2">CSV Import</h3><input type="file" ref={fileInputRef} accept=".csv" onChange={handleCsvUpload} className="hidden" /><button onClick={() => fileInputRef.current?.click()} className="bg-orange-500 text-gray-950 font-bold px-8 py-3 rounded-xl">Datei auswählen</button></div>)}
       {showAdd && <MemberForm onSubmit={handleAddUser} onCancel={() => setShowAdd(false)} />}{editingUser && <MemberForm initialData={editingUser} onSubmit={handleUpdateUser} onCancel={() => setEditingUser(null)} />}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-2xl"><div className="overflow-x-auto scrollbar-hide"><table className="w-full text-left border-collapse"><thead><tr className="bg-gray-950 border-b border-gray-800 text-gray-500 text-[10px] font-bold uppercase tracking-wider"><th className="p-4">Name</th><th className="p-4">Rolle</th><th className="p-4">Gruppen</th><th className="p-4 text-right">Aktionen</th></tr></thead><tbody className="divide-y divide-gray-800/50">
-        {users.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(u => (<tr key={u.id} className="hover:bg-black/20 transition-colors"><td className="p-4 text-white font-bold">{u.lastName} {u.firstName}</td><td className="p-4"><span className={`text-[10px] px-2 py-1 rounded font-bold uppercase tracking-widest ${u.role === 'admin' ? 'bg-orange-500/20 text-orange-500' : 'bg-gray-800/50 text-gray-500'}`}>{u.role}</span></td><td className="p-4"><div className="flex flex-wrap gap-1">{(u.groups || []).map(g => (<span key={g} className="text-[10px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-400 font-bold">{g}</span>))}</div></td><td className="p-4 text-right flex justify-end gap-1"><button onClick={() => setEditingUser(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all"><Edit2 size={18} /></button><button onClick={() => removeUser(u.id)} className="text-gray-500 hover:text-red-500 p-2 rounded-lg transition-all"><Trash2 size={18} /></button></td></tr>))}
+        {users.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(u => (<tr key={u.id} className="hover:bg-black/20 transition-colors"><td className="p-4 text-white font-bold">{u.lastName} {u.firstName}</td><td className="p-4"><span className={`text-[10px] px-2 py-1 rounded font-bold uppercase tracking-widest ${u.role === 'admin' ? 'bg-orange-500/20 text-orange-500' : 'bg-gray-800/50 text-gray-500'}`}>{u.role}</span></td><td className="p-4"><div className="flex flex-wrap gap-1">{(u.groups || []).map(g => (<span key={g} className="text-[10px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-400 font-bold">{g}</span>))}</div></td>
+                    <td className="p-4 text-right flex justify-end gap-1">
+                        {(u.groups || []).includes('Vorstand') && (
+                            <button onClick={() => resetPassword(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all" title="Passwort zurücksetzen"><Key size={18} /></button>
+                        )}
+                        <button onClick={() => setEditingUser(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all" title="Bearbeiten"><Edit2 size={18} /></button>
+                        <button onClick={() => removeUser(u.id)} className="text-gray-500 hover:text-red-500 p-2 rounded-lg transition-all" title="Löschen"><Trash2 size={18} /></button>
+                    </td></tr>))}
       </tbody></table></div></div></div>
   );
 }
@@ -476,10 +563,10 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
   const [selectedGroups, setSelectedGroups] = useState(initialData?.groups || []);
   const toggleGroup = (group) => setSelectedGroups(p => p.includes(group) ? p.filter(g => g !== group) : [...p, group]);
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSubmit({ ...initialData, firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups }); }} className="bg-gray-900 border-2 border-orange-500/10 p-6 rounded-2xl mb-8 shadow-2xl relative overflow-hidden">
+    <form onSubmit={(e) => { e.preventDefault(); onSubmit({ ...initialData, firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups, password: initialData?.password || "" }); }} className="bg-gray-900 border-2 border-orange-500/10 p-6 rounded-2xl mb-8 shadow-2xl relative overflow-hidden">
       <h3 className="text-xl font-bold text-white mb-6 tracking-tight">{initialData ? 'Mitglied bearbeiten' : 'Neues Mitglied'}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"><input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /><input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6"><div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2">Berechtigung</label><div className="bg-gray-950 border border-gray-800 p-1 rounded-xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-3 py-2 text-white font-bold focus:ring-0 border-none outline-none"><option value="member" className="bg-gray-900">Standard Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500">Administrator</option></select></div></div><div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 p-4 rounded-xl">{GROUPS.map(g => (<label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all"><input type="checkbox" checked={selectedGroups.includes(group)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}</label>))}</div></div></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6"><div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2">Berechtigung</label><div className="bg-gray-950 border border-gray-800 p-1 rounded-xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-3 py-2 text-white font-bold focus:ring-0 border-none outline-none"><option value="member" className="bg-gray-900">Standard Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500">Administrator</option></select></div></div><div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 p-4 rounded-xl">{GROUPS.map(g => (<label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all"><input type="checkbox" checked={selectedGroups.includes(g)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}</label>))}</div></div></div>
       <div className="flex justify-end gap-4 pt-4 border-t border-gray-800"><button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all">Abbrechen</button><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold px-8 py-3 rounded-xl transition-all shadow-lg text-xs uppercase">{initialData ? 'Speichern' : 'Anlegen'}</button></div>
     </form>
   );
@@ -607,21 +694,3 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users, isArchivedVi
 
 function FatalErrorScreen({ message }) { return (<div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4"><div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-2xl p-8 shadow-2xl text-center"><ShieldAlert className="mx-auto text-red-500 mb-4" size={48} /><h1 className="text-2xl font-bold text-white mb-2">Fehler</h1><p className="text-red-300 text-sm mb-6">{message}</p></div></div>); }
 function SetupScreen() { return (<div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4"><div className="max-w-2xl w-full bg-gray-900 border border-orange-500/50 rounded-2xl p-8 shadow-2xl text-center"><Settings className="mx-auto text-orange-500 mb-4" size={48} /><h1 className="text-2xl font-bold text-white mb-2">Setup erforderlich</h1></div></div>); }
-
-function LoginScreen({ onLogin, users, onSeed, isSeeding }) {
-  const [firstName, setFirstName] = useState(''); const [lastName, setLastName] = useState('');
-  return (
-    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl overflow-hidden relative">
-        <div className="absolute top-0 left-0 w-full h-1 bg-orange-500"></div>
-        <div className="flex flex-col items-center mb-10 mt-4"><div className="flex flex-col items-center text-center"><h1 className="text-4xl font-black mb-1 tracking-tighter"><span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span></h1><span className="text-gray-400 text-sm font-bold uppercase tracking-[0.3em]">Ämme</span></div></div>
-        {users.length === 0 ? (<div className="text-center py-6"><Database className="mx-auto text-gray-700 mb-4" size={48} /><h3 className="text-white font-medium mb-2">Datenbank einrichten</h3><button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-3 rounded-xl mt-4">Vereinsdaten laden</button></div>) : (
-          <form onSubmit={(e) => { e.preventDefault(); onLogin(firstName.trim(), lastName.trim()); }} className="space-y-4">
-            <div className="space-y-1"><label className="text-[10px] font-bold text-gray-600 uppercase ml-2 tracking-widest">Vorname</label><input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Max" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" /></div>
-            <div className="space-y-1"><label className="text-[10px] font-bold text-gray-600 uppercase ml-2 tracking-widest">Nachname</label><input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Muster" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" /></div>
-            <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-2xl mt-4 transition-all active:scale-[0.98]">Anmelden</button>
-          </form>)}
-      </div>
-    </div>
-  );
-}
