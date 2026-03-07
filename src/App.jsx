@@ -42,7 +42,8 @@ try {
 
 const appId = (typeof __app_id !== 'undefined' ? __app_id : 'ruesssuuger-app').replace(/[^a-zA-Z0-9_-]/g, '-');
 
-const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder'];
+// Liste der Vereinsgruppen - "Musik" wurde hinzugefügt
+const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder', 'Musik'];
 const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitext'];
 
 const INITIAL_USERS = [
@@ -368,7 +369,7 @@ function MembersView({ users, dbAppId, db, fbUser }) {
 
       if (confirm(`${importedMembers.length} Mitglieder wurden erkannt. Jetzt importieren?`)) {
         for (const member of importedMembers) {
-          await setDoc(doc(db, 'artifacts', dbAppId, 'public', 'data', 'users', member.id), member);
+          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', member.id), member);
         }
         alert("Import erfolgreich abgeschlossen!");
         setShowImport(false);
