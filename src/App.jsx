@@ -228,7 +228,7 @@ export default function App() {
                  <h1 className="text-5xl sm:text-7xl font-black tracking-tighter mb-1">
                     <span className="text-gray-400 drop-shadow-lg">Rüss</span><span className="text-orange-500 drop-shadow-[0_0_15px_rgba(249,115,22,0.4)]">Suuger</span>
                  </h1>
-                 <span className="text-gray-600 text-xl font-bold uppercase tracking-[0.3em] drop-shadow-md">Ämme</span>
+                 <span className="text-gray-400 text-xl font-bold uppercase tracking-[0.3em] drop-shadow-md">Ämme</span>
               </div>
               <div className="flex items-center gap-3 mt-8">
                 <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
@@ -252,7 +252,7 @@ export default function App() {
             <div className="flex flex-col">
               <h1 className="text-xl font-bold tracking-tight leading-tight cursor-default">
                 <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
-                <span className="text-gray-500 font-medium ml-1">Ämme</span>
+                <span className="text-gray-400 font-medium ml-1">Ämme</span>
               </h1>
               <p className="text-[10px] text-orange-500 font-bold uppercase tracking-widest -mt-0.5 ml-0.5">Voting App</p>
             </div>
@@ -614,7 +614,7 @@ function LoginScreen({ onLogin, users, onSeed, isSeeding }) {
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
       <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl overflow-hidden relative">
         <div className="absolute top-0 left-0 w-full h-1 bg-orange-500"></div>
-        <div className="flex flex-col items-center mb-10 mt-4"><div className="flex flex-col items-center text-center"><h1 className="text-4xl font-black mb-1 tracking-tighter"><span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span></h1><span className="text-gray-600 text-sm font-bold uppercase tracking-[0.3em]">Ämme</span></div></div>
+        <div className="flex flex-col items-center mb-10 mt-4"><div className="flex flex-col items-center text-center"><h1 className="text-4xl font-black mb-1 tracking-tighter"><span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span></h1><span className="text-gray-400 text-sm font-bold uppercase tracking-[0.3em]">Ämme</span></div></div>
         {users.length === 0 ? (<div className="text-center py-6"><Database className="mx-auto text-gray-700 mb-4" size={48} /><h3 className="text-white font-medium mb-2">Datenbank einrichten</h3><button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-3 rounded-xl mt-4">Vereinsdaten laden</button></div>) : (
           <form onSubmit={(e) => { e.preventDefault(); onLogin(firstName.trim(), lastName.trim()); }} className="space-y-4">
             <div className="space-y-1"><label className="text-[10px] font-bold text-gray-600 uppercase ml-2 tracking-widest">Vorname</label><input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Max" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors" /></div>
