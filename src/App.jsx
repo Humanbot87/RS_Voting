@@ -117,6 +117,7 @@ export default function App() {
       );
       unsubEvents = onSnapshot(eventsRef, (snap) => {
           setEvents(snap.docs.map(d => d.data()));
+          setIsDBReady(true);
         }
       );
       unsubMinutes = onSnapshot(minutesRef, (snap) => {
@@ -138,17 +139,13 @@ export default function App() {
           if (fbUser.displayName && !currentUser) {
               const savedUser = users.find(u => u.id === fbUser.displayName);
               if (savedUser) {
-                  // Bei Vorstand prüfen wir kurz die Session-Gültigkeit in activeSessions
                   const session = activeSessions.find(s => s.id === savedUser.id);
                   const isBoard = (savedUser.groups || []).includes('Vorstand');
-                  
-                  // Wenn es kein Vorstand ist oder die Session noch frisch in der DB ist, einloggen
-                  if (!isBoard || (session && Date.now() - session.lastSeen < 300000)) { // 5 Min Toleranz für Reconnect
+                  if (!isBoard || (session && Date.now() - session.lastSeen < 300000)) { 
                       setCurrentUser(savedUser);
                   }
               }
           }
-          // Kurzer Timeout für flüssigen Übergang
           timer = setTimeout(() => setIsCheckingSession(false), 800);
       }
       return () => clearTimeout(timer);
@@ -171,8 +168,6 @@ export default function App() {
     const interval = setInterval(updateSession, 45000); 
 
     const handleUnload = () => {
-        // Wir löschen die Session nicht hart bei unload, um Refresh zu erlauben
-        // Stattdessen vertrauen wir auf den lastSeen Zeitstempel
     };
     window.addEventListener('beforeunload', handleUnload);
 
@@ -207,7 +202,7 @@ export default function App() {
 
   if (authError || permissionsError) return <FatalErrorScreen message={authError || permissionsError} />;
 
-  // Ladebildschirm / Splash
+  // Ladebildschirm Branding
   if (!fbUser || !isDBReady || isCheckingSession) {
      return (
         <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
@@ -234,12 +229,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-200 font-sans selection:bg-orange-500 selection:text-white">
-      <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-10 shadow-md">
+      <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-10 shadow-md text-left">
         <div className="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="flex flex-col text-left">
               <h1 className="text-xl font-bold tracking-tight leading-tight cursor-default">
-                <span className="text-gray-400">RüssSuuger</span>
+                <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
                 <span className="text-gray-400 font-medium ml-1">Ämme</span>
               </h1>
               <p className="text-[10px] text-orange-500 font-bold uppercase tracking-widest -mt-0.5 ml-0.5">Voting App</p>
@@ -334,7 +329,7 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
         <div className="absolute top-0 left-0 w-full h-1 bg-orange-500"></div>
         <div className="flex flex-col items-center mb-10 mt-4">
             <h1 className="text-4xl font-black mb-1 tracking-tighter">
-                <span className="text-gray-400">RüssSuuger</span>
+                <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
             </h1>
             <span className="text-gray-400 text-sm font-bold uppercase tracking-[0.3em]">Ämme</span>
         </div>
@@ -571,6 +566,7 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate }) {
   const resetPassword = async (user) => {
     if (!fbUser || !confirm(`Passwort für ${user.firstName} ${user.lastName} zurücksetzen?`)) return;
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.id), { ...user, password: "" });
+    alert("Passwort wurde zurückgesetzt.");
   };
 
   const handleCsvUpload = (event) => {
@@ -621,7 +617,7 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate }) {
             </thead>
             <tbody className="divide-y divide-gray-800/50">
               {users.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(u => (
-                <tr key={u.id} className="hover:bg-black/20 transition-colors group">
+                <tr key={u.id} className="hover:bg-black/20 transition-colors group text-left">
                   <td className="p-5 text-white font-bold">{u.lastName} {u.firstName}</td>
                   <td className="p-5"><span className={`text-[10px] px-3 py-1 rounded font-bold uppercase tracking-widest inline-flex items-center gap-2 ${u.role === 'admin' ? 'bg-orange-500/20 text-orange-500 border border-orange-500/20' : 'bg-gray-800/50 text-gray-400'}`}>{u.role}</span></td>
                   <td className="p-5"><div className="flex flex-wrap gap-1">{(u.groups || []).map(g => (<span key={g} className="text-[10px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-400 font-bold">{g}</span>))}</div></td>
@@ -653,12 +649,12 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
     <form onSubmit={(e) => { e.preventDefault(); onSubmit({ ...(initialData || {}), firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups, password: initialData?.password || "" }); }} className="bg-gray-900 border-2 border-orange-500/10 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
       <h3 className="text-xl font-bold text-white mb-6 tracking-tight">{initialData ? 'Mitglied bearbeiten' : 'Neues Mitglied erfassen'}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
+        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 font-bold focus:outline-none" />
         <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6">
         <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Berechtigung</label><div className="bg-gray-950 border border-gray-800 p-1 rounded-2xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-4 py-3 text-white font-bold focus:ring-0 border-none outline-none cursor-pointer"><option value="member" className="bg-gray-900">Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500 font-bold">Administrator</option></select></div></div>
-        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 p-4 rounded-2xl">
+        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 p-4 rounded-2xl text-left">
           {GROUPS.map(g => (
             <label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all text-left">
               <input type="checkbox" checked={selectedGroups.includes(g)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}
@@ -706,7 +702,7 @@ function CreateEventForm({ onSubmit }) {
   return (
     <form onSubmit={submit} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-6 shadow-xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
       <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-3xl rounded-full"></div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
         <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Event Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Titel" className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
         <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Kategorie</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>{category === 'Freitext' && (<input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Kategorie Name" className="w-full mt-2 bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold" />)}</div>
         <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Datum</label><input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
@@ -727,7 +723,7 @@ function EventDetail({ event, onBack, currentUser, onArchive, onDelete, users, d
   const surveys = event.surveys || [];
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 text-left">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10"><div className="flex items-center gap-5"><button onClick={onBack} className="text-gray-400 hover:text-white bg-gray-900 p-3 rounded-2xl border border-gray-800 transition-all hover:bg-gray-800 active:scale-90 shadow-lg"><ChevronRight className="rotate-180" size={24} /></button><div className="flex-1 text-left"><h2 className="text-3xl font-black text-white tracking-tight">{event.title}</h2><div className="flex flex-wrap items-center gap-3"><p className="text-sm text-gray-500 font-bold uppercase tracking-widest">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>{isActuallyArchived && <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black uppercase px-3 py-1 rounded-lg border border-orange-500/20 tracking-wider">Archiviert</span>}</div></div></div>{currentUser.role === 'admin' && (<div className="flex gap-2"><button onClick={() => onArchive(event.id, !event.isArchived)} className="px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider border bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 flex items-center gap-2 transition-all"><Archive size={16} /> {event.isArchived ? 'Aktivieren' : 'Archivieren'}</button><button onClick={() => onDelete(event.id)} className="px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider border bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 flex items-center gap-2 transition-all"><Trash2 size={16} /> Löschen</button></div>)}</div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10 text-left"><div className="flex items-center gap-5"><button onClick={onBack} className="text-gray-400 hover:text-white bg-gray-900 p-3 rounded-2xl border border-gray-800 transition-all hover:bg-gray-800 active:scale-90 shadow-lg"><ChevronRight className="rotate-180" size={24} /></button><div className="flex-1 text-left"><h2 className="text-3xl font-black text-white tracking-tight">{event.title}</h2><div className="flex flex-wrap items-center gap-3"><p className="text-sm text-gray-500 font-bold uppercase tracking-widest">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>{isActuallyArchived && <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black uppercase px-3 py-1 rounded-lg border border-orange-500/20 tracking-wider">Archiviert</span>}</div></div></div>{currentUser.role === 'admin' && (<div className="flex gap-2"><button onClick={() => onArchive(event.id, !event.isArchived)} className="px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider border bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 flex items-center gap-2 transition-all"><Archive size={16} /> {event.isArchived ? 'Aktivieren' : 'Archivieren'}</button><button onClick={() => onDelete(event.id)} className="px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider border bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 flex items-center gap-2 transition-all"><Trash2 size={16} /> Löschen</button></div>)}</div>
       {currentUser.role === 'admin' && !isActuallyArchived && (<div className="flex justify-end"><button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-6 py-3 rounded-2xl flex items-center gap-2 mb-4 transition-all shadow-xl active:scale-95 uppercase text-xs tracking-widest">{showCreateSurvey ? 'Abbrechen' : <><Plus size={20} /> Neue Umfrage</>}</button></div>)}
       {showCreateSurvey && <CreateSurveyForm onSubmit={handleAddSurvey} isMusicMode={event.category === 'Liederwahl'} />}
       <div className="space-y-8">{surveys.length === 0 ? (<p className="text-gray-500 text-center py-20 bg-gray-900/30 rounded-[2.5rem] border border-dashed border-gray-800 font-bold uppercase text-[10px] tracking-[0.2em] italic text-left">Keine Umfragen erfasst.</p>) : (surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} isArchivedView={isActuallyArchived} />))}</div>
@@ -797,12 +793,12 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users, isArchivedVi
              {survey.status === 'active' && !isArchivedView && currentUser.role === 'admin' && (<div className="mb-4 p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl flex items-start gap-3"><AlertCircle className="text-blue-500 mt-0.5 flex-shrink-0" size={18} /><p className="text-[11px] text-blue-400 italic">Administratoren sehen die Resultate live.</p></div>)}
              {options.map(opt => { const pct = totalVotes === 0 ? 0 : Math.round(((opt.votes || 0) / totalVotes) * 100); return (<div key={opt.id} className="relative w-full bg-black/20 border border-gray-800 rounded-xl overflow-hidden p-3 flex justify-between items-center group transition-all shadow-inner"><div className="absolute top-0 left-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} /><div className="relative z-10 flex items-center gap-3"><span className="font-bold text-sm text-white">{opt.text}</span>{opt.link && (<a href={opt.link} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-gray-900 rounded-lg text-gray-500 hover:text-red-500 transition-colors shadow-lg border border-gray-800"><Youtube size={14} /></a>)}</div><span className="relative z-10 text-xs text-gray-500 font-black font-mono">{pct}% <span className="text-[10px] text-gray-700 ml-1">({opt.votes || 0})</span></span></div>); })}
           </div>
-        ) : hasVoted ? (<div className="flex flex-col items-center justify-center py-8 text-center animate-in fade-in zoom-in duration-500"><div className="w-14 h-14 bg-green-500/10 text-green-500 rounded-2xl flex items-center justify-center mb-4 border border-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.1)]"><Check size={28} className="stroke-[3]" /></div><h5 className="text-xl font-bold text-white tracking-tight uppercase text-center">Erfolgreich Abgestimmt!</h5><p className="text-xs text-gray-600 mt-1 italic font-medium tracking-wide text-center">Deine Stimme wurde bei den RüssSuugern gezählt.</p></div>) : (<div className="space-y-3">
+        ) : hasVoted ? (<div className="flex flex-col items-center justify-center py-8 text-center animate-in fade-in zoom-in duration-500 text-left"><div className="w-14 h-14 bg-green-500/10 text-green-500 rounded-2xl flex items-center justify-center mb-4 border border-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.1)] mx-auto"><Check size={28} className="stroke-[3]" /></div><h5 className="text-xl font-bold text-white tracking-tight uppercase text-center">Erfolgreich Abgestimmt!</h5><p className="text-xs text-gray-600 mt-1 italic font-medium tracking-wide text-center">Deine Stimme wurde bei den RüssSuugern gezählt.</p></div>) : (<div className="space-y-3">
             {options.map(opt => (<div key={opt.id} className="flex gap-2"><div onClick={() => toggleOption(opt.id)} className={`flex-1 flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all active:scale-[0.99] ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg shadow-orange-500/5' : 'bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-700 hover:bg-black/20'}`}><div className={`w-5 h-5 flex items-center justify-center border-2 transition-all ${max > 1 ? 'rounded' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-gray-950' : 'border-gray-700'}`}>{selectedOptions.includes(opt.id) && <Check size={14} className="stroke-[4]" />}</div><span className="font-bold text-sm sm:text-base">{opt.text}</span></div>{opt.link && (<a href={opt.link} target="_blank" rel="noopener noreferrer" className="p-4 bg-gray-950 border border-gray-800 rounded-2xl flex items-center justify-center text-gray-600 hover:text-red-500 transition-all group group-hover:scale-110 shadow-lg"><Youtube size={22} /></a>)}</div>))}<div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-800/50 mt-4 text-left"><p className="text-[10px] font-black text-gray-600 uppercase tracking-widest italic">{selectedOptions.length} / {max} Stimmen gewählt</p><button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 disabled:bg-gray-800 disabled:text-gray-600 text-gray-950 font-black px-10 py-3.5 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest transition-all">Stimme jetzt abgeben</button></div></div>)}
       </div>
     </div>
   );
 }
 
-function FatalErrorScreen({ message }) { return (<div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4 text-center"><div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-3xl p-10 shadow-2xl"><ShieldAlert className="mx-auto text-red-500 mb-6" size={60} /><h1 className="text-3xl font-black text-white mb-3 tracking-tight">Systemfehler</h1><p className="text-red-300 text-sm mb-6 leading-relaxed italic">{message}</p></div></div>); }
+function FatalErrorScreen({ message }) { return (<div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4 text-center"><div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-3xl p-10 shadow-2xl"><ShieldAlert className="mx-auto text-red-500 mb-6" size={60} /><h1 className="text-3xl font-black text-white mb-3 tracking-tight text-center">Systemfehler</h1><p className="text-red-300 text-sm mb-6 leading-relaxed italic text-center">{message}</p></div></div>); }
 function SetupScreen() { return (<div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4 text-center"><div className="max-w-2xl w-full bg-gray-900 border border-orange-500/50 rounded-3xl p-10 shadow-2xl text-center"><Settings className="mx-auto text-orange-500 mb-6" size={60} /><h1 className="text-3xl font-black text-white mb-2 tracking-tight">Konfiguration fehlt</h1></div></div>); }
