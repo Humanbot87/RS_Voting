@@ -189,29 +189,36 @@ export default function App() {
   };
 
   const exportToWord = (title, contentHtml) => {
-    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Export</title><style>body { font-family: Arial, sans-serif; } h1 { color: #f97316; } .section { margin-bottom: 20px; } .label { font-weight: bold; color: #666; }</style></head><body>";
+    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Export</title><style>body { font-family: Arial, sans-serif; padding: 20px; } h1 { color: #f97316; font-size: 24pt; border-bottom: 2px solid #eee; padding-bottom: 10px; } h2 { color: #444; font-size: 18pt; margin-top: 20pt; } h3 { color: #666; font-size: 14pt; margin-top: 15pt; } ul { margin-left: 20pt; } li { margin-bottom: 5pt; } .section { margin-bottom: 20pt; }</style></head><body>";
     const footer = "</body></html>";
     const sourceHTML = header + contentHtml + footer;
-    const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(sourceHTML);
-    const fileDownload = document.createElement("a");
-    document.body.appendChild(fileDownload);
-    fileDownload.href = source;
-    fileDownload.download = `${title.replace(/\s+/g, '_')}.doc`;
-    fileDownload.click();
-    document.body.removeChild(fileDownload);
+    
+    // Improved Export using Blob for better browser compatibility
+    const blob = new Blob(['\ufeff', sourceHTML], {
+        type: 'application/msword'
+    });
+    
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${title.replace(/\s+/g, '_')}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleExportEvent = (event) => {
     let content = `<h1>Event: ${event.title}</h1>`;
-    content += `<p>Datum: ${new Date(event.date).toLocaleDateString('de-CH')}</p>`;
-    content += `<p>Kategorie: ${event.category}</p><br/>`;
+    content += `<p><b>Datum:</b> ${new Date(event.date).toLocaleDateString('de-CH')}</p>`;
+    content += `<p><b>Kategorie:</b> ${event.category}</p><br/>`;
     content += `<h2>Abstimmungsergebnisse</h2>`;
     (event.surveys || []).forEach(s => {
         content += `<div class="section"><h3>${s.title}</h3><ul>`;
         const total = (s.options || []).reduce((acc, o) => acc + (o.votes || 0), 0);
         (s.options || []).forEach(o => {
             const pct = total === 0 ? 0 : Math.round((o.votes / total) * 100);
-            content += `<li>${o.text}: ${o.votes} Stimmen (${pct}%)</li>`;
+            content += `<li><b>${o.text}:</b> ${o.votes} Stimmen (${pct}%)</li>`;
         });
         content += `</ul><p>Total Stimmen: ${s.votedUsers?.length || 0}</p></div>`;
     });
@@ -225,7 +232,7 @@ export default function App() {
         const u = users.find(user => user.id === uid);
         if(u && minute.attendance[uid]) content += `<li>${u.firstName} ${u.lastName}</li>`;
     });
-    content += `</ul><br/><h2>Traktanden</h2>`;
+    content += `</ul><br/><h2>Traktanden & Berichte</h2>`;
     Object.keys(minute.agenda || {}).forEach(role => {
         const points = minute.agenda[role];
         if(points && points.length > 0) {
@@ -263,7 +270,8 @@ export default function App() {
   const isBoardMember = (currentUser.groups || []).includes('Vorstand');
   const itemsCount = activeTab === 'events' ? events.filter(e => !e.isArchived).length : 
                      activeTab === 'archive' ? events.filter(e => e.isArchived).length :
-                     activeTab === 'minutes' ? minutes.length : users.length;
+                     activeTab === 'minutes' ? minutes.length : 
+                     activeTab === 'search' ? "Global" : users.length;
 
   return (
     <div className="min-h-screen bg-black text-gray-200 font-sans selection:bg-orange-500 selection:text-white flex flex-col">
@@ -274,8 +282,8 @@ export default function App() {
               <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
             </h1>
             <span className="text-gray-400 text-xs font-bold uppercase tracking-[0.3em] ml-0.5 mt-0.5">Ämme</span>
-            <p className="text-[10px] text-gray-600 font-medium mt-2">
-              {itemsCount} {activeTab === 'events' ? 'Events' : activeTab === 'archive' ? 'Archiv' : activeTab === 'minutes' ? 'Protokolle' : 'Mitglieder'} total
+            <p className="text-[10px] text-gray-600 font-medium mt-2 uppercase tracking-widest">
+              {activeTab === 'search' ? 'Suchergebnisse' : `${itemsCount} ${activeTab === 'events' ? 'Events' : activeTab === 'archive' ? 'Archiv' : activeTab === 'minutes' ? 'Protokolle' : 'Mitglieder'} total`}
             </p>
           </div>
           <div className="flex flex-col items-end gap-3">
@@ -290,14 +298,15 @@ export default function App() {
 
       <div className="px-6 py-4 overflow-x-auto scrollbar-hide">
         <div className="max-w-5xl mx-auto flex gap-3">
-          <TabButton active={activeTab === 'events'} onClick={() => setActiveTab('events')} label="EVENTS" />
-          {isBoardMember && <TabButton active={activeTab === 'minutes'} onClick={() => setActiveTab('minutes')} label="PROTOKOLLE" />}
-          <TabButton active={activeTab === 'archive'} onClick={() => setActiveTab('archive')} label="ARCHIV" />
+          <TabButton active={activeTab === 'events'} onClick={() => { setActiveTab('events'); setCreationTrigger(null); }} label="EVENTS" />
+          {isBoardMember && <TabButton active={activeTab === 'minutes'} onClick={() => { setActiveTab('minutes'); setCreationTrigger(null); }} label="PROTOKOLLE" />}
+          <TabButton active={activeTab === 'archive'} onClick={() => { setActiveTab('archive'); setCreationTrigger(null); }} label="ARCHIV" />
         </div>
       </div>
 
       <main className="flex-1 px-6 pt-4 pb-24 overflow-y-auto">
         <div className="max-w-5xl mx-auto">
+          {activeTab === 'search' && <SearchView events={events} minutes={minutes} isBoardMember={isBoardMember} />}
           {activeTab === 'events' && <EventsView events={events.filter(e => !e.isArchived)} currentUser={currentUser} users={users} dbAppId={appId} db={db} fbUser={fbUser} forceCreate={creationTrigger === 'event'} onCreated={() => setCreationTrigger(null)} />}
           {activeTab === 'archive' && <EventsView events={events.filter(e => e.isArchived)} currentUser={currentUser} isArchive users={users} dbAppId={appId} db={db} fbUser={fbUser} />}
           {activeTab === 'minutes' && isBoardMember && <MinutesView minutes={minutes} users={users} dbAppId={appId} db={db} fbUser={fbUser} forceCreate={creationTrigger === 'minute'} onCreated={() => setCreationTrigger(null)} />}
@@ -310,14 +319,14 @@ export default function App() {
           <button onClick={() => { setActiveTab('events'); setCreationTrigger(null); }} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'events' ? 'text-orange-500' : 'text-gray-500'}`}>
             <Calendar size={22} /><span className="text-[10px] font-bold uppercase tracking-tighter">EVENTS</span>
           </button>
-          <button onClick={() => setActiveTab('archive')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'archive' ? 'text-orange-500' : 'text-gray-500'}`}>
+          <button onClick={() => setActiveTab('search')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'search' ? 'text-orange-500' : 'text-gray-500'}`}>
             <Search size={22} /><span className="text-[10px] font-bold uppercase tracking-tighter">SUCHE</span>
           </button>
           <div className="absolute left-1/2 -translate-x-1/2 -top-10">
             <button onClick={() => setShowCreateModal(true)} className="bg-orange-500 text-black w-16 h-16 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform border-4 border-black"><Plus size={32} strokeWidth={3} /></button>
           </div>
           <div className="w-12"></div>
-          <button onClick={() => setActiveTab('members')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'members' ? 'text-orange-500' : 'text-gray-500'}`}>
+          <button onClick={() => { setActiveTab('members'); setCreationTrigger(null); }} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'members' ? 'text-orange-500' : 'text-gray-500'}`}>
             <Users size={22} /><span className="text-[10px] font-bold uppercase tracking-tighter">STAMMDATEN</span>
           </button>
           <button onClick={() => setShowExportModal(true)} className={`flex flex-col items-center gap-1 transition-colors ${showExportModal ? 'text-orange-500' : 'text-gray-500'}`}>
@@ -349,7 +358,7 @@ export default function App() {
                 <section className="text-left">
                     <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest block mb-4 ml-1">Events</label>
                     <div className="space-y-2">
-                        {events.sort((a,b) => b.date.localeCompare(a.date)).map(e => (
+                        {events.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(e => (
                             <button key={e.id} onClick={() => handleExportEvent(e)} className="w-full flex items-center justify-between p-4 bg-black border border-gray-800 rounded-2xl hover:border-orange-500/40 transition-all text-left group">
                                 <div className="flex items-center gap-4">
                                     <div className="w-10 h-10 bg-orange-500/10 text-orange-500 rounded-xl flex items-center justify-center group-hover:bg-orange-500 group-hover:text-black transition-colors">
@@ -368,7 +377,7 @@ export default function App() {
                 <section className="text-left">
                     <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest block mb-4 ml-1">Protokolle</label>
                     <div className="space-y-2">
-                        {minutes.sort((a,b) => b.date.localeCompare(a.date)).map(m => (
+                        {minutes.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(m => (
                             <button key={m.id} onClick={() => handleExportMinute(m)} className="w-full flex items-center justify-between p-4 bg-black border border-gray-800 rounded-2xl hover:border-blue-500/40 transition-all text-left group">
                                 <div className="flex items-center gap-4">
                                     <div className="w-10 h-10 bg-blue-500/10 text-blue-500 rounded-xl flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors">
@@ -393,6 +402,88 @@ export default function App() {
   );
 }
 
+// --- SEARCH VIEW ---
+function SearchView({ events, minutes, isBoardMember }) {
+    const [query, setQuery] = useState('');
+    
+    const filteredEvents = query.length < 2 ? [] : events.filter(e => 
+        e.title?.toLowerCase().includes(query.toLowerCase()) ||
+        (e.surveys || []).some(s => s.title?.toLowerCase().includes(query.toLowerCase()))
+    );
+
+    const filteredMinutes = (query.length < 2 || !isBoardMember) ? [] : minutes.filter(m => 
+        new Date(m.date).toLocaleDateString('de-CH').includes(query) ||
+        Object.values(m.agenda || {}).some(points => 
+            points.some(p => p.text?.toLowerCase().includes(query.toLowerCase()))
+        )
+    );
+
+    return (
+        <div className="space-y-8 animate-in fade-in duration-300">
+            <div className="relative">
+                <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                <input 
+                    type="text" 
+                    autoFocus
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    placeholder="Suche nach Events, Umfragen oder Protokollen..."
+                    className="w-full bg-[#121212] border border-gray-900 rounded-[1.5rem] pl-14 pr-6 py-5 text-white focus:outline-none focus:border-orange-500 font-bold transition-all shadow-xl"
+                />
+            </div>
+
+            {query.length > 0 && query.length < 2 && (
+                <p className="text-center text-gray-500 text-xs font-black uppercase tracking-widest">Gib mindestens 2 Zeichen ein...</p>
+            )}
+
+            {query.length >= 2 && (
+                <div className="space-y-10">
+                    {filteredEvents.length > 0 && (
+                        <section className="text-left">
+                            <h4 className="text-xs font-black text-orange-500 uppercase tracking-widest mb-4 ml-2">Gefundene Events & Umfragen</h4>
+                            <div className="grid gap-3">
+                                {filteredEvents.map(e => (
+                                    <div key={e.id} className="bg-[#121212] border border-gray-900 p-5 rounded-2xl flex items-center gap-4 text-left">
+                                        <div className="w-12 h-12 bg-orange-500/10 text-orange-500 rounded-xl flex items-center justify-center"><Calendar size={20}/></div>
+                                        <div className="text-left">
+                                            <p className="text-white font-bold">{e.title}</p>
+                                            <p className="text-[10px] text-gray-500 uppercase font-black">{new Date(e.date).toLocaleDateString('de-CH')} • {e.category}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
+
+                    {filteredMinutes.length > 0 && (
+                        <section className="text-left">
+                            <h4 className="text-xs font-black text-blue-500 uppercase tracking-widest mb-4 ml-2">Gefundene Protokollinhalte</h4>
+                            <div className="grid gap-3">
+                                {filteredMinutes.map(m => (
+                                    <div key={m.id} className="bg-[#121212] border border-gray-900 p-5 rounded-2xl flex items-center gap-4 text-left">
+                                        <div className="w-12 h-12 bg-blue-500/10 text-blue-500 rounded-xl flex items-center justify-center"><FileText size={20}/></div>
+                                        <div className="text-left">
+                                            <p className="text-white font-bold">Sitzung vom {new Date(m.date).toLocaleDateString('de-CH')}</p>
+                                            <p className="text-[10px] text-gray-500 uppercase font-black">Vorstandsprotokoll</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
+
+                    {filteredEvents.length === 0 && filteredMinutes.length === 0 && (
+                        <div className="text-center py-20 opacity-40">
+                            <Search size={48} className="mx-auto mb-4" />
+                            <p className="font-black uppercase text-xs tracking-widest">Keine Ergebnisse gefunden.</p>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function TabButton({ active, onClick, label }) {
   return (
     <button onClick={onClick} className="flex flex-col items-center gap-2 group min-w-[100px]">
@@ -404,13 +495,24 @@ function TabButton({ active, onClick, label }) {
   );
 }
 
+function CreateOption({ icon, label, onClick }) {
+  return (
+    <button onClick={onClick} className="w-full flex items-center gap-4 p-4 bg-gray-950 border border-gray-800 rounded-2xl hover:border-orange-500/50 transition-all group text-left">
+      <div className="w-10 h-10 bg-orange-500/10 text-orange-500 rounded-xl flex items-center justify-center group-hover:bg-orange-500 group-hover:text-black transition-colors">
+        {React.cloneElement(icon, { size: 20 })}
+      </div>
+      <span className="text-white font-bold">{label}</span>
+    </button>
+  );
+}
+
 function EmptyPlaceholder({ message }) {
     return (
         <div className="flex flex-col items-center justify-center py-24 text-center opacity-60">
             <div className="w-24 h-24 border-2 border-gray-800 rounded-3xl flex items-center justify-center mb-6 text-gray-800">
                 <Package size={40} />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2 tracking-tight leading-none">Noch nix da.</h3>
+            <h3 className="text-xl font-bold text-white mb-2 tracking-tight">Noch nix da.</h3>
             <p className="text-sm text-gray-500">{message || 'Drück den orangen Knopf.'}</p>
         </div>
     );
@@ -464,7 +566,7 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
             <h1 className="text-6xl font-black mb-1 tracking-tighter leading-none">
                 <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
             </h1>
-            <span className="text-gray-400 text-lg font-bold uppercase tracking-[0.4em]">Ämme</span>
+            <span className="text-gray-400 text-sm font-bold uppercase tracking-[0.3em]">Ämme</span>
         </div>
 
         <div className="bg-[#121212] border border-gray-900 rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden">
@@ -481,11 +583,11 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
                     <form onSubmit={checkName} className="space-y-5 text-left">
                         <div>
                             <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest mb-1 block">Vorname</label>
-                            <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Max" className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
+                            <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
                         </div>
                         <div>
                             <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest mb-1 block">Nachname</label>
-                            <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Muster" className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
+                            <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
                         </div>
                         <button type="submit" className="w-full bg-orange-500 text-black font-black py-5 rounded-2xl mt-4 uppercase text-xs tracking-[0.2em] shadow-xl active:scale-[0.98] transition-all">Anmelden</button>
                     </form>
@@ -549,12 +651,12 @@ function MinutesView({ minutes, users, dbAppId, db, fbUser, forceCreate, onCreat
     <div className="space-y-4 text-left">
       {minutes.length === 0 ? <EmptyPlaceholder message="Erfasse das erste Protokoll für den Vorstand." /> : (
         <div className="grid gap-3 text-left">{minutes.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(m => (
-            <div key={m.id} className="bg-[#121212] border border-gray-900 p-5 rounded-3xl flex justify-between items-center group hover:border-orange-500/30 transition-all shadow-lg text-left text-left">
-              <div className="flex items-center gap-4 text-left">
+            <div key={m.id} className="bg-[#121212] border border-gray-900 p-5 rounded-3xl flex justify-between items-center group hover:border-orange-500/30 transition-all shadow-lg text-left">
+              <div className="flex items-center gap-4 text-left text-left">
                 <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center text-orange-500 border border-gray-900">
                   <FileText size={24} />
                 </div>
-                <div className="text-left">
+                <div className="text-left text-left">
                    <h3 className="text-lg font-bold text-white text-left leading-tight">Sitzung vom {new Date(m.date).toLocaleDateString('de-CH')}</h3>
                    <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mt-1 text-left">Vorstandsprotokoll</p>
                 </div>
@@ -622,7 +724,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
     <form onSubmit={(e) => { e.preventDefault(); onSave({ id: initialData?.id, date, attendance, agenda }); }} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20 text-left">
       <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left">
-        <div className="flex items-center gap-4 text-left"><button type="button" onClick={onCancel} className="text-gray-400 hover:text-white bg-[#121212] p-2 rounded-lg border border-gray-800 transition-all shadow-lg active:scale-90"><ChevronRight className="rotate-180" size={20} /></button><h2 className="text-2xl font-bold text-white tracking-tight text-left leading-none">{initialData ? 'Protokoll bearbeiten' : 'Neue Sitzung'}</h2></div>
+        <div className="flex items-center gap-4 text-left text-left text-left text-left"><button type="button" onClick={onCancel} className="text-gray-400 hover:text-white bg-[#121212] p-2 rounded-lg border border-gray-800 transition-all shadow-lg active:scale-90"><ChevronRight className="rotate-180" size={20} /></button><h2 className="text-2xl font-bold text-white tracking-tight text-left leading-none">{initialData ? 'Protokoll bearbeiten' : 'Neue Sitzung'}</h2></div>
         <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-6 py-3 rounded-xl flex items-center gap-2 shadow-lg active:scale-95 text-left"><Save size={18} /> Speichern</button>
       </div>
 
@@ -633,10 +735,10 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
             <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 focus:outline-none font-bold text-left" />
           </div>
           <div className="bg-[#121212] border border-gray-900 p-6 rounded-2xl shadow-xl text-left">
-            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2 text-left"><ClipboardCheck size={16} className="text-orange-500" /> Anwesenheit</h3>
+            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2 text-left text-left"><ClipboardCheck size={16} className="text-orange-500" /> Anwesenheit</h3>
             <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-hide text-left">
               {boardMembers.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(m => (
-                <div key={m.id} onClick={() => toggleAttendance(m.id)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${attendance[m.id] ? 'bg-orange-500/10 border-orange-500/30' : 'bg-black border-gray-900 opacity-60'} text-left`}>
+                <div key={m.id} onClick={() => toggleAttendance(m.id)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${attendance[m.id] ? 'bg-orange-500/10 border-orange-500/30' : 'bg-black border-gray-900 opacity-60'} text-left text-left text-left`}>
                   <span className="text-sm font-bold text-white text-left">{m.firstName} {m.lastName}</span>
                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${attendance[m.id] ? 'bg-orange-500 border-orange-500' : 'border-gray-700'} text-left`}>{attendance[m.id] && <Check size={12} className="text-black stroke-[4]" />}</div>
                 </div>
@@ -645,7 +747,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
           </div>
         </div>
         <div className="lg:col-span-2 space-y-4 text-left">
-          <div className="bg-[#121212] border border-gray-900 p-6 rounded-2xl shadow-xl text-left">
+          <div className="bg-[#121212] border border-gray-900 p-6 rounded-2xl shadow-xl text-left text-left text-left">
             <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6 flex items-center gap-2 text-left"><FileText size={16} className="text-orange-500" /> Traktanden</h3>
             <div className="space-y-8 text-left">
               {BOARD_ROLES.map(role => (
@@ -655,7 +757,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
                     {(agenda[role] || []).map((point, idx) => (
                       <div key={idx} className="flex flex-col gap-3 p-4 bg-black border border-gray-900 rounded-xl group hover:border-gray-700 transition-all shadow-sm text-left">
                         {editingPoint.role === role && editingPoint.index === idx ? (
-                          <div className="flex gap-2 text-left"><textarea autoFocus value={editingPoint.text} onChange={e => setEditingPoint({...editingPoint, text: e.target.value})} className="flex-1 bg-gray-900 border border-orange-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none transition-all resize-none font-medium text-left" rows={2} /><div className="flex flex-col gap-1 text-left"><button type="button" onClick={saveEdit} className="p-2 bg-green-500/20 text-green-500 rounded-lg hover:bg-green-500/30 transition-all text-left"><Check size={16}/></button><button type="button" onClick={() => setEditingPoint({ role: null, index: null, text: '' })} className="p-2 bg-red-500/20 text-red-500 rounded-lg hover:bg-red-500/30 transition-all text-left"><X size={16}/></button></div></div>
+                          <div className="flex gap-2 text-left"><textarea autoFocus value={editingPoint.text} onChange={e => setEditingPoint({...editingPoint, text: e.target.value})} className="flex-1 bg-gray-900 border border-orange-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none transition-all resize-none font-medium text-left" rows={2} /><div className="flex flex-col gap-1 text-left"><button type="button" onClick={saveEdit} className="p-2 bg-green-500/20 text-green-500 rounded-lg hover:bg-green-500/30 transition-all text-left text-left"><Check size={16}/></button><button type="button" onClick={() => setEditingPoint({ role: null, index: null, text: '' })} className="p-2 bg-red-500/20 text-red-500 rounded-lg hover:bg-red-500/30 transition-all text-left text-left"><X size={16}/></button></div></div>
                         ) : (
                           <div className="space-y-2 text-left">
                             <div className="flex items-start gap-3 text-left">
@@ -667,13 +769,13 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
                                     <button type="button" onClick={() => removePoint(role, index)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg text-left" title="Löschen"><Trash2 size={16} /></button>
                                 </div>
                             </div>
-                            {point.files && point.files.length > 0 && (<div className="flex flex-wrap gap-2 ml-4 text-left">{point.files.map((file, fi) => (<div key={fi} className="flex items-center gap-2 bg-[#121212] border border-gray-900 px-3 py-1.5 rounded-lg group/file shadow-sm text-left"><File size={12} className="text-orange-500/70" /><span className="text-[10px] text-gray-400 font-medium truncate max-w-[120px] uppercase text-left">{file.name}</span><div className="flex gap-1 text-left"><button type="button" onClick={() => downloadFile(file)} className="p-1 text-gray-500 hover:text-orange-400 transition-colors text-left"><Download size={12}/></button><button type="button" onClick={() => removeFile(role, idx, fi)} className="p-1 text-gray-500 hover:text-red-500 transition-colors text-left"><X size={12}/></button></div></div>))}</div>)}
+                            {point.files && point.files.length > 0 && (<div className="flex flex-wrap gap-2 ml-4 text-left">{point.files.map((file, fi) => (<div key={fi} className="flex items-center gap-2 bg-[#121212] border border-gray-900 px-3 py-1.5 rounded-lg group/file shadow-sm text-left"><File size={12} className="text-orange-500/70" /><span className="text-[10px] text-gray-400 font-medium truncate max-w-[120px] uppercase text-left">{file.name}</span><div className="flex gap-1 text-left"><button type="button" onClick={() => downloadFile(file)} className="p-1 text-gray-500 hover:text-orange-400 transition-colors text-left text-left"><Download size={12}/></button><button type="button" onClick={() => removeFile(role, idx, fi)} className="p-1 text-gray-500 hover:text-red-500 transition-colors text-left text-left"><X size={12}/></button></div></div>))}</div>)}
                           </div>
                         )}
                       </div>
                     ))}
                   </div>
-                  <div className="flex gap-2 mt-4 text-left"><input type="text" value={newPoints[role]} onChange={e => handleNewPointChange(role, e.target.value)} onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addPoint(role))} placeholder="Punkt erfassen..." className="flex-1 bg-black border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:border-orange-500 focus:outline-none transition-all shadow-inner font-bold text-left" /><button type="button" onClick={() => addPoint(role)} className="bg-gray-800 hover:bg-gray-700 text-orange-500 p-2.5 rounded-xl transition-all shadow-sm text-left"><Plus size={20} /></button></div>
+                  <div className="flex gap-2 mt-4 text-left"><input type="text" value={newPoints[role]} onChange={e => handleNewPointChange(role, e.target.value)} onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addPoint(role))} placeholder="Punkt erfassen..." className="flex-1 bg-black border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:border-orange-500 focus:outline-none transition-all shadow-inner font-bold text-left" /><button type="button" onClick={() => addPoint(role)} className="bg-gray-800 hover:bg-gray-700 text-orange-500 p-2.5 rounded-xl transition-all shadow-sm text-left text-left"><Plus size={20} /></button></div>
                 </div>
               ))}
             </div>
@@ -744,7 +846,7 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
             <button onClick={() => setShowImport(!showImport)} className="bg-gray-900 hover:bg-gray-800 text-gray-300 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors border border-gray-800 shadow-lg text-left">
                 <FileSpreadsheet size={18} /> Import
             </button>
-            <button onClick={() => setShowAdd(true)} className="bg-orange-500 hover:bg-orange-600 text-black font-black px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-xl active:scale-95 text-left">
+            <button onClick={() => setShowAdd(true)} className="bg-orange-500 hover:bg-orange-600 text-black font-black px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-xl active:scale-95 text-left text-left">
                 <UserPlus size={18} /> Neu
             </button>
         </div>
@@ -771,14 +873,14 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
                 <tbody className="divide-y divide-gray-900 text-left">
                 {users.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(u => (
                     <tr key={u.id} className="hover:bg-orange-500/[0.02] transition-colors group text-left">
-                    <td className="p-6 text-white font-bold text-left leading-tight">{u.lastName} {u.firstName}</td>
+                    <td className="p-6 text-white font-bold text-left leading-tight text-left">{u.lastName} {u.firstName}</td>
                     <td className="p-6 text-left">
                         <span className={`text-[10px] px-3 py-1.5 rounded-xl font-black uppercase tracking-widest inline-flex items-center gap-2 ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20 text-left' : 'bg-gray-900 text-gray-400'}`}>
                             {u.role}
                         </span>
                     </td>
                     <td className="p-6 text-left">
-                        <div className="flex flex-wrap gap-2 text-left">
+                        <div className="flex flex-wrap gap-2 text-left text-left">
                             {(u.groups || []).map(g => (
                                 <span key={g} className="text-[10px] bg-black border border-gray-900 px-3 py-1 rounded-lg text-gray-400 font-bold uppercase tracking-tighter text-left">{g}</span>
                             ))}
@@ -811,16 +913,16 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
   
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit({ ...(initialData || {}), firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups, password: initialData?.password || "" }); }} className="bg-[#121212] border border-gray-900 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
-      <h3 className="text-xl font-bold text-white mb-6 tracking-tight">{initialData ? 'Profil bearbeiten' : 'Neues Mitglied erfassen'}</h3>
+      <h3 className="text-xl font-bold text-white mb-6 tracking-tight text-left">{initialData ? 'Profil bearbeiten' : 'Neues Mitglied erfassen'}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
         <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6">
-        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Berechtigung</label><div className="bg-black border border-gray-800 p-1 rounded-2xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-4 py-3 text-white font-bold focus:ring-0 border-none outline-none cursor-pointer"><option value="member" className="bg-gray-900">Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500 font-bold">Administrator</option></select></div></div>
-        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-black border border-gray-800 p-4 rounded-2xl">
+        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest text-left">Berechtigung</label><div className="bg-black border border-gray-800 p-1 rounded-2xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-4 py-3 text-white font-bold focus:ring-0 border-none outline-none cursor-pointer"><option value="member" className="bg-gray-900">Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500 font-bold">Administrator</option></select></div></div>
+        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest text-left">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-black border border-gray-800 p-4 rounded-2xl">
           {GROUPS.map(g => (
-            <label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all text-left">
+            <label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all text-left text-left">
               <input type="checkbox" checked={selectedGroups.includes(g)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}
             </label>
           ))}
@@ -854,7 +956,7 @@ function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db
   return (
     <div className="space-y-6 text-left">
       {!isArchive && showCreate && <CreateEventForm onSubmit={handleCreateEvent} onCancel={() => { setShowCreate(false); if(onCreated) onCreated(); }} />}
-      {events.length === 0 ? (<EmptyPlaceholder message={isArchive ? "Archiv ist leer." : "Keine aktuellen Events."} />) : (<div className="grid gap-4 md:grid-cols-2">{events.map(e => { const isExp = e.endDate && new Date(e.endDate) <= new Date(); return (<div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-[#121212] border border-gray-900 p-6 rounded-3xl cursor-pointer hover:border-orange-500/50 transition-all group active:scale-[0.98] shadow-lg text-left"><div className="flex justify-between items-start mb-2 text-left"><div className="flex flex-wrap gap-2 text-left"><span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20 text-left">{e.category}</span>{(isExp && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1 text-left"><Clock size={10}/> ABGELAUFEN</span>}</div><ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" /></div><h3 className="text-xl font-bold text-white mt-1 mb-4 group-hover:text-orange-50 transition-colors text-left">{e.title}</h3><div className="flex justify-between text-xs text-gray-500 font-bold pt-4 border-t border-gray-800/50 text-left"><span className="flex items-center gap-1 text-left"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span><span className="flex items-center gap-1 text-left"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span></div></div>); })}</div>)}
+      {events.length === 0 ? (<EmptyPlaceholder message={isArchive ? "Archiv ist leer." : "Keine aktuellen Events."} />) : (<div className="grid gap-4 md:grid-cols-2">{events.map(e => { const isExp = e.endDate && new Date(e.endDate) <= new Date(); return (<div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-[#121212] border border-gray-900 p-6 rounded-3xl cursor-pointer hover:border-orange-500/50 transition-all group active:scale-[0.98] shadow-lg text-left text-left"><div className="flex justify-between items-start mb-2 text-left text-left"><div className="flex flex-wrap gap-2 text-left text-left text-left"><span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20 text-left text-left">{e.category}</span>{(isExp && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1 text-left text-left"><Clock size={10}/> ABGELAUFEN</span>}</div><ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" /></div><h3 className="text-xl font-bold text-white mt-1 mb-4 group-hover:text-orange-50 transition-colors text-left text-left">{e.title}</h3><div className="flex justify-between text-xs text-gray-500 font-bold pt-4 border-t border-gray-800/50 text-left text-left"><span className="flex items-center gap-1 text-left text-left"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span><span className="flex items-center gap-1 text-left text-left"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span></div></div>); })}</div>)}
     </div>
   );
 }
@@ -870,14 +972,14 @@ function CreateEventForm({ onSubmit, onCancel }) {
     <form onSubmit={submit} className="bg-[#121212] border border-gray-900 p-8 rounded-3xl mb-8 space-y-6 shadow-xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
       <div className="absolute top-0 left-0 w-full h-2 bg-orange-500"></div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Titel" className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Kategorie</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>{category === 'Freitext' && (<input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Kategorie Name" className="w-full mt-2 bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold" />)}</div>
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Datum</label><input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Ende (Archiv)</label><input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Titel" className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Kategorie</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>{category === 'Freitext' && (<input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Kategorie Name" className="w-full mt-2 bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold" />)}</div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Datum</label><input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Ende (Archiv)</label><input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
       </div>
       <div className="flex justify-end gap-4 pt-2 text-left">
-        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold text-xs uppercase tracking-widest">Abbrechen</button>
-        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest">Speichern</button>
+        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold text-xs uppercase tracking-widest text-left">Abbrechen</button>
+        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest text-left">Speichern</button>
       </div>
     </form>
   );
