@@ -112,7 +112,7 @@ export default function App() {
           setUsers(snap.docs.map(d => d.data()));
           setIsDBReady(true);
         }, (err) => {
-          if (err.code === 'permission-denied') setPermissionsError("Fehlende Berechtigungen.");
+          if (err.code === 'permission-denied') setPermissionsError("Berechtigungsfehler.");
         }
       );
       unsubEvents = onSnapshot(eventsRef, (snap) => {
@@ -262,11 +262,17 @@ export default function App() {
 
   if (!currentUser) return <LoginScreen onLogin={handleLoginSuccess} users={users} activeSessions={activeSessions} onSeed={seedDatabase} isSeeding={isSeeding} db={db} appId={appId} deobfuscate={deobfuscate} obfuscate={obfuscate} />;
 
-  const isBoardMember = (currentUser.groups || []).includes('Vorstand');
-  const itemsCount = activeTab === 'events' ? events.filter(e => !e.isArchived).length : 
-                     activeTab === 'archive' ? events.filter(e => e.isArchived).length :
-                     activeTab === 'minutes' ? minutes.length : 
-                     activeTab === 'search' ? "Global" : users.length;
+  const isExpired = (event) => {
+    if (!event.endDate) return false;
+    return new Date(event.endDate) < new Date();
+  };
+
+  const filteredItemsCount = () => {
+    if (activeTab === 'events') return events.filter(e => !e.isArchived && !isExpired(e)).length;
+    if (activeTab === 'archive') return events.filter(e => e.isArchived || isExpired(e)).length;
+    if (activeTab === 'minutes') return minutes.length;
+    return users.length;
+  };
 
   return (
     <div className="min-h-screen bg-black text-gray-200 font-sans selection:bg-orange-500 selection:text-white flex flex-col">
@@ -278,7 +284,7 @@ export default function App() {
             </h1>
             <span className="text-gray-400 text-xs font-bold uppercase tracking-[0.3em] ml-0.5 mt-0.5">Ämme</span>
             <p className="text-[10px] text-gray-600 font-medium mt-2 uppercase tracking-widest">
-              {activeTab === 'search' ? 'Suchergebnisse' : `${itemsCount} ${activeTab === 'events' ? 'Events' : activeTab === 'archive' ? 'Archiv' : activeTab === 'minutes' ? 'Protokolle' : 'Mitglieder'} total`}
+              {activeTab === 'search' ? 'Suchergebnisse' : `${filteredItemsCount()} ${activeTab === 'events' ? 'Events' : activeTab === 'archive' ? 'Archiv' : activeTab === 'minutes' ? 'Protokolle' : 'Mitglieder'} total`}
             </p>
           </div>
           <div className="flex flex-col items-end gap-3">
@@ -302,8 +308,8 @@ export default function App() {
       <main className="flex-1 px-6 pt-4 pb-24 overflow-y-auto">
         <div className="max-w-5xl mx-auto">
           {activeTab === 'search' && <SearchView events={events} minutes={minutes} isBoardMember={isBoardMember} />}
-          {activeTab === 'events' && <EventsView events={events.filter(e => !e.isArchived)} currentUser={currentUser} users={users} dbAppId={appId} db={db} fbUser={fbUser} forceCreate={creationTrigger === 'event'} onCreated={() => setCreationTrigger(null)} />}
-          {activeTab === 'archive' && <EventsView events={events.filter(e => e.isArchived)} currentUser={currentUser} isArchive users={users} dbAppId={appId} db={db} fbUser={fbUser} />}
+          {activeTab === 'events' && <EventsView events={events.filter(e => !e.isArchived && !isExpired(e))} currentUser={currentUser} users={users} dbAppId={appId} db={db} fbUser={fbUser} forceCreate={creationTrigger === 'event'} onCreated={() => setCreationTrigger(null)} />}
+          {activeTab === 'archive' && <EventsView events={events.filter(e => e.isArchived || isExpired(e))} currentUser={currentUser} isArchive users={users} dbAppId={appId} db={db} fbUser={fbUser} />}
           {activeTab === 'minutes' && isBoardMember && <MinutesView minutes={minutes} users={users} dbAppId={appId} db={db} fbUser={fbUser} forceCreate={creationTrigger === 'minute'} onCreated={() => setCreationTrigger(null)} />}
           {activeTab === 'members' && currentUser.role === 'admin' && <MembersView users={users} dbAppId={appId} db={db} fbUser={fbUser} deobfuscate={deobfuscate} obfuscate={obfuscate} forceCreate={creationTrigger === 'member'} onCreated={() => setCreationTrigger(null)} />}
         </div>
@@ -378,7 +384,7 @@ export default function App() {
                                     <div className="w-10 h-10 bg-blue-500/10 text-blue-500 rounded-xl flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors">
                                         <FileText size={18} />
                                     </div>
-                                    <div className="text-left">
+                                    <div className="text-left text-left">
                                         <p className="text-sm font-bold text-white leading-tight">Sitzung vom {new Date(m.date).toLocaleDateString('de-CH')}</p>
                                         <p className="text-[10px] text-gray-500 font-bold uppercase mt-1 tracking-tighter">Protokoll</p>
                                     </div>
@@ -434,13 +440,13 @@ function SearchView({ events, minutes, isBoardMember }) {
             {query.length >= 2 && (
                 <div className="space-y-10">
                     {filteredEvents.length > 0 && (
-                        <section className="text-left">
+                        <section className="text-left text-left">
                             <h4 className="text-xs font-black text-orange-500 uppercase tracking-widest mb-4 ml-2">Events & Umfragen</h4>
-                            <div className="grid gap-3">
+                            <div className="grid gap-3 text-left text-left">
                                 {filteredEvents.map(e => (
                                     <div key={e.id} className="bg-[#121212] border border-gray-900 p-5 rounded-2xl flex items-center gap-4 text-left">
                                         <div className="w-12 h-12 bg-orange-500/10 text-orange-500 rounded-xl flex items-center justify-center"><Calendar size={20}/></div>
-                                        <div className="text-left">
+                                        <div className="text-left text-left">
                                             <p className="text-white font-bold">{e.title}</p>
                                             <p className="text-[10px] text-gray-500 uppercase font-black">{new Date(e.date).toLocaleDateString('de-CH')} • {e.category}</p>
                                         </div>
@@ -451,15 +457,15 @@ function SearchView({ events, minutes, isBoardMember }) {
                     )}
 
                     {filteredMinutes.length > 0 && (
-                        <section className="text-left text-left">
+                        <section className="text-left text-left text-left text-left text-left">
                             <h4 className="text-xs font-black text-blue-500 uppercase tracking-widest mb-4 ml-2">Protokollinhalte</h4>
-                            <div className="grid gap-3 text-left">
+                            <div className="grid gap-3 text-left text-left text-left">
                                 {filteredMinutes.map(m => (
                                     <div key={m.id} className="bg-[#121212] border border-gray-900 p-5 rounded-2xl flex items-center gap-4 text-left">
                                         <div className="w-12 h-12 bg-blue-500/10 text-blue-500 rounded-xl flex items-center justify-center"><FileText size={20}/></div>
-                                        <div className="text-left text-left">
+                                        <div className="text-left text-left text-left text-left">
                                             <p className="text-white font-bold">{new Date(m.date).toLocaleDateString('de-CH')}</p>
-                                            <p className="text-[10px] text-gray-500 uppercase font-black">Sitzungsprotokoll</p>
+                                            <p className="text-[10px] text-gray-500 uppercase font-black">Vorstandsprotokoll</p>
                                         </div>
                                     </div>
                                 ))}
@@ -468,9 +474,9 @@ function SearchView({ events, minutes, isBoardMember }) {
                     )}
 
                     {filteredEvents.length === 0 && filteredMinutes.length === 0 && (
-                        <div className="text-center py-20 opacity-40 text-center mx-auto">
-                            <Search size={48} className="mx-auto mb-4" />
-                            <p className="font-black uppercase text-xs tracking-widest text-center">Keine Ergebnisse gefunden.</p>
+                        <div className="text-center py-20 opacity-40 text-center mx-auto text-center">
+                            <Search size={48} className="mx-auto mb-4 text-center" />
+                            <p className="font-black uppercase text-xs tracking-widest text-center text-center">Keine Ergebnisse gefunden.</p>
                         </div>
                     )}
                 </div>
@@ -479,28 +485,41 @@ function SearchView({ events, minutes, isBoardMember }) {
     );
 }
 
-// --- SUB-KOMPONENTEN FÜR EVENTS & ABSTIMMUNGEN ---
+// --- EVENTS & SURVEY COMPONENTS ---
 
-function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db, fbUser, isAutoArchived, forceCreate, onCreated }) {
+function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db, fbUser, forceCreate, onCreated }) {
   const [showCreate, setShowCreate] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const getDbRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'events', id);
   
   useEffect(() => { if(forceCreate) setShowCreate(true); }, [forceCreate]);
 
-  const handleCreateEvent = async (n) => {
+  const handleCreateOrUpdate = async (n) => {
     if (!fbUser) return;
-    const id = Date.now().toString();
-    await setDoc(getDbRef(id), { ...n, id, isArchived: false, surveys: [] });
+    const id = n.id || Date.now().toString();
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', id), { ...n, id, isArchived: n.isArchived || false, surveys: n.surveys || [] });
     setShowCreate(false);
+    setEditingEvent(null);
     if(onCreated) onCreated();
   };
 
+  const handleArchive = async (id, s) => {
+    if (!fbUser) return;
+    const e = events.find(ev => ev.id === id);
+    if(e) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', id), { ...e, isArchived: s });
+    setSelectedEvent(null);
+  };
+
+  const handleDeleteEvent = async (id) => {
+    if (!fbUser || !confirm('Event wirklich löschen?')) return;
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', id));
+    setSelectedEvent(null);
+  };
+  
   if (selectedEvent) { 
       const evData = events.find(e => e.id === selectedEvent.id); 
       if (evData) {
-          const isExp = evData.endDate && new Date(evData.endDate) <= new Date(); 
-          return <EventDetail event={evData} onBack={() => setSelectedEvent(null)} currentUser={currentUser} users={users} dbAppId={dbAppId} db={db} fbUser={fbUser} isAutoArchived={isExp} />; 
+          return <EventDetail event={evData} onBack={() => setSelectedEvent(null)} onEdit={() => { setEditingEvent(evData); setSelectedEvent(null); }} onArchive={handleArchive} onDelete={handleDeleteEvent} currentUser={currentUser} users={users} dbAppId={dbAppId} db={db} fbUser={fbUser} />; 
       } else {
           setSelectedEvent(null);
           return null;
@@ -509,44 +528,42 @@ function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db
   
   return (
     <div className="space-y-6 text-left">
-      {!isArchive && showCreate && <CreateEventForm onSubmit={handleCreateEvent} onCancel={() => { setShowCreate(false); if(onCreated) onCreated(); }} />}
-      {events.length === 0 ? <EmptyPlaceholder message={isArchive ? "Archiv ist leer." : "Keine aktuellen Events."} /> : (
+      {(showCreate || editingEvent) && <CreateEventForm initialData={editingEvent} onSubmit={handleCreateOrUpdate} onCancel={() => { setShowCreate(false); setEditingEvent(null); if(onCreated) onCreated(); }} />}
+      {events.length === 0 ? <EmptyPlaceholder message={isArchive ? "Archiv leer." : "Keine aktuellen Events."} /> : (
         <div className="grid gap-4 md:grid-cols-2">
-            {events.map(e => {
-                const isExp = e.endDate && new Date(e.endDate) <= new Date();
-                return (
-                    <div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-[#121212] border border-gray-900 p-6 rounded-3xl cursor-pointer hover:border-orange-500/50 transition-all group active:scale-[0.98] shadow-lg text-left">
-                        <div className="flex justify-between items-start mb-2 text-left">
-                            <div className="flex flex-wrap gap-2 text-left">
-                                <span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20 text-left">{e.category}</span>
-                                {(isExp && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1 text-left"><Clock size={10}/> ABGELAUFEN</span>}
-                            </div>
-                            <ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" />
+            {events.map(e => (
+                <div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-[#121212] border border-gray-900 p-6 rounded-3xl cursor-pointer hover:border-orange-500/50 transition-all group active:scale-[0.98] shadow-lg text-left relative overflow-hidden">
+                    <div className="flex justify-between items-start mb-2 text-left">
+                        <div className="flex flex-wrap gap-2 text-left">
+                            <span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20 text-left">{e.category}</span>
+                            {(e.endDate && new Date(e.endDate) < new Date() && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1 text-left"><Clock size={10}/> ABGELAUFEN</span>}
                         </div>
-                        <h3 className="text-xl font-bold text-white mt-1 mb-4 group-hover:text-orange-50 transition-colors text-left leading-tight">{e.title}</h3>
-                        <div className="flex justify-between text-xs text-gray-500 font-bold pt-4 border-t border-gray-800/50 text-left">
-                            <span className="flex items-center gap-1 text-left"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span>
-                            <span className="flex items-center gap-1 text-left"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span>
-                        </div>
+                        <ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" />
                     </div>
-                );
-            })}
+                    <h3 className="text-xl font-bold text-white mt-1 mb-4 group-hover:text-orange-50 transition-colors text-left leading-tight">{e.title}</h3>
+                    <div className="flex justify-between text-xs text-gray-500 font-bold pt-4 border-t border-gray-800/50 text-left">
+                        <span className="flex items-center gap-1 text-left"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span>
+                        <span className="flex items-center gap-1 text-left"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span>
+                    </div>
+                </div>
+            ))}
         </div>
       )}
     </div>
   );
 }
 
-function CreateEventForm({ onSubmit, onCancel }) {
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0]);
-  const [date, setDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+function CreateEventForm({ onSubmit, onCancel, initialData }) {
+  const [title, setTitle] = useState(initialData?.title || '');
+  const [category, setCategory] = useState(initialData?.category || CATEGORIES[0]);
+  const [date, setDate] = useState(initialData?.date || '');
+  const [endDate, setEndDate] = useState(initialData?.endDate || '');
   const [customCategory, setCustomCategory] = useState('');
-  const submit = (e) => { e.preventDefault(); const finalCategory = category === 'Freitext' ? customCategory.trim() : category; onSubmit({ title, category: finalCategory, date, endDate }); };
+  const submit = (e) => { e.preventDefault(); const finalCategory = category === 'Freitext' ? customCategory.trim() : category; onSubmit({ ...initialData, title, category: finalCategory, date, endDate }); };
   return (
     <form onSubmit={submit} className="bg-[#121212] border border-gray-900 p-8 rounded-3xl mb-8 space-y-6 shadow-xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
       <div className="absolute top-0 left-0 w-full h-2 bg-orange-500"></div>
+      <h3 className="text-2xl font-black text-white tracking-tight leading-none mb-6">{initialData ? 'Event bearbeiten' : 'Neuen Event erfassen'}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
         <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Titel" className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
         <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Kategorie</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>{category === 'Freitext' && (<input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Kategorie Name" className="w-full mt-2 bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold" />)}</div>
@@ -561,19 +578,31 @@ function CreateEventForm({ onSubmit, onCancel }) {
   );
 }
 
-function EventDetail({ event, onBack, currentUser, users, dbAppId, db, fbUser, isAutoArchived }) {
+function EventDetail({ event, onBack, onEdit, onArchive, onDelete, currentUser, users, dbAppId, db, fbUser }) {
   const [showCreateSurvey, setShowCreateSurvey] = useState(false);
   const getDbRef = () => doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
   const handleAddSurvey = async (newSurvey) => { if (!fbUser) return; const updatedSurveys = [...(event.surveys || []), { ...newSurvey, id: Date.now().toString(), status: 'draft', votedUsers: [] }]; await setDoc(getDbRef(), { ...event, surveys: updatedSurveys }); setShowCreateSurvey(false); };
   const updateSurvey = async (surveyId, updates) => { if (!fbUser) return; const updatedSurveys = (event.surveys || []).map(s => s.id === surveyId ? { ...s, ...updates } : s); await setDoc(getDbRef(), { ...event, surveys: updatedSurveys }); };
   const handleVote = async (surveyId, selectedOptionIds) => { if (!fbUser) return; const updatedSurveys = (event.surveys || []).map(s => { if (s.id === surveyId) { const updatedOptions = s.options.map(opt => selectedOptionIds.includes(opt.id) ? { ...opt, votes: (opt.votes || 0) + 1 } : opt); return { ...s, options: updatedOptions, votedUsers: [...(s.votedUsers || []), currentUser.id] }; } return s; }); await setDoc(getDbRef(), { ...event, surveys: updatedSurveys }); };
-  const isActuallyArchived = event.isArchived || isAutoArchived;
+  
+  const isExp = event.endDate && new Date(event.endDate) < new Date();
+  const isActuallyArchived = event.isArchived || isExp;
   const surveys = event.surveys || [];
+  
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 text-left text-left">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10 text-left"><div className="flex items-center gap-5 text-left"><button onClick={onBack} className="text-gray-400 hover:text-white bg-[#121212] p-3 rounded-2xl border border-gray-800 transition-all hover:bg-gray-800 active:scale-90 shadow-lg text-left"><ChevronRight className="rotate-180" size={24} /></button><div className="flex-1 text-left text-left"><h2 className="text-3xl font-black text-white tracking-tight text-left leading-tight">{event.title}</h2><div className="flex flex-wrap items-center gap-3 text-left"><p className="text-sm text-gray-500 font-bold uppercase tracking-widest text-left">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>{isActuallyArchived && <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black uppercase px-3 py-1 rounded-lg border border-orange-500/20 tracking-wider text-left">Archiviert</span>}</div></div></div>{currentUser.role === 'admin' && (<div className="flex gap-2 text-left"><button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-black font-black px-6 py-3 rounded-2xl flex items-center gap-2 shadow-xl active:scale-95 uppercase text-xs tracking-widest text-left">{showCreateSurvey ? 'Abbrechen' : <><Plus size={20} /> Umfrage</>}</button></div>)}</div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10 text-left text-left"><div className="flex items-center gap-5 text-left text-left"><button onClick={onBack} className="text-gray-400 hover:text-white bg-[#121212] p-3 rounded-2xl border border-gray-800 transition-all hover:bg-gray-800 active:scale-90 shadow-lg text-left"><ChevronRight className="rotate-180" size={24} /></button><div className="flex-1 text-left text-left text-left text-left"><h2 className="text-3xl font-black text-white tracking-tight text-left text-left leading-tight">{event.title}</h2><div className="flex flex-wrap items-center gap-3 text-left text-left"><p className="text-sm text-gray-500 font-bold uppercase tracking-widest text-left">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>{isActuallyArchived && <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black uppercase px-3 py-1 rounded-lg border border-orange-500/20 tracking-wider text-left text-left">Archiviert</span>}</div></div></div>
+        {currentUser.role === 'admin' && (
+          <div className="flex gap-2 text-left">
+            <button onClick={onEdit} className="p-3 bg-black border border-gray-800 rounded-2xl text-gray-400 hover:text-blue-500 transition-all"><Edit2 size={18} /></button>
+            <button onClick={() => onArchive(event.id, !event.isArchived)} className="p-3 bg-black border border-gray-800 rounded-2xl text-gray-400 hover:text-orange-500 transition-all"><Archive size={18} /></button>
+            <button onClick={() => onDelete(event.id)} className="p-3 bg-black border border-gray-800 rounded-2xl text-gray-400 hover:text-red-500 transition-all"><Trash2 size={18} /></button>
+            {!isActuallyArchived && <button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-black font-black px-6 py-3 rounded-2xl shadow-xl active:scale-95 text-[10px] uppercase tracking-widest ml-2 transition-all">{showCreateSurvey ? 'Abbruch' : <><Plus size={16} className="mr-1"/> Umfrage</>}</button>}
+          </div>
+        )}
+      </div>
       {showCreateSurvey && <CreateSurveyForm onSubmit={handleAddSurvey} isMusicMode={event.category === 'Liederwahl'} />}
-      <div className="space-y-8 text-left">{surveys.length === 0 ? <p className="text-gray-500 text-center py-20 bg-gray-900/30 rounded-[2.5rem] border border-dashed border-gray-800 font-bold uppercase text-[10px] tracking-[0.2em] italic text-center">Keine Umfragen erfasst.</p> : (surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} isArchivedView={isActuallyArchived} />))}</div>
+      <div className="space-y-8 text-left text-left text-left">{surveys.length === 0 ? <p className="text-gray-500 text-center py-20 bg-gray-900/30 rounded-[2.5rem] border border-dashed border-gray-800 font-bold uppercase text-[10px] tracking-[0.2em] italic text-center">Keine Umfragen.</p> : (surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} isArchivedView={isActuallyArchived} />))}</div>
     </div>
   );
 }
@@ -582,21 +611,37 @@ function CreateSurveyForm({ onSubmit, isMusicMode }) {
   const [title, setTitle] = useState('');
   const [maxAnswers, setMaxAnswers] = useState(1);
   const [allowedGroups, setAllowedGroups] = useState(GROUPS); 
-  const [options, setOptions] = useState([{ id: '1', text: '' }, { id: '2', text: '' }]);
+  const [options, setOptions] = useState([{ id: '1', text: '', link: '' }, { id: '2', text: '', link: '' }]);
   const handleGroupToggle = (group) => setAllowedGroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
   const handleOptionChange = (id, field, value) => setOptions(prev => prev.map(o => o.id === id ? { ...o, [field]: value } : o));
-  const addOption = () => { if (options.length < 10) setOptions([...options, { id: Date.now().toString(), text: '' }]); };
+  const addOption = () => { if (options.length < 10) setOptions([...options, { id: Date.now().toString(), text: '', link: '' }]); };
   const removeOption = (id) => { if (options.length > 2) setOptions(prev => prev.filter(o => o.id !== id)); };
-  const submit = (e) => { e.preventDefault(); const validOptions = options.filter(o => o.text.trim() !== '').map((o, i) => ({ id: `o${i}-${Date.now()}`, text: o.text.trim(), votes: 0 })); onSubmit({ title, maxAnswers, allowedGroups, options: validOptions }); };
+  const submit = (e) => { e.preventDefault(); const validOptions = options.filter(o => o.text.trim() !== '').map((o, i) => ({ id: `o${i}-${Date.now()}`, text: o.text.trim(), link: o.link.trim(), votes: 0 })); onSubmit({ title, maxAnswers, allowedGroups, options: validOptions }); };
   return (
     <form onSubmit={submit} className="bg-[#121212] border border-gray-900 p-8 rounded-[2.5rem] mb-8 shadow-xl animate-in slide-in-from-top-4 duration-300 text-left">
       <h3 className="text-xl font-bold text-white mb-6 uppercase tracking-wider border-b border-gray-800 pb-4 text-left">Umfrage Details</h3>
       <div className="space-y-6 text-left">
-        <div><label className="block text-[10px] font-black text-gray-500 uppercase mb-1 ml-1 tracking-widest text-left">Frage</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder={isMusicMode ? "Z.B. Welches Lied?" : "Frage eingeben..."} className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 focus:outline-none transition-all font-bold text-left" /></div>
-        <div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest text-left">Optionen (Max. 10)</label><div className="space-y-3 text-left">{options.map((opt, i) => (<div key={opt.id} className="flex gap-2 text-left"><input type="text" required value={opt.text} onChange={e => handleOptionChange(opt.id, 'text', e.target.value)} placeholder={`Option ${i + 1}`} className="flex-1 bg-black border border-gray-800 rounded-2xl px-5 py-3 text-white focus:border-orange-500 text-sm focus:outline-none font-bold text-left" /><button type="button" onClick={() => removeOption(opt.id)} disabled={options.length <= 2} className="p-3 text-gray-600 hover:text-red-500 disabled:opacity-30 transition-all text-left"><Trash2 size={20} /></button></div>))}</div><button type="button" onClick={addOption} className="text-orange-500 text-[10px] font-black uppercase tracking-widest mt-4 flex items-center gap-2 hover:text-orange-400 transition-all ml-1 text-left"><Plus size={16} className="bg-orange-500/10 rounded-full p-0.5 text-left"/> Weitere Option</button></div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-gray-800 pt-6 mt-4 text-left"><div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest text-left">Max. Stimmen</label><input type="number" min="1" max="10" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-3 text-white focus:border-orange-500 transition-all font-bold focus:outline-none text-left" /></div><div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest text-left">Wahlberechtigte</label><div className="grid grid-cols-2 gap-2 text-left">{GROUPS.map(g => (<label key={g} className="text-[11px] text-gray-400 font-bold flex items-center gap-2 cursor-pointer hover:text-white transition-all text-left"><input type="checkbox" checked={allowedGroups.includes(g)} onChange={() => handleGroupToggle(g)} className="w-4 h-4 accent-orange-500 rounded text-left" />{g}</label>))}</div></div></div>
+        <div><label className="block text-[10px] font-black text-gray-500 uppercase mb-1 ml-1 tracking-widest text-left">Frage / Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder={isMusicMode ? "Z.B. Welches Lied?" : "Frage eingeben..."} className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 focus:outline-none transition-all font-bold text-left text-left" /></div>
+        <div><label className="block text-[10px] font-black text-gray-500 uppercase mb-3 ml-1 tracking-widest text-left">Optionen (Max. 10)</label>
+            <div className="space-y-4 text-left">
+                {options.map((opt, i) => (
+                    <div key={opt.id} className="space-y-3 p-4 bg-black border border-gray-800 rounded-2xl text-left">
+                        <div className="flex gap-2 text-left">
+                            <input type="text" required value={opt.text} onChange={e => handleOptionChange(opt.id, 'text', e.target.value)} placeholder={`Option ${i + 1}`} className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white focus:border-orange-500 text-sm font-bold text-left" />
+                            <button type="button" onClick={() => removeOption(opt.id)} disabled={options.length <= 2} className="p-2.5 text-gray-600 hover:text-red-500 disabled:opacity-30 transition-all"><Trash2 size={20} /></button>
+                        </div>
+                        <div className="flex items-center gap-3 bg-gray-950 border border-gray-900 px-4 py-2 rounded-xl focus-within:border-orange-500/50 transition-all">
+                            <Youtube size={16} className="text-gray-600" />
+                            <input type="url" value={opt.link} onChange={e => handleOptionChange(opt.id, 'link', e.target.value)} placeholder="YouTube Link (optional)" className="flex-1 bg-transparent border-none text-[10px] text-gray-400 focus:ring-0 font-mono" />
+                        </div>
+                    </div>
+                ))}
+            </div>
+            <button type="button" onClick={addOption} className="text-orange-500 text-[10px] font-black uppercase tracking-widest mt-4 flex items-center gap-2 hover:text-orange-400 transition-all ml-1 text-left"><Plus size={16} className="bg-orange-500/10 rounded-full p-0.5 text-left"/> Weitere Option</button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-gray-800 pt-6 mt-4 text-left text-left"><div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest text-left text-left">Max. Stimmen</label><input type="number" min="1" max="10" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-3 text-white focus:border-orange-500 transition-all font-bold focus:outline-none text-left text-left" /></div><div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest text-left text-left text-left">Wahlberechtigte</label><div className="grid grid-cols-2 gap-2 text-left text-left text-left">{GROUPS.map(g => (<label key={g} className="text-[11px] text-gray-400 font-bold flex items-center gap-2 cursor-pointer hover:text-white transition-all text-left text-left text-left text-left"><input type="checkbox" checked={allowedGroups.includes(g)} onChange={() => handleGroupToggle(g)} className="w-4 h-4 accent-orange-500 rounded text-left text-left text-left" />{g}</label>))}</div></div></div>
       </div>
-      <div className="flex justify-end mt-8 text-left"><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest text-left">Speichern</button></div>
+      <div className="flex justify-end mt-8 text-left text-left text-left text-left"><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest text-left">Speichern</button></div>
     </form>
   );
 }
@@ -605,228 +650,47 @@ function SurveyCard({ survey, currentUser, onUpdate, onVote, users, isArchivedVi
   const [selectedOptions, setSelectedOptions] = useState([]);
   const votedUsers = survey.votedUsers || [];
   const totalVotes = survey.options.reduce((sum, opt) => sum + (opt.votes || 0), 0);
-  const eligibleUsersCount = users.filter(u => survey.allowedGroups.some(g => u.groups.includes(g))).length;
+  const eligibleUsersCount = users.filter(u => survey.allowedGroups.some(g => (u.groups || []).includes(g))).length;
   const hasVoted = votedUsers.includes(currentUser.id);
-  const isEligible = currentUser.role === 'admin' || survey.allowedGroups.some(g => currentUser.groups.includes(g));
+  const isEligible = currentUser.role === 'admin' || survey.allowedGroups.some(g => (currentUser.groups || []).includes(g));
   if (!isEligible && currentUser.role !== 'admin') return null; 
   if (currentUser.role !== 'admin' && survey.status === 'draft') return null;
   const max = survey.maxAnswers || 1;
   const toggleOption = (id) => { if (selectedOptions.includes(id)) setSelectedOptions(prev => prev.filter(x => x !== id)); else if (max === 1) setSelectedOptions([id]); else if (selectedOptions.length < max) setSelectedOptions([...selectedOptions, id]); };
   const showResults = survey.status === 'published' || isArchivedView || (currentUser.role === 'admin' && hasVoted);
   return (
-    <div className={`bg-[#121212] border rounded-[2rem] overflow-hidden transition-all shadow-md ${survey.status === 'active' && !isArchivedView ? 'border-orange-500/40' : 'border-gray-900'} text-left text-left text-left`}>
-      <div className="p-6 border-b border-gray-900 bg-black/30 flex flex-col sm:flex-row sm:justify-between items-start gap-4 text-left">
-        <div className="text-left text-left">
-          <div className="flex flex-wrap items-center gap-2 mb-2 text-left">
-             {survey.status === 'draft' && <span className="text-[10px] bg-gray-800 text-gray-400 px-3 py-1 rounded-full font-black uppercase tracking-widest border border-gray-700 text-left">Entwurf</span>}
-             {survey.status === 'active' && !isArchivedView && <span className="text-[10px] bg-green-500/10 text-green-500 px-3 py-1 rounded-full font-black uppercase tracking-widest flex items-center gap-2 border border-green-500/10 text-left"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse text-left"></span> Aktiv</span>}
-             {(survey.status === 'published' || isArchivedView) && <span className="text-[10px] bg-orange-500/10 text-orange-500 px-3 py-1 rounded-full font-black uppercase tracking-widest border border-orange-500/10 text-left text-left">Abgeschlossen</span>}
-             <span className="text-[10px] text-gray-600 font-black uppercase tracking-[0.1em] ml-1 text-left">{max === 1 ? 'Single Choice' : `Max. ${max} Stimmen`}</span>
+    <div className={`bg-[#121212] border rounded-[2rem] overflow-hidden transition-all shadow-md ${survey.status === 'active' && !isArchivedView ? 'border-orange-500/40' : 'border-gray-900'} text-left text-left text-left text-left`}>
+      <div className="p-6 border-b border-gray-900 bg-black/30 flex flex-col sm:flex-row sm:justify-between items-start gap-4 text-left text-left text-left text-left">
+        <div className="text-left text-left text-left text-left text-left">
+          <div className="flex flex-wrap items-center gap-2 mb-2 text-left text-left text-left">
+             {survey.status === 'draft' && <span className="text-[10px] bg-gray-800 text-gray-400 px-3 py-1 rounded-full font-black uppercase tracking-widest border border-gray-700 text-left text-left">Entwurf</span>}
+             {survey.status === 'active' && !isArchivedView && <span className="text-[10px] bg-green-500/10 text-green-500 px-3 py-1 rounded-full font-black uppercase tracking-widest flex items-center gap-2 border border-green-500/10 text-left text-left"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse text-left text-left"></span> Aktiv</span>}
+             {(survey.status === 'published' || isArchivedView) && <span className="text-[10px] bg-orange-500/10 text-orange-500 px-3 py-1 rounded-full font-black uppercase tracking-widest border border-orange-500/10 text-left text-left text-left">Abgeschlossen</span>}
+             <span className="text-[10px] text-gray-600 font-black uppercase tracking-[0.1em] ml-1 text-left text-left text-left">{max === 1 ? 'Single Choice' : `Max. ${max} Stimmen`}</span>
           </div>
-          <h4 className="text-xl font-bold text-white leading-tight text-left text-left">{survey.title}</h4>
+          <h4 className="text-xl font-bold text-white leading-tight text-left text-left text-left text-left text-left">{survey.title}</h4>
         </div>
         {currentUser.role === 'admin' && (
-          <div className="flex flex-row sm:flex-col items-center sm:items-end gap-3 sm:gap-2 w-full sm:w-auto justify-between text-left text-left">
-            {!isArchivedView && (<div className="flex gap-2 text-left">{survey.status === 'draft' && <button onClick={() => onUpdate({ status: 'active' })} className="text-[10px] font-black uppercase bg-green-500 text-black px-4 py-2 rounded-xl active:scale-95 transition-all text-left"><CheckCircle2 size={14}/> Freigeben</button>}{survey.status === 'active' && <button onClick={() => onUpdate({ status: 'published' })} className="text-[10px] font-black uppercase bg-orange-500 hover:bg-orange-600 text-black px-4 py-2 rounded-xl active:scale-95 shadow-lg transition-all text-left"><Eye size={14}/> Beenden</button>}</div>)}
-            <div className="text-[10px] text-gray-600 font-black uppercase tracking-wider flex items-center gap-2 bg-black px-3 py-1.5 rounded-xl border border-gray-900 text-left"><Users size={12} className="text-orange-500 text-left" /> {votedUsers.length} / {eligibleUsersCount}</div>
+          <div className="flex flex-row sm:flex-col items-center sm:items-end gap-3 sm:gap-2 w-full sm:w-auto justify-between text-left text-left text-left">
+            {!isArchivedView && (<div className="flex gap-2 text-left text-left text-left">{survey.status === 'draft' && <button onClick={() => onUpdate({ status: 'active' })} className="text-[10px] font-black uppercase bg-green-500 text-black px-4 py-2 rounded-xl active:scale-95 transition-all text-left text-left"><CheckCircle2 size={14}/> Freigeben</button>}{survey.status === 'active' && <button onClick={() => onUpdate({ status: 'published' })} className="text-[10px] font-black uppercase bg-orange-500 hover:bg-orange-600 text-black px-4 py-2 rounded-xl active:scale-95 shadow-lg transition-all text-left text-left"><Eye size={14}/> Beenden</button>}</div>)}
+            <div className="text-[10px] text-gray-600 font-black uppercase tracking-wider flex items-center gap-2 bg-black px-3 py-1.5 rounded-xl border border-gray-900 text-left text-left"><Users size={12} className="text-orange-500 text-left text-left" /> {votedUsers.length} / {eligibleUsersCount}</div>
           </div>
         )}
       </div>
-      <div className="p-6 text-left">
+      <div className="p-6 text-left text-left text-left">
         {showResults ? (
-          <div className="space-y-4 text-left">
-             {survey.status === 'active' && !isArchivedView && currentUser.role === 'admin' && (<div className="mb-4 p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl flex items-start gap-3 text-left"><AlertCircle className="text-blue-500 mt-0.5 flex-shrink-0 text-left" size={18} /><p className="text-[11px] text-blue-400 italic text-left text-left">Administratoren sehen die Resultate live.</p></div>)}
-             {survey.options.map(opt => { const pct = totalVotes === 0 ? 0 : Math.round(((opt.votes || 0) / totalVotes) * 100); return (<div key={opt.id} className="relative w-full bg-black border border-gray-900 rounded-2xl overflow-hidden p-4 flex justify-between items-center group transition-all text-left"><div className="absolute top-0 left-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out text-left" style={{ width: `${pct}%` }} /><div className="relative z-10 flex items-center gap-3 text-left"><span className="font-bold text-sm text-white text-left leading-tight">{opt.text}</span></div><span className="relative z-10 text-xs text-gray-500 font-black font-mono text-left">{pct}% <span className="text-[10px] text-gray-700 ml-1 text-left">({opt.votes || 0})</span></span></div>); })}
+          <div className="space-y-4 text-left text-left text-left">
+             {survey.status === 'active' && !isArchivedView && currentUser.role === 'admin' && (<div className="mb-4 p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl flex items-start gap-3 text-left text-left text-left"><AlertCircle className="text-blue-500 mt-0.5 flex-shrink-0 text-left text-left" size={18} /><p className="text-[11px] text-blue-400 italic text-left text-left text-left text-left">Administratoren sehen die Resultate live.</p></div>)}
+             {survey.options.map(opt => { const pct = totalVotes === 0 ? 0 : Math.round(((opt.votes || 0) / totalVotes) * 100); return (<div key={opt.id} className="relative w-full bg-black border border-gray-900 rounded-2xl overflow-hidden p-4 flex justify-between items-center group transition-all text-left text-left"><div className="absolute top-0 left-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out text-left text-left" style={{ width: `${pct}%` }} /><div className="relative z-10 flex items-center gap-3 text-left text-left text-left text-left text-left"><span className="font-bold text-sm text-white text-left text-left leading-tight text-left">{opt.text}</span>{opt.link && (<a href={opt.link} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-gray-900 rounded-lg text-gray-600 hover:text-red-500 transition-colors shadow-lg border border-gray-800"><Youtube size={14} /></a>)}</div><span className="relative z-10 text-xs text-gray-500 font-black font-mono text-left text-left">{pct}% <span className="text-[10px] text-gray-700 ml-1 text-left text-left">({opt.votes || 0})</span></span></div>); })}
           </div>
-        ) : hasVoted ? (<div className="flex flex-col items-center justify-center py-10 text-center animate-in fade-in zoom-in duration-500 text-left mx-auto"><div className="w-16 h-16 bg-green-500/10 text-green-500 rounded-[1.5rem] flex items-center justify-center mb-6 border border-green-500/10 shadow-[0_0_40px_rgba(34,197,94,0.1)] mx-auto"><Check size={32} className="stroke-[3]" /></div><h5 className="text-xl font-black text-white tracking-tight uppercase text-center mb-2">Abgestimmt!</h5><p className="text-xs text-gray-500 mt-1 italic font-medium tracking-wide text-center">Deine Stimme für die RüssSuuger wurde gezählt.</p></div>) : (<div className="space-y-3 text-left text-left">
-            {survey.options.map(opt => (<div key={opt.id} onClick={() => toggleOption(opt.id)} className={`flex items-center gap-4 p-5 rounded-[1.5rem] border-2 cursor-pointer transition-all active:scale-[0.99] text-left ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg' : 'bg-black border-gray-900 text-gray-400 hover:border-gray-800'}`}><div className={`w-6 h-6 flex items-center justify-center border-2 transition-all ${max > 1 ? 'rounded-lg' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-black' : 'border-gray-700'}`}>{selectedOptions.includes(opt.id) && <Check size={16} className="stroke-[4]" />}</div><span className="font-bold text-sm sm:text-base text-left leading-tight">{opt.text}</span></div>))}<div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-6 border-t border-gray-900 mt-6 text-left"><p className="text-[10px] font-black text-gray-500 uppercase tracking-widest italic text-left">{selectedOptions.length} / {max} Stimmen gewählt</p><button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 disabled:bg-gray-900 disabled:text-gray-700 text-black font-black px-12 py-5 rounded-[1.5rem] transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest text-left">Stimme abgeben</button></div></div>)}
+        ) : hasVoted ? (<div className="flex flex-col items-center justify-center py-10 text-center animate-in fade-in zoom-in duration-500 text-left text-left mx-auto"><div className="w-16 h-16 bg-green-500/10 text-green-500 rounded-[1.5rem] flex items-center justify-center mb-6 border border-green-500/10 shadow-[0_0_40px_rgba(34,197,94,0.1)] mx-auto"><Check size={32} className="stroke-[3]" /></div><h5 className="text-xl font-black text-white tracking-tight uppercase text-center text-center mb-2">Abgestimmt!</h5><p className="text-xs text-gray-500 mt-1 italic font-medium tracking-wide text-center text-center text-center text-center">Deine Stimme wurde gezählt.</p></div>) : (<div className="space-y-3 text-left text-left text-left text-left text-left text-left">
+            {survey.options.map(opt => (<div key={opt.id} className="flex gap-2 text-left"><div onClick={() => toggleOption(opt.id)} className={`flex-1 flex items-center gap-4 p-5 rounded-[1.5rem] border-2 cursor-pointer transition-all active:scale-[0.99] text-left text-left text-left ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg shadow-orange-500/5' : 'bg-black border-gray-900 text-gray-400 hover:border-gray-800'}`}><div className={`w-6 h-6 flex items-center justify-center border-2 transition-all ${max > 1 ? 'rounded-lg' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-black' : 'border-gray-700'}`}>{selectedOptions.includes(opt.id) && <Check size={16} className="stroke-[4]" />}</div><span className="font-bold text-sm sm:text-base text-left text-left text-left leading-tight">{opt.text}</span></div>{opt.link && (<a href={opt.link} target="_blank" rel="noopener noreferrer" className="p-5 bg-black border border-gray-900 rounded-[1.5rem] flex items-center justify-center text-gray-600 hover:text-red-500 transition-all group group-hover:scale-110 shadow-lg text-left text-left"><Youtube size={24} /></a>)}</div>))}<div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-6 border-t border-gray-900 mt-6 text-left text-left text-left"><p className="text-[10px] font-black text-gray-500 uppercase tracking-widest italic text-left text-left text-left">{selectedOptions.length} / {max} Stimmen gewählt</p><button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 disabled:bg-gray-900 disabled:text-gray-700 text-black font-black px-12 py-5 rounded-[1.5rem] transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest text-left text-left text-left">Stimme abgeben</button></div></div>)}
       </div>
     </div>
   );
 }
 
-// --- RESTLICHE KOMPONENTEN ---
+// --- STANDARD FEHLERSEITEN ---
 
-function TabButton({ active, onClick, label }) {
-  return (
-    <button onClick={onClick} className="flex flex-col items-center gap-2 group min-w-[100px]">
-      <div className={`px-5 py-2 rounded-full font-black text-[11px] tracking-widest transition-all ${active ? 'bg-orange-500 text-black' : 'bg-gray-900 text-gray-500 hover:text-gray-300'}`}>
-        {label}
-      </div>
-      {active && <div className="h-0.5 w-8 bg-orange-500 rounded-full"></div>}
-    </button>
-  );
-}
-
-function CreateOption({ icon, label, onClick }) {
-  return (
-    <button onClick={onClick} className="w-full flex items-center gap-4 p-4 bg-gray-950 border border-gray-800 rounded-2xl hover:border-orange-500/50 transition-all group text-left">
-      <div className="w-10 h-10 bg-orange-500/10 text-orange-500 rounded-xl flex items-center justify-center group-hover:bg-orange-500 group-hover:text-black transition-colors">
-        {React.cloneElement(icon, { size: 20 })}
-      </div>
-      <span className="text-white font-bold">{label}</span>
-    </button>
-  );
-}
-
-function EmptyPlaceholder({ message }) {
-    return (
-        <div className="flex flex-col items-center justify-center py-24 text-center opacity-60 mx-auto">
-            <div className="w-24 h-24 border-2 border-gray-800 rounded-3xl flex items-center justify-center mb-6 text-gray-800 mx-auto">
-                <Package size={40} />
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2 tracking-tight">Noch nix da.</h3>
-            <p className="text-sm text-gray-500">{message || 'Drück den orangen Knopf.'}</p>
-        </div>
-    );
-}
-
-function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, forceCreate, onCreated }) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
-  const fileInputRef = useRef(null);
-
-  useEffect(() => { if(forceCreate) setShowAdd(true); }, [forceCreate]);
-
-  const handleAddUser = async (user) => { 
-    if (!fbUser) return; 
-    const id = Date.now().toString();
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', id), { ...user, id }); 
-    setShowAdd(false); 
-    if(onCreated) onCreated();
-  };
-
-  const handleUpdateUser = async (user) => { 
-    if (!fbUser) return; 
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.id), user); 
-    setEditingUser(null); 
-  };
-
-  const removeUser = async (id) => { 
-    if (!fbUser || !confirm('Mitglied wirklich löschen?')) return; 
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', id)); 
-  };
-  
-  const resetPassword = async (user) => {
-    if (!fbUser || !confirm(`Passwort für ${user.firstName} ${user.lastName} zurücksetzen?`)) return;
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.id), { ...user, password: "" });
-    alert("Passwort wurde zurückgesetzt.");
-  };
-
-  const handleCsvUpload = (event) => {
-    const file = event.target.files[0]; if (!file) return;
-    const reader = new FileReader(); reader.onload = async (e) => {
-      const text = e.target.result;
-      const rows = text.split(/\r?\n/).filter(row => row.trim() !== '');
-      const imported = rows.map((row, index) => {
-        const columns = row.split(/[;,]/).map(col => col.trim()); if (columns.length < 2) return null;
-        const matched = GROUPS.filter(g => (columns[2] || '').toLowerCase().includes(g.toLowerCase()));
-        return { id: `import-${Date.now()}-${index}`, firstName: columns[0], lastName: columns[1], role: 'member', groups: matched.length > 0 ? matched : [], password: "" };
-      }).filter(Boolean);
-      for (const m of imported) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', m.id), m);
-      setShowImport(false);
-    };
-    reader.readAsText(file); event.target.value = "";
-  };
-
-  if (showAdd || editingUser) {
-      return <MemberForm onSubmit={editingUser ? handleUpdateUser : handleAddUser} initialData={editingUser} onCancel={() => { setShowAdd(false); setEditingUser(null); if(onCreated) onCreated(); }} />;
-  }
-
-  return (
-    <div className="space-y-6 text-left">
-      <div className="flex flex-wrap justify-between items-center gap-4 text-left">
-        <div className="flex gap-2 text-left">
-            <button onClick={() => setShowImport(!showImport)} className="bg-gray-900 hover:bg-gray-800 text-gray-300 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors border border-gray-800 shadow-lg text-left">
-                <FileSpreadsheet size={18} /> Import
-            </button>
-            <button onClick={() => setShowAdd(true)} className="bg-orange-500 hover:bg-orange-600 text-black font-black px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-xl active:scale-95 text-left text-left">
-                <UserPlus size={18} /> Neu
-            </button>
-        </div>
-      </div>
-      
-      {showImport && (
-        <div className="bg-[#121212] border border-gray-900 p-8 rounded-3xl text-center animate-in fade-in slide-in-from-top-2 duration-300 shadow-xl text-center mx-auto">
-            <Upload className="mx-auto text-orange-500 mb-4 text-center" size={40} />
-            <h3 className="text-white font-bold text-lg mb-2 text-center leading-none">CSV Import</h3>
-            <input type="file" ref={fileInputRef} accept=".csv" onChange={handleCsvUpload} className="hidden text-center mx-auto" />
-            <button onClick={() => fileInputRef.current?.click()} className="bg-orange-500 text-black font-black px-8 py-3 rounded-xl shadow-lg uppercase text-[10px] tracking-widest text-center mt-4 mx-auto block">Datei auswählen</button>
-        </div>
-      )}
-
-      {users.length === 0 ? <EmptyPlaceholder message="Keine Mitglieder gefunden." /> : (
-        <div className="bg-[#121212] border border-gray-900 rounded-3xl overflow-hidden shadow-2xl text-left">
-            <div className="overflow-x-auto scrollbar-hide text-left">
-            <table className="w-full text-left border-collapse text-left">
-                <thead>
-                <tr className="bg-black/50 border-b border-gray-900 text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] text-left">
-                    <th className="p-6">Name</th><th className="p-6">Rolle</th><th className="p-6">Sektionen</th><th className="p-6 text-right">Optionen</th>
-                </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-900 text-left">
-                {users.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(u => (
-                    <tr key={u.id} className="hover:bg-orange-500/[0.02] transition-colors group text-left">
-                    <td className="p-6 text-white font-bold text-left leading-tight text-left text-left">{u.lastName} {u.firstName}</td>
-                    <td className="p-6 text-left text-left">
-                        <span className={`text-[10px] px-3 py-1.5 rounded-xl font-black uppercase tracking-widest inline-flex items-center gap-2 ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20 text-left text-left' : 'bg-gray-900 text-gray-400 text-left'}`}>
-                            {u.role}
-                        </span>
-                    </td>
-                    <td className="p-6 text-left text-left">
-                        <div className="flex flex-wrap gap-2 text-left">
-                            {(u.groups || []).map(g => (
-                                <span key={g} className="text-[10px] bg-black border border-gray-900 px-3 py-1 rounded-lg text-gray-400 font-bold uppercase tracking-tighter text-left text-left">{g}</span>
-                            ))}
-                        </div>
-                    </td>
-                    <td className="p-6 text-right flex justify-end gap-1 text-left text-left">
-                        {(u.groups || []).includes('Vorstand') && (
-                            <button onClick={() => resetPassword(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all text-left text-left" title="Reset PW"><Key size={18} /></button>
-                        )}
-                        <button onClick={() => setEditingUser(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all text-left text-left" title="Edit"><Edit2 size={18} /></button>
-                        <button onClick={() => removeUser(u.id)} className="text-gray-500 hover:text-red-500 p-2 rounded-lg transition-all text-left text-left" title="Delete"><Trash2 size={18} /></button>
-                    </td>
-                    </tr>
-                ))}
-                </tbody>
-            </table>
-            </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MemberForm({ onSubmit, initialData, onCancel }) {
-  const [firstName, setFirstName] = useState(initialData?.firstName || '');
-  const [lastName, setLastName] = useState(initialData?.lastName || '');
-  const [role, setRole] = useState(initialData?.role || 'member');
-  const [selectedGroups, setSelectedGroups] = useState(initialData?.groups || []);
-  const toggleGroup = (group) => setSelectedGroups(p => p.includes(group) ? p.filter(g => g !== group) : [...p, group]);
-  
-  return (
-    <form onSubmit={(e) => { e.preventDefault(); onSubmit({ ...(initialData || {}), firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups, password: initialData?.password || "" }); }} className="bg-[#121212] border border-gray-900 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
-      <h3 className="text-xl font-bold text-white mb-6 tracking-tight text-left text-left">{initialData ? 'Profil bearbeiten' : 'Neues Mitglied erfassen'}</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 text-left">
-        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 font-bold text-left" />
-        <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 font-bold text-left" />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6 text-left text-left">
-        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest text-left text-left">Berechtigung</label><div className="bg-black border border-gray-800 p-1 rounded-2xl text-left"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-4 py-3 text-white font-bold focus:ring-0 border-none outline-none cursor-pointer text-left text-left"><option value="member" className="bg-gray-900 text-left">Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500 font-bold text-left">Administrator</option></select></div></div>
-        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest text-left text-left text-left">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-black border border-gray-800 p-4 rounded-2xl text-left">
-          {GROUPS.map(g => (
-            <label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all text-left text-left text-left text-left">
-              <input type="checkbox" checked={selectedGroups.includes(g)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded text-left" />{g}
-            </label>
-          ))}
-        </div></div>
-      </div>
-      <div className="flex justify-end gap-6 pt-6 border-t border-gray-800 text-left"><button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all text-left">Abbrechen</button><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 text-xs uppercase tracking-widest text-left">Speichern</button></div>
-    </form>
-  );
-}
-
-function FatalErrorScreen({ message }) { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center mx-auto"><div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-3xl p-10 shadow-2xl text-center shadow-red-500/10 mx-auto text-center"><ShieldAlert className="mx-auto text-red-500 mb-6 text-center" size={60} /><h1 className="text-3xl font-black text-white mb-3 tracking-tight text-center leading-none text-center">Systemfehler</h1><p className="text-red-300 text-sm mb-6 leading-relaxed italic text-center text-center">{message}</p></div></div>); }
-function SetupScreen() { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center mx-auto text-center text-center"><div className="max-w-2xl w-full bg-gray-900 border border-orange-500/50 rounded-3xl p-10 shadow-2xl text-center mx-auto text-center text-center"><Settings className="mx-auto text-orange-500 mb-6 text-center animate-spin-slow text-center" size={60} /><h1 className="text-3xl font-black text-white mb-2 tracking-tight text-center text-center leading-none text-center text-center">Konfiguration fehlt</h1><p className="text-gray-400 text-center mx-auto text-center text-center">Bitte Firebase-Daten in der App.jsx eintragen.</p></div></div>); }
+function FatalErrorScreen({ message }) { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center mx-auto text-center"><div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-3xl p-10 shadow-2xl text-center shadow-red-500/10 mx-auto text-center"><ShieldAlert className="mx-auto text-red-500 mb-6 text-center" size={60} /><h1 className="text-3xl font-black text-white mb-3 tracking-tight text-center leading-none text-center">Systemfehler</h1><p className="text-red-300 text-sm mb-6 leading-relaxed italic text-center text-center text-center">{message}</p></div></div>); }
+function SetupScreen() { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center mx-auto text-center text-center text-center"><div className="max-w-2xl w-full bg-gray-900 border border-orange-500/50 rounded-3xl p-10 shadow-2xl text-center mx-auto text-center text-center text-center"><Settings className="mx-auto text-orange-500 mb-6 text-center animate-spin-slow text-center text-center" size={60} /><h1 className="text-3xl font-black text-white mb-2 tracking-tight text-center text-center leading-none text-center text-center text-center">Konfiguration fehlt</h1><p className="text-gray-400 text-center mx-auto text-center text-center text-center text-center">Bitte Firebase-Daten eintragen.</p></div></div>); }
