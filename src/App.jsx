@@ -84,7 +84,6 @@ export default function App() {
           await signInAnonymously(auth);
         }
       } catch (err) { 
-        console.error("Auth Error:", err); 
         setAuthError(err.message);
       }
     };
@@ -241,6 +240,7 @@ export default function App() {
   if (firebaseInitError) return <FatalErrorScreen message={`Firebase Fehler: ${firebaseInitError}`} />;
   if (authError || permissionsError) return <FatalErrorScreen message={authError || permissionsError} />;
 
+  // SPLASH SCREEN
   if (!fbUser || !isDBReady || isCheckingSession) {
      return (
         <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
@@ -261,20 +261,21 @@ export default function App() {
 
   if (!currentUser) return <LoginScreen onLogin={handleLoginSuccess} users={users} activeSessions={activeSessions} onSeed={seedDatabase} isSeeding={isSeeding} db={db} appId={appId} deobfuscate={deobfuscate} obfuscate={obfuscate} />;
 
-  const isBoardMember = (currentUser.groups || []).includes('Vorstand');
   const itemsCount = activeTab === 'events' ? events.filter(e => !e.isArchived).length : 
                      activeTab === 'archive' ? events.filter(e => e.isArchived).length :
                      activeTab === 'minutes' ? minutes.length : users.length;
 
   return (
     <div className="min-h-screen bg-black text-gray-200 font-sans selection:bg-orange-500 selection:text-white flex flex-col">
+      {/* HEADER LOGO ANPASSUNG */}
       <header className="px-6 pt-10 pb-4">
         <div className="max-w-5xl mx-auto flex justify-between items-start">
           <div className="flex flex-col text-left">
-            <h1 className="text-4xl font-black tracking-tight leading-tight">
+            <h1 className="text-4xl font-black tracking-tighter leading-tight cursor-default">
               <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
             </h1>
-            <p className="text-sm text-gray-500 font-medium">
+            <span className="text-gray-400 text-xs font-bold uppercase tracking-[0.3em] ml-0.5 mt-0.5">Ämme</span>
+            <p className="text-[10px] text-gray-600 font-medium mt-2">
               {itemsCount} {activeTab === 'events' ? 'Events' : activeTab === 'archive' ? 'Archiv' : activeTab === 'minutes' ? 'Protokolle' : 'Mitglieder'} total
             </p>
           </div>
@@ -288,6 +289,7 @@ export default function App() {
         </div>
       </header>
 
+      {/* TABS OBEN */}
       <div className="px-6 py-4 overflow-x-auto scrollbar-hide">
         <div className="max-w-5xl mx-auto flex gap-3">
           <TabButton active={activeTab === 'events'} onClick={() => setActiveTab('events')} label="EVENTS" />
@@ -305,9 +307,10 @@ export default function App() {
         </div>
       </main>
 
+      {/* BOTTOM NAV BAR */}
       <footer className="fixed bottom-0 left-0 right-0 bg-[#121212] border-t border-gray-900 px-6 py-4 z-20">
         <div className="max-w-xl mx-auto flex justify-between items-center relative">
-          <button onClick={() => setActiveTab('events')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'events' ? 'text-orange-500' : 'text-gray-500'}`}>
+          <button onClick={() => { setActiveTab('events'); setCreationTrigger(null); }} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'events' ? 'text-orange-500' : 'text-gray-500'}`}>
             <Calendar size={22} /><span className="text-[10px] font-bold uppercase tracking-tighter">EVENTS</span>
           </button>
           <button onClick={() => setActiveTab('archive')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'archive' ? 'text-orange-500' : 'text-gray-500'}`}>
@@ -326,6 +329,7 @@ export default function App() {
         </div>
       </footer>
 
+      {/* CREATE MODAL */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowCreateModal(false)}>
           <div className="bg-gray-900 border border-gray-800 w-full max-w-sm rounded-3xl p-6 space-y-3 animate-in slide-in-from-bottom-4" onClick={e => e.stopPropagation()}>
@@ -338,6 +342,7 @@ export default function App() {
         </div>
       )}
 
+      {/* EXPORT MODAL */}
       {showExportModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowExportModal(false)}>
           <div className="bg-gray-900 border border-gray-800 w-full max-w-md rounded-[2.5rem] p-8 space-y-6 animate-in slide-in-from-bottom-6 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -418,15 +423,16 @@ function TabButton({ active, onClick, label }) {
 function EmptyPlaceholder({ message }) {
     return (
         <div className="flex flex-col items-center justify-center py-24 text-center opacity-60">
-            <div className="w-24 h-24 border-2 border-gray-800 rounded-3xl flex items-center justify-center mb-6">
-                <LayoutGrid size={40} className="text-gray-800" />
+            <div className="w-24 h-24 border-2 border-gray-800 rounded-3xl flex items-center justify-center mb-6 text-gray-800">
+                <Package size={40} />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2 tracking-tight leading-none">Noch nix da.</h3>
+            <h3 className="text-xl font-bold text-white mb-2 tracking-tight">Noch nix da.</h3>
             <p className="text-sm text-gray-500">{message || 'Drück den orangen Knopf.'}</p>
         </div>
     );
 }
 
+// LOGIN SCREEN LOGO ANPASSUNG
 function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, appId, deobfuscate, obfuscate }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -471,11 +477,12 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center">
       <div className="max-w-md w-full">
+        {/* LOGO WIE IM LADEBILDSCHIRM */}
         <div className="flex flex-col items-center mb-12">
             <h1 className="text-6xl font-black mb-1 tracking-tighter leading-none">
                 <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
             </h1>
-            <span className="text-gray-400 text-lg font-bold uppercase tracking-[0.4em] ml-2">Ämme</span>
+            <span className="text-gray-400 text-lg font-bold uppercase tracking-[0.4em]">Ämme</span>
         </div>
 
         <div className="bg-[#121212] border border-gray-900 rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden">
@@ -484,7 +491,7 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
                 <div className="py-6 flex flex-col items-center">
                     <Database className="text-gray-700 mb-6" size={56} />
                     <h3 className="text-white font-bold text-xl mb-6 tracking-tight">Datenbank bereitstellen</h3>
-                    <button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 text-black font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-lg shadow-orange-500/20">Vereinsdaten laden</button>
+                    <button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 text-black font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-lg">Vereinsdaten laden</button>
                 </div>
             ) : (
                 <>
@@ -498,7 +505,7 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
                             <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest mb-1 block">Nachname</label>
                             <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Muster" className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
                         </div>
-                        <button type="submit" className="w-full bg-orange-500 text-black font-black py-5 rounded-2xl mt-4 uppercase text-xs tracking-[0.2em] shadow-xl shadow-orange-500/10 active:scale-[0.98] transition-all">Anmelden</button>
+                        <button type="submit" className="w-full bg-orange-500 text-black font-black py-5 rounded-2xl mt-4 uppercase text-xs tracking-[0.2em] shadow-xl active:scale-[0.98] transition-all">Anmelden</button>
                     </form>
                 )}
                 {step === 'password' && (
@@ -560,13 +567,13 @@ function MinutesView({ minutes, users, dbAppId, db, fbUser, forceCreate, onCreat
     <div className="space-y-4 text-left">
       {minutes.length === 0 ? <EmptyPlaceholder message="Erfasse das erste Protokoll für den Vorstand." /> : (
         <div className="grid gap-3 text-left">{minutes.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(m => (
-            <div key={m.id} className="bg-[#121212] border border-gray-900 p-5 rounded-3xl flex justify-between items-center group hover:border-orange-500/30 transition-all shadow-lg text-left">
+            <div key={m.id} className="bg-[#121212] border border-gray-900 p-5 rounded-3xl flex justify-between items-center group hover:border-orange-500/30 transition-all shadow-lg text-left text-left">
               <div className="flex items-center gap-4 text-left">
                 <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center text-orange-500 border border-gray-900">
                   <FileText size={24} />
                 </div>
                 <div className="text-left">
-                   <h3 className="text-lg font-bold text-white text-left">Sitzung vom {new Date(m.date).toLocaleDateString('de-CH')}</h3>
+                   <h3 className="text-lg font-bold text-white text-left leading-tight">Sitzung vom {new Date(m.date).toLocaleDateString('de-CH')}</h3>
                    <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mt-1 text-left">Vorstandsprotokoll</p>
                 </div>
               </div>
@@ -633,7 +640,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
     <form onSubmit={(e) => { e.preventDefault(); onSave({ id: initialData?.id, date, attendance, agenda }); }} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20 text-left">
       <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left">
-        <div className="flex items-center gap-4 text-left"><button type="button" onClick={onCancel} className="text-gray-400 hover:text-white bg-[#121212] p-2 rounded-lg border border-gray-800 transition-all"><ChevronRight className="rotate-180" size={20} /></button><h2 className="text-2xl font-bold text-white tracking-tight text-left">{initialData ? 'Protokoll bearbeiten' : 'Neue Sitzung'}</h2></div>
+        <div className="flex items-center gap-4 text-left"><button type="button" onClick={onCancel} className="text-gray-400 hover:text-white bg-[#121212] p-2 rounded-lg border border-gray-800 transition-all shadow-lg active:scale-90"><ChevronRight className="rotate-180" size={20} /></button><h2 className="text-2xl font-bold text-white tracking-tight text-left leading-none">{initialData ? 'Protokoll bearbeiten' : 'Neue Sitzung'}</h2></div>
         <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-6 py-3 rounded-xl flex items-center gap-2 shadow-lg active:scale-95 text-left"><Save size={18} /> Speichern</button>
       </div>
 
@@ -671,9 +678,9 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
                           <div className="space-y-2 text-left">
                             <div className="flex items-start gap-3 text-left">
                                 <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0 text-left"></div>
-                                <p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap leading-relaxed text-left">{point.text}</p>
+                                <p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap leading-relaxed text-left leading-relaxed">{point.text}</p>
                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all text-left">
-                                    <button type="button" onClick={() => { setUploadingFor({role, index: idx}); fileInputRef.current?.click(); }} className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg text-left" title="Datei anhängen"><Paperclip size={16} /></button>
+                                    <button type="button" onClick={() => { setUploadingFor({role, index: idx}); fileInputRef.current?.click(); }} className="p-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg text-left" title="Datei anhängen"><Paperclip size={16} /></button>
                                     <button type="button" onClick={() => startEditing(role, idx, point.text)} className="p-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg text-left" title="Bearbeiten"><Edit2 size={16} /></button>
                                     <button type="button" onClick={() => removePoint(role, index)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg text-left" title="Löschen"><Trash2 size={16} /></button>
                                 </div>
@@ -764,9 +771,9 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
       {showImport && (
         <div className="bg-[#121212] border border-gray-900 p-8 rounded-3xl text-center animate-in fade-in slide-in-from-top-2 duration-300 shadow-xl text-center">
             <Upload className="mx-auto text-orange-500 mb-4 text-center" size={40} />
-            <h3 className="text-white font-bold text-lg mb-2 text-center">CSV Import</h3>
+            <h3 className="text-white font-bold text-lg mb-2 text-center leading-none">CSV Import</h3>
             <input type="file" ref={fileInputRef} accept=".csv" onChange={handleCsvUpload} className="hidden text-center" />
-            <button onClick={() => fileInputRef.current?.click()} className="bg-orange-500 text-black font-black px-8 py-3 rounded-xl shadow-lg uppercase text-[10px] tracking-widest text-center">Datei auswählen</button>
+            <button onClick={() => fileInputRef.current?.click()} className="bg-orange-500 text-black font-black px-8 py-3 rounded-xl shadow-lg uppercase text-[10px] tracking-widest text-center mt-4">Datei auswählen</button>
         </div>
       )}
 
@@ -782,7 +789,7 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
                 <tbody className="divide-y divide-gray-900 text-left">
                 {users.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(u => (
                     <tr key={u.id} className="hover:bg-orange-500/[0.02] transition-colors group text-left">
-                    <td className="p-6 text-white font-bold text-left">{u.lastName} {u.firstName}</td>
+                    <td className="p-6 text-white font-bold text-left leading-tight">{u.lastName} {u.firstName}</td>
                     <td className="p-6 text-left">
                         <span className={`text-[10px] px-3 py-1.5 rounded-xl font-black uppercase tracking-widest inline-flex items-center gap-2 ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20 text-left' : 'bg-gray-900 text-gray-400'}`}>
                             {u.role}
@@ -813,5 +820,5 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
   );
 }
 
-function FatalErrorScreen({ message }) { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center"><div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-3xl p-10 shadow-2xl text-center"><ShieldAlert className="mx-auto text-red-500 mb-6 text-center" size={60} /><h1 className="text-3xl font-black text-white mb-3 tracking-tight text-center">Systemfehler</h1><p className="text-red-300 text-sm mb-6 leading-relaxed italic text-center">{message}</p></div></div>); }
-function SetupScreen() { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center"><div className="max-w-2xl w-full bg-gray-900 border border-orange-500/50 rounded-3xl p-10 shadow-2xl text-center"><Settings className="mx-auto text-orange-500 mb-6 text-center" size={60} /><h1 className="text-3xl font-black text-white mb-2 tracking-tight text-center">Konfiguration fehlt</h1></div></div>); }
+function FatalErrorScreen({ message }) { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center"><div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-3xl p-10 shadow-2xl text-center shadow-red-500/10"><ShieldAlert className="mx-auto text-red-500 mb-6 text-center" size={60} /><h1 className="text-3xl font-black text-white mb-3 tracking-tight text-center">Systemfehler</h1><p className="text-red-300 text-sm mb-6 leading-relaxed italic text-center">{message}</p></div></div>); }
+function SetupScreen() { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center"><div className="max-w-2xl w-full bg-[#121212] border border-gray-900 rounded-[2.5rem] p-10 shadow-2xl text-center"><Settings className="mx-auto text-orange-500 mb-6 text-center animate-spin-slow" size={60} /><h1 className="text-3xl font-black text-white mb-2 tracking-tight text-center">Konfiguration fehlt</h1><p className="text-gray-400 text-center">Bitte Firebase-Daten in der App.jsx eintragen.</p></div></div>); }
