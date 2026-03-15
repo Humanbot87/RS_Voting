@@ -192,11 +192,7 @@ export default function App() {
     const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Export</title><style>body { font-family: Arial, sans-serif; padding: 20px; } h1 { color: #f97316; font-size: 24pt; border-bottom: 2px solid #eee; padding-bottom: 10px; } h2 { color: #444; font-size: 18pt; margin-top: 20pt; } h3 { color: #666; font-size: 14pt; margin-top: 15pt; } ul { margin-left: 20pt; } li { margin-bottom: 5pt; } .section { margin-bottom: 20pt; }</style></head><body>";
     const footer = "</body></html>";
     const sourceHTML = header + contentHtml + footer;
-    
-    const blob = new Blob(['\ufeff', sourceHTML], {
-        type: 'application/msword'
-    });
-    
+    const blob = new Blob(['\ufeff', sourceHTML], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -358,12 +354,12 @@ export default function App() {
                     <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest block mb-4 ml-1">Events</label>
                     <div className="space-y-2">
                         {events.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(e => (
-                            <button key={e.id} onClick={() => handleExportEvent(e)} className="w-full flex items-center justify-between p-4 bg-black border border-gray-800 rounded-2xl hover:border-orange-500/40 transition-all text-left group">
-                                <div className="flex items-center gap-4">
+                            <button key={e.id} onClick={() => handleExportEvent(e)} className="w-full flex items-center justify-between p-4 bg-black border border-gray-800 rounded-2xl hover:border-orange-500/40 transition-all text-left group text-left">
+                                <div className="flex items-center gap-4 text-left">
                                     <div className="w-10 h-10 bg-orange-500/10 text-orange-500 rounded-xl flex items-center justify-center group-hover:bg-orange-500 group-hover:text-black transition-colors">
                                         <BarChart3 size={18} />
                                     </div>
-                                    <div>
+                                    <div className="text-left">
                                         <p className="text-sm font-bold text-white leading-tight">{e.title}</p>
                                         <p className="text-[10px] text-gray-500 font-bold uppercase mt-1 tracking-tighter">{new Date(e.date).toLocaleDateString('de-CH')}</p>
                                     </div>
@@ -377,12 +373,12 @@ export default function App() {
                     <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest block mb-4 ml-1">Protokolle</label>
                     <div className="space-y-2">
                         {minutes.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(m => (
-                            <button key={m.id} onClick={() => handleExportMinute(m)} className="w-full flex items-center justify-between p-4 bg-black border border-gray-800 rounded-2xl hover:border-blue-500/40 transition-all text-left group">
-                                <div className="flex items-center gap-4">
+                            <button key={m.id} onClick={() => handleExportMinute(m)} className="w-full flex items-center justify-between p-4 bg-black border border-gray-800 rounded-2xl hover:border-blue-500/40 transition-all text-left group text-left">
+                                <div className="flex items-center gap-4 text-left">
                                     <div className="w-10 h-10 bg-blue-500/10 text-blue-500 rounded-xl flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors">
                                         <FileText size={18} />
                                     </div>
-                                    <div>
+                                    <div className="text-left">
                                         <p className="text-sm font-bold text-white leading-tight">Sitzung vom {new Date(m.date).toLocaleDateString('de-CH')}</p>
                                         <p className="text-[10px] text-gray-500 font-bold uppercase mt-1 tracking-tighter">Protokoll</p>
                                     </div>
@@ -455,15 +451,15 @@ function SearchView({ events, minutes, isBoardMember }) {
                     )}
 
                     {filteredMinutes.length > 0 && (
-                        <section className="text-left">
+                        <section className="text-left text-left">
                             <h4 className="text-xs font-black text-blue-500 uppercase tracking-widest mb-4 ml-2">Protokollinhalte</h4>
-                            <div className="grid gap-3">
+                            <div className="grid gap-3 text-left">
                                 {filteredMinutes.map(m => (
                                     <div key={m.id} className="bg-[#121212] border border-gray-900 p-5 rounded-2xl flex items-center gap-4 text-left">
                                         <div className="w-12 h-12 bg-blue-500/10 text-blue-500 rounded-xl flex items-center justify-center"><FileText size={20}/></div>
-                                        <div className="text-left">
-                                            <p className="text-white font-bold">Sitzung vom {new Date(m.date).toLocaleDateString('de-CH')}</p>
-                                            <p className="text-[10px] text-gray-500 uppercase font-black">Vorstandsprotokoll</p>
+                                        <div className="text-left text-left">
+                                            <p className="text-white font-bold">{new Date(m.date).toLocaleDateString('de-CH')}</p>
+                                            <p className="text-[10px] text-gray-500 uppercase font-black">Sitzungsprotokoll</p>
                                         </div>
                                     </div>
                                 ))}
@@ -472,9 +468,9 @@ function SearchView({ events, minutes, isBoardMember }) {
                     )}
 
                     {filteredEvents.length === 0 && filteredMinutes.length === 0 && (
-                        <div className="text-center py-20 opacity-40">
+                        <div className="text-center py-20 opacity-40 text-center mx-auto">
                             <Search size={48} className="mx-auto mb-4" />
-                            <p className="font-black uppercase text-xs tracking-widest">Keine Ergebnisse gefunden.</p>
+                            <p className="font-black uppercase text-xs tracking-widest text-center">Keine Ergebnisse gefunden.</p>
                         </div>
                     )}
                 </div>
@@ -482,6 +478,174 @@ function SearchView({ events, minutes, isBoardMember }) {
         </div>
     );
 }
+
+// --- SUB-KOMPONENTEN FÜR EVENTS & ABSTIMMUNGEN ---
+
+function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db, fbUser, isAutoArchived, forceCreate, onCreated }) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const getDbRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'events', id);
+  
+  useEffect(() => { if(forceCreate) setShowCreate(true); }, [forceCreate]);
+
+  const handleCreateEvent = async (n) => {
+    if (!fbUser) return;
+    const id = Date.now().toString();
+    await setDoc(getDbRef(id), { ...n, id, isArchived: false, surveys: [] });
+    setShowCreate(false);
+    if(onCreated) onCreated();
+  };
+
+  if (selectedEvent) { 
+      const evData = events.find(e => e.id === selectedEvent.id); 
+      if (evData) {
+          const isExp = evData.endDate && new Date(evData.endDate) <= new Date(); 
+          return <EventDetail event={evData} onBack={() => setSelectedEvent(null)} currentUser={currentUser} users={users} dbAppId={dbAppId} db={db} fbUser={fbUser} isAutoArchived={isExp} />; 
+      } else {
+          setSelectedEvent(null);
+          return null;
+      }
+  }
+  
+  return (
+    <div className="space-y-6 text-left">
+      {!isArchive && showCreate && <CreateEventForm onSubmit={handleCreateEvent} onCancel={() => { setShowCreate(false); if(onCreated) onCreated(); }} />}
+      {events.length === 0 ? <EmptyPlaceholder message={isArchive ? "Archiv ist leer." : "Keine aktuellen Events."} /> : (
+        <div className="grid gap-4 md:grid-cols-2">
+            {events.map(e => {
+                const isExp = e.endDate && new Date(e.endDate) <= new Date();
+                return (
+                    <div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-[#121212] border border-gray-900 p-6 rounded-3xl cursor-pointer hover:border-orange-500/50 transition-all group active:scale-[0.98] shadow-lg text-left">
+                        <div className="flex justify-between items-start mb-2 text-left">
+                            <div className="flex flex-wrap gap-2 text-left">
+                                <span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20 text-left">{e.category}</span>
+                                {(isExp && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1 text-left"><Clock size={10}/> ABGELAUFEN</span>}
+                            </div>
+                            <ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" />
+                        </div>
+                        <h3 className="text-xl font-bold text-white mt-1 mb-4 group-hover:text-orange-50 transition-colors text-left leading-tight">{e.title}</h3>
+                        <div className="flex justify-between text-xs text-gray-500 font-bold pt-4 border-t border-gray-800/50 text-left">
+                            <span className="flex items-center gap-1 text-left"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span>
+                            <span className="flex items-center gap-1 text-left"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CreateEventForm({ onSubmit, onCancel }) {
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState(CATEGORIES[0]);
+  const [date, setDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [customCategory, setCustomCategory] = useState('');
+  const submit = (e) => { e.preventDefault(); const finalCategory = category === 'Freitext' ? customCategory.trim() : category; onSubmit({ title, category: finalCategory, date, endDate }); };
+  return (
+    <form onSubmit={submit} className="bg-[#121212] border border-gray-900 p-8 rounded-3xl mb-8 space-y-6 shadow-xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
+      <div className="absolute top-0 left-0 w-full h-2 bg-orange-500"></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Titel" className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Kategorie</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>{category === 'Freitext' && (<input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Kategorie Name" className="w-full mt-2 bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold" />)}</div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Datum</label><input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Ende (Archiv)</label><input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
+      </div>
+      <div className="flex justify-end gap-4 pt-2 text-left">
+        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold text-xs uppercase tracking-widest text-left">Abbrechen</button>
+        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest text-left">Speichern</button>
+      </div>
+    </form>
+  );
+}
+
+function EventDetail({ event, onBack, currentUser, users, dbAppId, db, fbUser, isAutoArchived }) {
+  const [showCreateSurvey, setShowCreateSurvey] = useState(false);
+  const getDbRef = () => doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
+  const handleAddSurvey = async (newSurvey) => { if (!fbUser) return; const updatedSurveys = [...(event.surveys || []), { ...newSurvey, id: Date.now().toString(), status: 'draft', votedUsers: [] }]; await setDoc(getDbRef(), { ...event, surveys: updatedSurveys }); setShowCreateSurvey(false); };
+  const updateSurvey = async (surveyId, updates) => { if (!fbUser) return; const updatedSurveys = (event.surveys || []).map(s => s.id === surveyId ? { ...s, ...updates } : s); await setDoc(getDbRef(), { ...event, surveys: updatedSurveys }); };
+  const handleVote = async (surveyId, selectedOptionIds) => { if (!fbUser) return; const updatedSurveys = (event.surveys || []).map(s => { if (s.id === surveyId) { const updatedOptions = s.options.map(opt => selectedOptionIds.includes(opt.id) ? { ...opt, votes: (opt.votes || 0) + 1 } : opt); return { ...s, options: updatedOptions, votedUsers: [...(s.votedUsers || []), currentUser.id] }; } return s; }); await setDoc(getDbRef(), { ...event, surveys: updatedSurveys }); };
+  const isActuallyArchived = event.isArchived || isAutoArchived;
+  const surveys = event.surveys || [];
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 text-left text-left">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10 text-left"><div className="flex items-center gap-5 text-left"><button onClick={onBack} className="text-gray-400 hover:text-white bg-[#121212] p-3 rounded-2xl border border-gray-800 transition-all hover:bg-gray-800 active:scale-90 shadow-lg text-left"><ChevronRight className="rotate-180" size={24} /></button><div className="flex-1 text-left text-left"><h2 className="text-3xl font-black text-white tracking-tight text-left leading-tight">{event.title}</h2><div className="flex flex-wrap items-center gap-3 text-left"><p className="text-sm text-gray-500 font-bold uppercase tracking-widest text-left">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>{isActuallyArchived && <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black uppercase px-3 py-1 rounded-lg border border-orange-500/20 tracking-wider text-left">Archiviert</span>}</div></div></div>{currentUser.role === 'admin' && (<div className="flex gap-2 text-left"><button onClick={() => setShowCreateSurvey(!showCreateSurvey)} className="bg-orange-500 hover:bg-orange-600 text-black font-black px-6 py-3 rounded-2xl flex items-center gap-2 shadow-xl active:scale-95 uppercase text-xs tracking-widest text-left">{showCreateSurvey ? 'Abbrechen' : <><Plus size={20} /> Umfrage</>}</button></div>)}</div>
+      {showCreateSurvey && <CreateSurveyForm onSubmit={handleAddSurvey} isMusicMode={event.category === 'Liederwahl'} />}
+      <div className="space-y-8 text-left">{surveys.length === 0 ? <p className="text-gray-500 text-center py-20 bg-gray-900/30 rounded-[2.5rem] border border-dashed border-gray-800 font-bold uppercase text-[10px] tracking-[0.2em] italic text-center">Keine Umfragen erfasst.</p> : (surveys.map(survey => <SurveyCard key={survey.id} survey={survey} currentUser={currentUser} onUpdate={(u) => updateSurvey(survey.id, u)} onVote={(o) => handleVote(survey.id, o)} users={users} isArchivedView={isActuallyArchived} />))}</div>
+    </div>
+  );
+}
+
+function CreateSurveyForm({ onSubmit, isMusicMode }) {
+  const [title, setTitle] = useState('');
+  const [maxAnswers, setMaxAnswers] = useState(1);
+  const [allowedGroups, setAllowedGroups] = useState(GROUPS); 
+  const [options, setOptions] = useState([{ id: '1', text: '' }, { id: '2', text: '' }]);
+  const handleGroupToggle = (group) => setAllowedGroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
+  const handleOptionChange = (id, field, value) => setOptions(prev => prev.map(o => o.id === id ? { ...o, [field]: value } : o));
+  const addOption = () => { if (options.length < 10) setOptions([...options, { id: Date.now().toString(), text: '' }]); };
+  const removeOption = (id) => { if (options.length > 2) setOptions(prev => prev.filter(o => o.id !== id)); };
+  const submit = (e) => { e.preventDefault(); const validOptions = options.filter(o => o.text.trim() !== '').map((o, i) => ({ id: `o${i}-${Date.now()}`, text: o.text.trim(), votes: 0 })); onSubmit({ title, maxAnswers, allowedGroups, options: validOptions }); };
+  return (
+    <form onSubmit={submit} className="bg-[#121212] border border-gray-900 p-8 rounded-[2.5rem] mb-8 shadow-xl animate-in slide-in-from-top-4 duration-300 text-left">
+      <h3 className="text-xl font-bold text-white mb-6 uppercase tracking-wider border-b border-gray-800 pb-4 text-left">Umfrage Details</h3>
+      <div className="space-y-6 text-left">
+        <div><label className="block text-[10px] font-black text-gray-500 uppercase mb-1 ml-1 tracking-widest text-left">Frage</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder={isMusicMode ? "Z.B. Welches Lied?" : "Frage eingeben..."} className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 focus:outline-none transition-all font-bold text-left" /></div>
+        <div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest text-left">Optionen (Max. 10)</label><div className="space-y-3 text-left">{options.map((opt, i) => (<div key={opt.id} className="flex gap-2 text-left"><input type="text" required value={opt.text} onChange={e => handleOptionChange(opt.id, 'text', e.target.value)} placeholder={`Option ${i + 1}`} className="flex-1 bg-black border border-gray-800 rounded-2xl px-5 py-3 text-white focus:border-orange-500 text-sm focus:outline-none font-bold text-left" /><button type="button" onClick={() => removeOption(opt.id)} disabled={options.length <= 2} className="p-3 text-gray-600 hover:text-red-500 disabled:opacity-30 transition-all text-left"><Trash2 size={20} /></button></div>))}</div><button type="button" onClick={addOption} className="text-orange-500 text-[10px] font-black uppercase tracking-widest mt-4 flex items-center gap-2 hover:text-orange-400 transition-all ml-1 text-left"><Plus size={16} className="bg-orange-500/10 rounded-full p-0.5 text-left"/> Weitere Option</button></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-gray-800 pt-6 mt-4 text-left"><div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest text-left">Max. Stimmen</label><input type="number" min="1" max="10" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-3 text-white focus:border-orange-500 transition-all font-bold focus:outline-none text-left" /></div><div><label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1 tracking-widest text-left">Wahlberechtigte</label><div className="grid grid-cols-2 gap-2 text-left">{GROUPS.map(g => (<label key={g} className="text-[11px] text-gray-400 font-bold flex items-center gap-2 cursor-pointer hover:text-white transition-all text-left"><input type="checkbox" checked={allowedGroups.includes(g)} onChange={() => handleGroupToggle(g)} className="w-4 h-4 accent-orange-500 rounded text-left" />{g}</label>))}</div></div></div>
+      </div>
+      <div className="flex justify-end mt-8 text-left"><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest text-left">Speichern</button></div>
+    </form>
+  );
+}
+
+function SurveyCard({ survey, currentUser, onUpdate, onVote, users, isArchivedView }) {
+  const [selectedOptions, setSelectedOptions] = useState([]);
+  const votedUsers = survey.votedUsers || [];
+  const totalVotes = survey.options.reduce((sum, opt) => sum + (opt.votes || 0), 0);
+  const eligibleUsersCount = users.filter(u => survey.allowedGroups.some(g => u.groups.includes(g))).length;
+  const hasVoted = votedUsers.includes(currentUser.id);
+  const isEligible = currentUser.role === 'admin' || survey.allowedGroups.some(g => currentUser.groups.includes(g));
+  if (!isEligible && currentUser.role !== 'admin') return null; 
+  if (currentUser.role !== 'admin' && survey.status === 'draft') return null;
+  const max = survey.maxAnswers || 1;
+  const toggleOption = (id) => { if (selectedOptions.includes(id)) setSelectedOptions(prev => prev.filter(x => x !== id)); else if (max === 1) setSelectedOptions([id]); else if (selectedOptions.length < max) setSelectedOptions([...selectedOptions, id]); };
+  const showResults = survey.status === 'published' || isArchivedView || (currentUser.role === 'admin' && hasVoted);
+  return (
+    <div className={`bg-[#121212] border rounded-[2rem] overflow-hidden transition-all shadow-md ${survey.status === 'active' && !isArchivedView ? 'border-orange-500/40' : 'border-gray-900'} text-left text-left text-left`}>
+      <div className="p-6 border-b border-gray-900 bg-black/30 flex flex-col sm:flex-row sm:justify-between items-start gap-4 text-left">
+        <div className="text-left text-left">
+          <div className="flex flex-wrap items-center gap-2 mb-2 text-left">
+             {survey.status === 'draft' && <span className="text-[10px] bg-gray-800 text-gray-400 px-3 py-1 rounded-full font-black uppercase tracking-widest border border-gray-700 text-left">Entwurf</span>}
+             {survey.status === 'active' && !isArchivedView && <span className="text-[10px] bg-green-500/10 text-green-500 px-3 py-1 rounded-full font-black uppercase tracking-widest flex items-center gap-2 border border-green-500/10 text-left"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse text-left"></span> Aktiv</span>}
+             {(survey.status === 'published' || isArchivedView) && <span className="text-[10px] bg-orange-500/10 text-orange-500 px-3 py-1 rounded-full font-black uppercase tracking-widest border border-orange-500/10 text-left text-left">Abgeschlossen</span>}
+             <span className="text-[10px] text-gray-600 font-black uppercase tracking-[0.1em] ml-1 text-left">{max === 1 ? 'Single Choice' : `Max. ${max} Stimmen`}</span>
+          </div>
+          <h4 className="text-xl font-bold text-white leading-tight text-left text-left">{survey.title}</h4>
+        </div>
+        {currentUser.role === 'admin' && (
+          <div className="flex flex-row sm:flex-col items-center sm:items-end gap-3 sm:gap-2 w-full sm:w-auto justify-between text-left text-left">
+            {!isArchivedView && (<div className="flex gap-2 text-left">{survey.status === 'draft' && <button onClick={() => onUpdate({ status: 'active' })} className="text-[10px] font-black uppercase bg-green-500 text-black px-4 py-2 rounded-xl active:scale-95 transition-all text-left"><CheckCircle2 size={14}/> Freigeben</button>}{survey.status === 'active' && <button onClick={() => onUpdate({ status: 'published' })} className="text-[10px] font-black uppercase bg-orange-500 hover:bg-orange-600 text-black px-4 py-2 rounded-xl active:scale-95 shadow-lg transition-all text-left"><Eye size={14}/> Beenden</button>}</div>)}
+            <div className="text-[10px] text-gray-600 font-black uppercase tracking-wider flex items-center gap-2 bg-black px-3 py-1.5 rounded-xl border border-gray-900 text-left"><Users size={12} className="text-orange-500 text-left" /> {votedUsers.length} / {eligibleUsersCount}</div>
+          </div>
+        )}
+      </div>
+      <div className="p-6 text-left">
+        {showResults ? (
+          <div className="space-y-4 text-left">
+             {survey.status === 'active' && !isArchivedView && currentUser.role === 'admin' && (<div className="mb-4 p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl flex items-start gap-3 text-left"><AlertCircle className="text-blue-500 mt-0.5 flex-shrink-0 text-left" size={18} /><p className="text-[11px] text-blue-400 italic text-left text-left">Administratoren sehen die Resultate live.</p></div>)}
+             {survey.options.map(opt => { const pct = totalVotes === 0 ? 0 : Math.round(((opt.votes || 0) / totalVotes) * 100); return (<div key={opt.id} className="relative w-full bg-black border border-gray-900 rounded-2xl overflow-hidden p-4 flex justify-between items-center group transition-all text-left"><div className="absolute top-0 left-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out text-left" style={{ width: `${pct}%` }} /><div className="relative z-10 flex items-center gap-3 text-left"><span className="font-bold text-sm text-white text-left leading-tight">{opt.text}</span></div><span className="relative z-10 text-xs text-gray-500 font-black font-mono text-left">{pct}% <span className="text-[10px] text-gray-700 ml-1 text-left">({opt.votes || 0})</span></span></div>); })}
+          </div>
+        ) : hasVoted ? (<div className="flex flex-col items-center justify-center py-10 text-center animate-in fade-in zoom-in duration-500 text-left mx-auto"><div className="w-16 h-16 bg-green-500/10 text-green-500 rounded-[1.5rem] flex items-center justify-center mb-6 border border-green-500/10 shadow-[0_0_40px_rgba(34,197,94,0.1)] mx-auto"><Check size={32} className="stroke-[3]" /></div><h5 className="text-xl font-black text-white tracking-tight uppercase text-center mb-2">Abgestimmt!</h5><p className="text-xs text-gray-500 mt-1 italic font-medium tracking-wide text-center">Deine Stimme für die RüssSuuger wurde gezählt.</p></div>) : (<div className="space-y-3 text-left text-left">
+            {survey.options.map(opt => (<div key={opt.id} onClick={() => toggleOption(opt.id)} className={`flex items-center gap-4 p-5 rounded-[1.5rem] border-2 cursor-pointer transition-all active:scale-[0.99] text-left ${selectedOptions.includes(opt.id) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg' : 'bg-black border-gray-900 text-gray-400 hover:border-gray-800'}`}><div className={`w-6 h-6 flex items-center justify-center border-2 transition-all ${max > 1 ? 'rounded-lg' : 'rounded-full'} ${selectedOptions.includes(opt.id) ? 'border-orange-500 bg-orange-500 text-black' : 'border-gray-700'}`}>{selectedOptions.includes(opt.id) && <Check size={16} className="stroke-[4]" />}</div><span className="font-bold text-sm sm:text-base text-left leading-tight">{opt.text}</span></div>))}<div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-6 border-t border-gray-900 mt-6 text-left"><p className="text-[10px] font-black text-gray-500 uppercase tracking-widest italic text-left">{selectedOptions.length} / {max} Stimmen gewählt</p><button onClick={() => selectedOptions.length > 0 && onVote(selectedOptions)} disabled={selectedOptions.length === 0} className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 disabled:bg-gray-900 disabled:text-gray-700 text-black font-black px-12 py-5 rounded-[1.5rem] transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest text-left">Stimme abgeben</button></div></div>)}
+      </div>
+    </div>
+  );
+}
+
+// --- RESTLICHE KOMPONENTEN ---
 
 function TabButton({ active, onClick, label }) {
   return (
@@ -515,274 +679,6 @@ function EmptyPlaceholder({ message }) {
             <p className="text-sm text-gray-500">{message || 'Drück den orangen Knopf.'}</p>
         </div>
     );
-}
-
-function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, appId, deobfuscate, obfuscate }) {
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [step, setStep] = useState('name'); 
-  const [password, setPassword] = useState('');
-  const [tempUser, setTempUser] = useState(null);
-
-  const checkName = (e) => {
-    e.preventDefault();
-    const user = users.find(u => 
-      (u.firstName || '').toLowerCase() === firstName.trim().toLowerCase() && 
-      (u.lastName || '').toLowerCase() === lastName.trim().toLowerCase()
-    );
-    if (!user) return alert("Mitglied nicht gefunden.");
-    const session = activeSessions.find(s => s.id === user.id);
-    if (session && (Date.now() - session.lastSeen < 60000)) return alert("Account bereits aktiv.");
-
-    const isBoard = (user.groups || []).includes('Vorstand');
-    if (isBoard) {
-        setTempUser(user);
-        if (!user.password) setStep('setup');
-        else setStep('password');
-    } else {
-        onLogin(user);
-    }
-  };
-
-  const handlePasswordSubmit = (e) => {
-    e.preventDefault();
-    if (password === deobfuscate(tempUser.password)) onLogin(tempUser);
-    else alert("Passwort falsch.");
-  };
-
-  const handleSetupSubmit = async (e) => {
-    e.preventDefault();
-    if (password.length < 4) return alert("Min. 4 Zeichen.");
-    const updatedUser = { ...tempUser, password: obfuscate(password) };
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', tempUser.id), updatedUser);
-    onLogin(updatedUser);
-  };
-
-  return (
-    <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center mx-auto">
-      <div className="max-w-md w-full">
-        <div className="flex flex-col items-center mb-12 text-center mx-auto">
-            <h1 className="text-6xl font-black mb-1 tracking-tighter leading-none text-center">
-                <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
-            </h1>
-            <span className="text-gray-400 text-lg font-bold uppercase tracking-[0.4em] ml-2 text-center">Ämme</span>
-        </div>
-
-        <div className="bg-[#121212] border border-gray-900 rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden text-left">
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-orange-500"></div>
-            {users.length === 0 ? (
-                <div className="py-6 flex flex-col items-center text-center mx-auto">
-                    <Database className="text-gray-700 mb-6" size={56} />
-                    <h3 className="text-white font-bold text-xl mb-6 tracking-tight">Datenbank bereitstellen</h3>
-                    <button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 text-black font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-lg">Vereinsdaten laden</button>
-                </div>
-            ) : (
-                <>
-                {step === 'name' && (
-                    <form onSubmit={checkName} className="space-y-5 text-left">
-                        <div>
-                            <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest mb-1 block">Vorname</label>
-                            <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest mb-1 block">Nachname</label>
-                            <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-orange-500 transition-colors font-bold" />
-                        </div>
-                        <button type="submit" className="w-full bg-orange-500 text-black font-black py-5 rounded-2xl mt-4 uppercase text-xs tracking-[0.2em] shadow-xl active:scale-[0.98] transition-all">Anmelden</button>
-                    </form>
-                )}
-                {step === 'password' && (
-                    <form onSubmit={handlePasswordSubmit} className="space-y-6 text-center mx-auto">
-                        <div className="flex flex-col items-center gap-3 mb-2 text-center mx-auto">
-                            <div className="w-16 h-16 bg-orange-500/10 rounded-3xl flex items-center justify-center text-orange-500 mx-auto">
-                                <Lock size={32} />
-                            </div>
-                            <span className="text-[11px] font-black text-orange-500 uppercase tracking-widest">Vorstand Login</span>
-                        </div>
-                        <input type="password" required autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="••••" className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-5 text-white focus:outline-none focus:border-orange-500 transition-colors text-center text-2xl tracking-[0.5em] font-black" />
-                        <button type="submit" className="w-full bg-orange-500 text-black font-black py-5 rounded-2xl uppercase text-xs tracking-[0.2em] shadow-lg active:scale-95 transition-all">Entsperren</button>
-                        <button type="button" onClick={() => setStep('name')} className="text-gray-500 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors mt-2 mx-auto block text-center">Zurück</button>
-                    </form>
-                )}
-                {step === 'setup' && (
-                    <form onSubmit={handleSetupSubmit} className="space-y-6 text-left">
-                        <div className="flex flex-col items-center gap-3 text-center mx-auto">
-                            <ShieldAlert size={40} className="text-blue-500 mx-auto" />
-                            <div className="text-center mx-auto"><span className="text-xs font-black block uppercase text-blue-400 mb-1">Passwort einrichten</span><span className="text-[10px] text-gray-500 italic block leading-tight">Privater Vorstandszugang.</span></div>
-                        </div>
-                        <input type="password" required autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Neues Passwort" className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-5 text-white focus:outline-none focus:border-orange-500 transition-colors text-center font-bold" />
-                        <button type="submit" className="w-full bg-orange-500 text-black font-black py-5 rounded-2xl uppercase text-xs tracking-widest">Speichern & Weiter</button>
-                    </form>
-                )}
-                </>
-            )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MinutesView({ minutes, users, dbAppId, db, fbUser, forceCreate, onCreated }) {
-  const [editingMinute, setEditingMinute] = useState(null);
-  const [isCreating, setIsCreating] = useState(false);
-
-  useEffect(() => { if(forceCreate) setIsCreating(true); }, [forceCreate]);
-
-  const handleSave = async (data) => {
-    if (!fbUser) return;
-    const id = data.id || Date.now().toString();
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', id), { ...data, id });
-    setIsCreating(false);
-    setEditingMinute(null);
-    if(onCreated) onCreated();
-  };
-
-  const handleDelete = async (id) => {
-    if (!fbUser || !confirm('Protokoll unwiderruflich löschen?')) return;
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', id));
-  };
-
-  if (isCreating || editingMinute) {
-    return <MinutesForm initialData={editingMinute} boardMembers={users.filter(u => (u.groups || []).includes('Vorstand'))} onSave={handleSave} onCancel={() => { setIsCreating(false); setEditingMinute(null); if(onCreated) onCreated(); }} />;
-  }
-
-  return (
-    <div className="space-y-4 text-left">
-      {minutes.length === 0 ? <EmptyPlaceholder message="Erfasse das erste Protokoll." /> : (
-        <div className="grid gap-3 text-left">{minutes.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(m => (
-            <div key={m.id} className="bg-[#121212] border border-gray-900 p-5 rounded-3xl flex justify-between items-center group hover:border-orange-500/30 transition-all shadow-lg text-left">
-              <div className="flex items-center gap-4 text-left">
-                <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center text-orange-500 border border-gray-900">
-                  <FileText size={24} />
-                </div>
-                <div className="text-left">
-                   <h3 className="text-lg font-bold text-white text-left leading-tight">Sitzung vom {new Date(m.date).toLocaleDateString('de-CH')}</h3>
-                   <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mt-1 text-left">Vorstandsprotokoll</p>
-                </div>
-              </div>
-              <div className="flex gap-1 text-left">
-                <button onClick={() => setEditingMinute(m)} className="p-3 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg transition-all" title="Bearbeiten"><Edit2 size={18} /></button>
-                <button onClick={() => handleDelete(m.id)} className="p-3 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all" title="Löschen"><Trash2 size={18} /></button>
-              </div>
-            </div>
-          ))}</div>
-      )}
-    </div>
-  );
-}
-
-function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
-  const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
-  const [attendance, setAttendance] = useState(initialData?.attendance || {});
-  const [agenda, setAgenda] = useState(() => {
-    const base = BOARD_ROLES.reduce((acc, role) => ({ ...acc, [role]: [] }), {});
-    if (initialData?.agenda) {
-      Object.keys(initialData.agenda).forEach(role => {
-        const val = initialData.agenda[role];
-        if (Array.isArray(val)) {
-            base[role] = val.map(p => {
-                if (typeof p === 'string') return { text: p, files: [] };
-                return { text: p?.text || "", files: p?.files || [] };
-            });
-        }
-      });
-    }
-    return base;
-  });
-
-  const [newPoints, setNewPoints] = useState(BOARD_ROLES.reduce((acc, role) => ({ ...acc, [role]: '' }), {}));
-  const [editingPoint, setEditingPoint] = useState({ role: null, index: null, text: '' });
-  const fileInputRef = useRef(null);
-  const [uploadingFor, setUploadingFor] = useState({ role: null, index: null });
-
-  const toggleAttendance = (userId) => setAttendance(prev => ({ ...prev, [userId]: !prev[userId] }));
-  const handleNewPointChange = (role, val) => setNewPoints(prev => ({ ...prev, [role]: val }));
-  const addPoint = (role) => { const text = newPoints[role].trim(); if (!text) return; setAgenda(prev => ({ ...prev, [role]: [...(prev[role] || []), { text, files: [] }] })); setNewPoints(prev => ({ ...prev, [role]: '' })); };
-  const removePoint = (role, index) => setAgenda(prev => ({ ...prev, [role]: prev[role].filter((_, i) => i !== index) }));
-  const startEditing = (role, index, text) => setEditingPoint({ role, index, text });
-  const saveEdit = () => { const { role, index, text } = editingPoint; if (!role || index === null || !text.trim()) { setEditingPoint({ role: null, index: null, text: '' }); return; } setAgenda(prev => ({ ...prev, [role]: prev[role].map((p, i) => i === index ? { ...p, text: text.trim() } : p) })); setEditingPoint({ role: null, index: null, text: '' }); };
-
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    const { role, index } = uploadingFor;
-    if (!file || !role || index === null) return;
-    if (file.size > 800 * 1024) return alert("Datei zu gross (max 800KB).");
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-        setAgenda(prev => ({ ...prev, [role]: prev[role].map((p, i) => i === index ? { ...p, files: [...(p.files || []), { name: file.name, type: file.type, data: ev.target.result }] } : p) }));
-        setUploadingFor({ role: null, index: null });
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
-
-  const removeFile = (role, pointIndex, fileIndex) => setAgenda(prev => ({ ...prev, [role]: prev[role].map((p, i) => i === pointIndex ? { ...p, files: p.files.filter((_, fi) => fi !== fileIndex) } : p) }));
-  const downloadFile = (file) => { const link = document.createElement('a'); link.href = file.data; link.download = file.name; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
-
-  return (
-    <form onSubmit={(e) => { e.preventDefault(); onSave({ id: initialData?.id, date, attendance, agenda }); }} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20 text-left">
-      <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left">
-        <div className="flex items-center gap-4 text-left"><button type="button" onClick={onCancel} className="text-gray-400 hover:text-white bg-[#121212] p-2 rounded-lg border border-gray-800 transition-all shadow-lg active:scale-90"><ChevronRight className="rotate-180" size={20} /></button><h2 className="text-2xl font-bold text-white tracking-tight text-left leading-none">{initialData ? 'Protokoll bearbeiten' : 'Neue Sitzung'}</h2></div>
-        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-6 py-3 rounded-xl flex items-center gap-2 shadow-lg active:scale-95 text-left"><Save size={18} /> Speichern</button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 text-left">
-        <div className="lg:col-span-1 space-y-6 text-left">
-          <div className="bg-[#121212] border border-gray-900 p-6 rounded-2xl shadow-xl text-left">
-            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 ml-1 text-left">Datum</label>
-            <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 focus:outline-none font-bold text-left" />
-          </div>
-          <div className="bg-[#121212] border border-gray-900 p-6 rounded-2xl shadow-xl text-left">
-            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2 text-left"><ClipboardCheck size={16} className="text-orange-500" /> Anwesenheit</h3>
-            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-hide text-left">
-              {boardMembers.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(m => (
-                <div key={m.id} onClick={() => toggleAttendance(m.id)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${attendance[m.id] ? 'bg-orange-500/10 border-orange-500/30' : 'bg-black border-gray-900 opacity-60'} text-left`}>
-                  <span className="text-sm font-bold text-white text-left">{m.firstName} {m.lastName}</span>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${attendance[m.id] ? 'bg-orange-500 border-orange-500' : 'border-gray-700'} text-left`}>{attendance[m.id] && <Check size={12} className="text-black stroke-[4]" />}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="lg:col-span-2 space-y-4 text-left">
-          <div className="bg-[#121212] border border-gray-900 p-6 rounded-2xl shadow-xl text-left">
-            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6 flex items-center gap-2 text-left"><FileText size={16} className="text-orange-500" /> Traktanden</h3>
-            <div className="space-y-8 text-left">
-              {BOARD_ROLES.map(role => (
-                <div key={role} className="space-y-4 pb-6 border-b border-gray-900 last:border-0 text-left">
-                  <label className="block text-[10px] font-black text-orange-500 uppercase tracking-[0.2em] ml-1 text-left">{role}</label>
-                  <div className="space-y-3 text-left">
-                    {(agenda[role] || []).map((point, idx) => (
-                      <div key={idx} className="flex flex-col gap-3 p-4 bg-black border border-gray-900 rounded-xl group hover:border-gray-700 transition-all shadow-sm text-left">
-                        {editingPoint.role === role && editingPoint.index === idx ? (
-                          <div className="flex gap-2 text-left"><textarea autoFocus value={editingPoint.text} onChange={e => setEditingPoint({...editingPoint, text: e.target.value})} className="flex-1 bg-gray-900 border border-orange-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none transition-all resize-none font-medium text-left" rows={2} /><div className="flex flex-col gap-1 text-left"><button type="button" onClick={saveEdit} className="p-2 bg-green-500/20 text-green-500 rounded-lg hover:bg-green-500/30 transition-all text-left"><Check size={16}/></button><button type="button" onClick={() => setEditingPoint({ role: null, index: null, text: '' })} className="p-2 bg-red-500/20 text-red-500 rounded-lg hover:bg-red-500/30 transition-all text-left"><X size={16}/></button></div></div>
-                        ) : (
-                          <div className="space-y-2 text-left">
-                            <div className="flex items-start gap-3 text-left">
-                                <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0 text-left"></div>
-                                <p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap leading-relaxed text-left leading-relaxed">{point.text}</p>
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all text-left">
-                                    <button type="button" onClick={() => { setUploadingFor({role, index: idx}); fileInputRef.current?.click(); }} className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg text-left" title="Datei anhängen"><Paperclip size={16} /></button>
-                                    <button type="button" onClick={() => startEditing(role, idx, point.text)} className="p-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg text-left" title="Bearbeiten"><Edit2 size={16} /></button>
-                                    <button type="button" onClick={() => removePoint(role, index)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg text-left" title="Löschen"><Trash2 size={16} /></button>
-                                </div>
-                            </div>
-                            {point.files && point.files.length > 0 && (<div className="flex flex-wrap gap-2 ml-4 text-left">{point.files.map((file, fi) => (<div key={fi} className="flex items-center gap-2 bg-[#121212] border border-gray-900 px-3 py-1.5 rounded-lg group/file shadow-sm text-left"><File size={12} className="text-orange-500/70" /><span className="text-[10px] text-gray-400 font-medium truncate max-w-[120px] uppercase text-left">{file.name}</span><div className="flex gap-1 text-left text-left"><button type="button" onClick={() => downloadFile(file)} className="p-1 text-gray-500 hover:text-orange-400 transition-colors text-left"><Download size={12}/></button><button type="button" onClick={() => removeFile(role, idx, fi)} className="p-1 text-gray-500 hover:text-red-500 transition-colors text-left text-left"><X size={12}/></button></div></div>))}</div>)}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2 mt-4 text-left"><input type="text" value={newPoints[role]} onChange={e => handleNewPointChange(role, e.target.value)} onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addPoint(role))} placeholder="Punkt erfassen..." className="flex-1 bg-black border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:border-orange-500 focus:outline-none transition-all shadow-inner font-bold text-left" /><button type="button" onClick={() => addPoint(role)} className="bg-gray-800 hover:bg-gray-700 text-orange-500 p-2.5 rounded-xl transition-all shadow-sm text-left"><Plus size={20} /></button></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </form>
-  );
 }
 
 function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, forceCreate, onCreated }) {
@@ -872,25 +768,25 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
                 <tbody className="divide-y divide-gray-900 text-left">
                 {users.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(u => (
                     <tr key={u.id} className="hover:bg-orange-500/[0.02] transition-colors group text-left">
-                    <td className="p-6 text-white font-bold text-left leading-tight">{u.lastName} {u.firstName}</td>
-                    <td className="p-6 text-left">
-                        <span className={`text-[10px] px-3 py-1.5 rounded-xl font-black uppercase tracking-widest inline-flex items-center gap-2 ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20 text-left' : 'bg-gray-900 text-gray-400'}`}>
+                    <td className="p-6 text-white font-bold text-left leading-tight text-left text-left">{u.lastName} {u.firstName}</td>
+                    <td className="p-6 text-left text-left">
+                        <span className={`text-[10px] px-3 py-1.5 rounded-xl font-black uppercase tracking-widest inline-flex items-center gap-2 ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20 text-left text-left' : 'bg-gray-900 text-gray-400 text-left'}`}>
                             {u.role}
                         </span>
                     </td>
-                    <td className="p-6 text-left">
+                    <td className="p-6 text-left text-left">
                         <div className="flex flex-wrap gap-2 text-left">
                             {(u.groups || []).map(g => (
-                                <span key={g} className="text-[10px] bg-black border border-gray-900 px-3 py-1 rounded-lg text-gray-400 font-bold uppercase tracking-tighter text-left">{g}</span>
+                                <span key={g} className="text-[10px] bg-black border border-gray-900 px-3 py-1 rounded-lg text-gray-400 font-bold uppercase tracking-tighter text-left text-left">{g}</span>
                             ))}
                         </div>
                     </td>
-                    <td className="p-6 text-right flex justify-end gap-1 text-left">
+                    <td className="p-6 text-right flex justify-end gap-1 text-left text-left">
                         {(u.groups || []).includes('Vorstand') && (
-                            <button onClick={() => resetPassword(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all text-left" title="Reset PW"><Key size={18} /></button>
+                            <button onClick={() => resetPassword(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all text-left text-left" title="Reset PW"><Key size={18} /></button>
                         )}
-                        <button onClick={() => setEditingUser(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all text-left" title="Edit"><Edit2 size={18} /></button>
-                        <button onClick={() => removeUser(u.id)} className="text-gray-500 hover:text-red-500 p-2 rounded-lg transition-all text-left" title="Delete"><Trash2 size={18} /></button>
+                        <button onClick={() => setEditingUser(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all text-left text-left" title="Edit"><Edit2 size={18} /></button>
+                        <button onClick={() => removeUser(u.id)} className="text-gray-500 hover:text-red-500 p-2 rounded-lg transition-all text-left text-left" title="Delete"><Trash2 size={18} /></button>
                     </td>
                     </tr>
                 ))}
@@ -912,77 +808,25 @@ function MemberForm({ onSubmit, initialData, onCancel }) {
   
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit({ ...(initialData || {}), firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups, password: initialData?.password || "" }); }} className="bg-[#121212] border border-gray-900 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
-      <h3 className="text-xl font-bold text-white mb-6 tracking-tight text-left">{initialData ? 'Profil bearbeiten' : 'Neues Mitglied erfassen'}</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
-        <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
+      <h3 className="text-xl font-bold text-white mb-6 tracking-tight text-left text-left">{initialData ? 'Profil bearbeiten' : 'Neues Mitglied erfassen'}</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 text-left">
+        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 font-bold text-left" />
+        <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 font-bold text-left" />
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6">
-        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest text-left">Berechtigung</label><div className="bg-black border border-gray-800 p-1 rounded-2xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-4 py-3 text-white font-bold focus:ring-0 border-none outline-none cursor-pointer"><option value="member" className="bg-gray-900">Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500 font-bold">Administrator</option></select></div></div>
-        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest text-left">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-black border border-gray-800 p-4 rounded-2xl">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6 text-left text-left">
+        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest text-left text-left">Berechtigung</label><div className="bg-black border border-gray-800 p-1 rounded-2xl text-left"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-4 py-3 text-white font-bold focus:ring-0 border-none outline-none cursor-pointer text-left text-left"><option value="member" className="bg-gray-900 text-left">Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500 font-bold text-left">Administrator</option></select></div></div>
+        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest text-left text-left text-left">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-black border border-gray-800 p-4 rounded-2xl text-left">
           {GROUPS.map(g => (
-            <label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all text-left">
-              <input type="checkbox" checked={selectedGroups.includes(g)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}
+            <label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all text-left text-left text-left text-left">
+              <input type="checkbox" checked={selectedGroups.includes(g)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded text-left" />{g}
             </label>
           ))}
         </div></div>
       </div>
-      <div className="flex justify-end gap-6 pt-6 border-t border-gray-800"><button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all">Abbrechen</button><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 text-xs uppercase tracking-widest">{initialData ? 'Speichern' : 'Anlegen'}</button></div>
+      <div className="flex justify-end gap-6 pt-6 border-t border-gray-800 text-left"><button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all text-left">Abbrechen</button><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 text-xs uppercase tracking-widest text-left">Speichern</button></div>
     </form>
   );
 }
 
-function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db, fbUser, isAutoArchived, forceCreate, onCreated }) {
-  const [showCreate, setShowCreate] = useState(false); const [selectedEvent, setSelectedEvent] = useState(null); const getDbRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'events', id);
-  
-  useEffect(() => { if(forceCreate) setShowCreate(true); }, [forceCreate]);
-
-  const handleCreateEvent = async (n) => { if (!fbUser) return; const id = Date.now().toString(); await setDoc(getDbRef(id), { ...n, id, isArchived: false, surveys: [] }); setShowCreate(false); if(onCreated) onCreated(); };
-  const handleArchive = async (id, s) => { if (!fbUser) return; const e = events.find(ev => ev.id === id); if(e) await setDoc(getDbRef(id), { ...e, isArchived: s }); setSelectedEvent(null); };
-  const handleDeleteEvent = async (id) => { if (!fbUser || !confirm('Event wirklich löschen?')) return; await deleteDoc(getDbRef(id)); setSelectedEvent(null); };
-  
-  if (selectedEvent) { 
-      const evData = events.find(e => e.id === selectedEvent.id); 
-      if (evData) {
-          const isExp = evData.endDate && new Date(evData.endDate) <= new Date(); 
-          return <EventDetail event={evData} onBack={() => setSelectedEvent(null)} currentUser={currentUser} onArchive={handleArchive} onDelete={handleDeleteEvent} users={users} dbAppId={appId} db={db} fbUser={fbUser} isAutoArchived={isExp} />; 
-      } else {
-          setSelectedEvent(null);
-          return null;
-      }
-  }
-  
-  return (
-    <div className="space-y-6 text-left">
-      {!isArchive && showCreate && <CreateEventForm onSubmit={handleCreateEvent} onCancel={() => { setShowCreate(false); if(onCreated) onCreated(); }} />}
-      {events.length === 0 ? (<EmptyPlaceholder message={isArchive ? "Archiv ist leer." : "Keine aktuellen Events."} />) : (<div className="grid gap-4 md:grid-cols-2">{events.map(e => { const isExp = e.endDate && new Date(e.endDate) <= new Date(); return (<div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-[#121212] border border-gray-900 p-6 rounded-3xl cursor-pointer hover:border-orange-500/50 transition-all group active:scale-[0.98] shadow-lg text-left"><div className="flex justify-between items-start mb-2 text-left"><div className="flex flex-wrap gap-2 text-left"><span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20 text-left">{e.category}</span>{(isExp && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1 text-left"><Clock size={10}/> ABGELAUFEN</span>}</div><ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" /></div><h3 className="text-xl font-bold text-white mt-1 mb-4 group-hover:text-orange-50 transition-colors text-left">{e.title}</h3><div className="flex justify-between text-xs text-gray-500 font-bold pt-4 border-t border-gray-800/50 text-left"><span className="flex items-center gap-1 text-left"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span><span className="flex items-center gap-1 text-left"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span></div></div>); })}</div>)}
-    </div>
-  );
-}
-
-function CreateEventForm({ onSubmit, onCancel }) {
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0]);
-  const [date, setDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [customCategory, setCustomCategory] = useState('');
-  const submit = (e) => { e.preventDefault(); const finalCategory = category === 'Freitext' ? customCategory.trim() : category; if (category === 'Freitext' && !finalCategory) return; onSubmit({ title, category: finalCategory, date, endDate }); };
-  return (
-    <form onSubmit={submit} className="bg-[#121212] border border-gray-900 p-8 rounded-3xl mb-8 space-y-6 shadow-xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
-      <div className="absolute top-0 left-0 w-full h-2 bg-orange-500"></div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Titel" className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Kategorie</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>{category === 'Freitext' && (<input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Kategorie Name" className="w-full mt-2 bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold" />)}</div>
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Datum</label><input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Ende (Archiv)</label><input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
-      </div>
-      <div className="flex justify-end gap-4 pt-2 text-left">
-        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold text-xs uppercase tracking-widest text-left">Abbrechen</button>
-        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest text-left">Speichern</button>
-      </div>
-    </form>
-  );
-}
-
-function FatalErrorScreen({ message }) { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center"><div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-3xl p-10 shadow-2xl text-center shadow-red-500/10 mx-auto"><ShieldAlert className="mx-auto text-red-500 mb-6 text-center" size={60} /><h1 className="text-3xl font-black text-white mb-3 tracking-tight text-center leading-none">Systemfehler</h1><p className="text-red-300 text-sm mb-6 leading-relaxed italic text-center">{message}</p></div></div>); }
-function SetupScreen() { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center mx-auto"><div className="max-w-2xl w-full bg-gray-900 border border-orange-500/50 rounded-3xl p-10 shadow-2xl text-center mx-auto"><Settings className="mx-auto text-orange-500 mb-6 text-center animate-spin-slow" size={60} /><h1 className="text-3xl font-black text-white mb-2 tracking-tight text-center leading-none">Konfiguration fehlt</h1><p className="text-gray-400 text-center mx-auto">Bitte Firebase-Daten in der App.jsx eintragen.</p></div></div>); }
+function FatalErrorScreen({ message }) { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center mx-auto"><div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-3xl p-10 shadow-2xl text-center shadow-red-500/10 mx-auto text-center"><ShieldAlert className="mx-auto text-red-500 mb-6 text-center" size={60} /><h1 className="text-3xl font-black text-white mb-3 tracking-tight text-center leading-none text-center">Systemfehler</h1><p className="text-red-300 text-sm mb-6 leading-relaxed italic text-center text-center">{message}</p></div></div>); }
+function SetupScreen() { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center mx-auto text-center text-center"><div className="max-w-2xl w-full bg-gray-900 border border-orange-500/50 rounded-3xl p-10 shadow-2xl text-center mx-auto text-center text-center"><Settings className="mx-auto text-orange-500 mb-6 text-center animate-spin-slow text-center" size={60} /><h1 className="text-3xl font-black text-white mb-2 tracking-tight text-center text-center leading-none text-center text-center">Konfiguration fehlt</h1><p className="text-gray-400 text-center mx-auto text-center text-center">Bitte Firebase-Daten in der App.jsx eintragen.</p></div></div>); }
