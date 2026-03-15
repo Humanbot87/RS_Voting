@@ -30,8 +30,15 @@ const db = getFirestore(app);
 const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder'];
 const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitext'];
 
+// Definierter Admin für das Initial-Setup
 const INITIAL_USERS = [
-  { id: '1', firstName: 'Admin', lastName: 'Suuger', role: 'admin', groups: ['Vorstand', 'Aktive'] },
+  { 
+    id: 'admin_suuger', 
+    firstName: 'Admin', 
+    lastName: 'Suuger', 
+    role: 'admin', 
+    groups: ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder'] 
+  },
   { id: '2', firstName: 'Max', lastName: 'Muster', role: 'member', groups: ['Aktive', 'Wagenbau'] },
   { id: '3', firstName: 'Anna', lastName: 'Beispiel', role: 'member', groups: ['Passiv'] },
 ];
@@ -135,12 +142,15 @@ export default function App() {
     if (!user) return;
     setIsSeeding(true);
     try {
+      // Erstellt den Admin und die Testbenutzer
       for (const u of INITIAL_USERS) {
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id), u);
       }
+      // Erstellt einen Initial-Event
       for (const e of INITIAL_EVENTS) {
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', e.id), e);
       }
+      console.log("Admin 'Suuger' erfolgreich angelegt.");
     } catch (err) {
       console.error("Seeding error:", err);
     } finally {
@@ -156,7 +166,6 @@ export default function App() {
     if (foundUser) {
       setCurrentUser(foundUser);
     } else {
-      // Inline user feedback
       setError("Mitglied nicht gefunden. Bitte prüfen Sie Vor- und Nachnamen.");
       setTimeout(() => setError(null), 3000);
     }
@@ -261,7 +270,7 @@ function LoginScreen({ onLogin, usersCount, onSeed, isSeeding, loginError }) {
             <h3 className="text-white font-bold mb-2">Datenbank leer</h3>
             <p className="text-sm text-gray-500 mb-6">Es wurden keine Mitglieder in der Datenbank gefunden.</p>
             <button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 hover:bg-orange-600 text-gray-950 font-bold py-4 rounded-xl transition-all disabled:opacity-50">
-              {isSeeding ? 'Initialisierung...' : 'Initial-Setup durchführen'}
+              {isSeeding ? 'Initialisierung...' : 'Initial-Setup (Admin Suuger erstellen)'}
             </button>
           </div>
         ) : (
