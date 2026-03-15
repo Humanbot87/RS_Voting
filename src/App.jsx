@@ -72,7 +72,6 @@ export default function App() {
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
-  
   const [creationTrigger, setCreationTrigger] = useState(null);
 
   useEffect(() => {
@@ -114,7 +113,7 @@ export default function App() {
           setUsers(snap.docs.map(d => d.data()));
           setIsDBReady(true);
         }, (err) => {
-          if (err.code === 'permission-denied') setPermissionsError("Berechtigungsfehler.");
+          if (err.code === 'permission-denied') setPermissionsError("Fehlende Berechtigungen.");
         }
       );
       unsubEvents = onSnapshot(eventsRef, (snap) => {
@@ -190,12 +189,10 @@ export default function App() {
     setIsSeeding(false);
   };
 
-  // Hilfsfunktion für Word Export
   const exportToWord = (title, contentHtml) => {
     const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Export</title><style>body { font-family: Arial, sans-serif; } h1 { color: #f97316; } .section { margin-bottom: 20px; } .label { font-weight: bold; color: #666; }</style></head><body>";
     const footer = "</body></html>";
     const sourceHTML = header + contentHtml + footer;
-    
     const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(sourceHTML);
     const fileDownload = document.createElement("a");
     document.body.appendChild(fileDownload);
@@ -210,45 +207,38 @@ export default function App() {
     content += `<p>Datum: ${new Date(event.date).toLocaleDateString('de-CH')}</p>`;
     content += `<p>Kategorie: ${event.category}</p><br/>`;
     content += `<h2>Abstimmungsergebnisse</h2>`;
-    
     (event.surveys || []).forEach(s => {
         content += `<div class="section"><h3>${s.title}</h3><ul>`;
-        const total = s.options.reduce((acc, o) => acc + (o.votes || 0), 0);
-        s.options.forEach(o => {
+        const total = (s.options || []).reduce((acc, o) => acc + (o.votes || 0), 0);
+        (s.options || []).forEach(o => {
             const pct = total === 0 ? 0 : Math.round((o.votes / total) * 100);
             content += `<li>${o.text}: ${o.votes} Stimmen (${pct}%)</li>`;
         });
         content += `</ul><p>Total Stimmen: ${s.votedUsers?.length || 0}</p></div>`;
     });
-    
     exportToWord(event.title, content);
   };
 
   const handleExportMinute = (minute) => {
     let content = `<h1>Protokoll: Sitzung vom ${new Date(minute.date).toLocaleDateString('de-CH')}</h1>`;
-    
     content += `<h2>Anwesenheit</h2><ul>`;
     Object.keys(minute.attendance || {}).forEach(uid => {
         const u = users.find(user => user.id === uid);
         if(u && minute.attendance[uid]) content += `<li>${u.firstName} ${u.lastName}</li>`;
     });
-    content += `</ul><br/>`;
-
-    content += `<h2>Traktanden</h2>`;
+    content += `</ul><br/><h2>Traktanden</h2>`;
     Object.keys(minute.agenda || {}).forEach(role => {
         const points = minute.agenda[role];
         if(points && points.length > 0) {
             content += `<h3>${role}</h3><ul>`;
-            points.forEach(p => {
-                content += `<li>${p.text}</li>`;
-            });
+            points.forEach(p => { content += `<li>${p.text}</li>`; });
             content += `</ul>`;
         }
     });
-
     exportToWord(`Protokoll_${minute.date}`, content);
   };
 
+  if (firebaseInitError) return <FatalErrorScreen message={`Firebase Fehler: ${firebaseInitError}`} />;
   if (authError || permissionsError) return <FatalErrorScreen message={authError || permissionsError} />;
 
   if (!fbUser || !isDBReady || isCheckingSession) {
@@ -271,6 +261,7 @@ export default function App() {
 
   if (!currentUser) return <LoginScreen onLogin={handleLoginSuccess} users={users} activeSessions={activeSessions} onSeed={seedDatabase} isSeeding={isSeeding} db={db} appId={appId} deobfuscate={deobfuscate} obfuscate={obfuscate} />;
 
+  const isBoardMember = (currentUser.groups || []).includes('Vorstand');
   const itemsCount = activeTab === 'events' ? events.filter(e => !e.isArchived).length : 
                      activeTab === 'archive' ? events.filter(e => e.isArchived).length :
                      activeTab === 'minutes' ? minutes.length : users.length;
@@ -279,8 +270,10 @@ export default function App() {
     <div className="min-h-screen bg-black text-gray-200 font-sans selection:bg-orange-500 selection:text-white flex flex-col">
       <header className="px-6 pt-10 pb-4">
         <div className="max-w-5xl mx-auto flex justify-between items-start">
-          <div className="flex flex-col">
-            <h1 className="text-4xl font-bold tracking-tight text-white leading-tight">RüssSuuger</h1>
+          <div className="flex flex-col text-left">
+            <h1 className="text-4xl font-black tracking-tight leading-tight">
+              <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
+            </h1>
             <p className="text-sm text-gray-500 font-medium">
               {itemsCount} {activeTab === 'events' ? 'Events' : activeTab === 'archive' ? 'Archiv' : activeTab === 'minutes' ? 'Protokolle' : 'Mitglieder'} total
             </p>
@@ -333,7 +326,6 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Create Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowCreateModal(false)}>
           <div className="bg-gray-900 border border-gray-800 w-full max-w-sm rounded-3xl p-6 space-y-3 animate-in slide-in-from-bottom-4" onClick={e => e.stopPropagation()}>
@@ -346,18 +338,16 @@ export default function App() {
         </div>
       )}
 
-      {/* Export Modal */}
       {showExportModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowExportModal(false)}>
           <div className="bg-gray-900 border border-gray-800 w-full max-w-md rounded-[2.5rem] p-8 space-y-6 animate-in slide-in-from-bottom-6 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center">
-                <h3 className="text-2xl font-black text-white tracking-tight">Dokument-Export</h3>
+                <h3 className="text-2xl font-black text-white tracking-tight leading-none">Dokument-Export</h3>
                 <button onClick={() => setShowExportModal(false)} className="text-gray-500 hover:text-white p-2"><X size={24}/></button>
             </div>
-            
             <div className="flex-1 overflow-y-auto pr-2 space-y-8 scrollbar-hide">
-                <section>
-                    <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest block mb-4 ml-1">Events (Umfrageergebnisse)</label>
+                <section className="text-left">
+                    <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest block mb-4 ml-1">Events</label>
                     <div className="space-y-2">
                         {events.sort((a,b) => b.date.localeCompare(a.date)).map(e => (
                             <button key={e.id} onClick={() => handleExportEvent(e)} className="w-full flex items-center justify-between p-4 bg-black border border-gray-800 rounded-2xl hover:border-orange-500/40 transition-all text-left group">
@@ -375,9 +365,8 @@ export default function App() {
                         ))}
                     </div>
                 </section>
-
-                <section>
-                    <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest block mb-4 ml-1">Protokolle (Sitzungsnotizen)</label>
+                <section className="text-left">
+                    <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest block mb-4 ml-1">Protokolle</label>
                     <div className="space-y-2">
                         {minutes.sort((a,b) => b.date.localeCompare(a.date)).map(m => (
                             <button key={m.id} onClick={() => handleExportMinute(m)} className="w-full flex items-center justify-between p-4 bg-black border border-gray-800 rounded-2xl hover:border-blue-500/40 transition-all text-left group">
@@ -393,11 +382,10 @@ export default function App() {
                                 <FileDown size={18} className="text-gray-600 group-hover:text-blue-500 transition-colors" />
                             </button>
                         ))}
-                    </div> section
+                    </div>
                 </section>
             </div>
-            
-            <p className="text-[9px] text-gray-600 text-center uppercase font-black tracking-widest border-t border-gray-800 pt-4">Exportiert als Microsoft Word Dokument (.doc)</p>
+            <p className="text-[9px] text-gray-600 text-center uppercase font-black tracking-widest border-t border-gray-900 pt-4">Export als Word Dokument (.doc)</p>
           </div>
         </div>
       )}
@@ -433,7 +421,7 @@ function EmptyPlaceholder({ message }) {
             <div className="w-24 h-24 border-2 border-gray-800 rounded-3xl flex items-center justify-center mb-6">
                 <LayoutGrid size={40} className="text-gray-800" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Noch nix da.</h3>
+            <h3 className="text-xl font-bold text-white mb-2 tracking-tight leading-none">Noch nix da.</h3>
             <p className="text-sm text-gray-500">{message || 'Drück den orangen Knopf.'}</p>
         </div>
     );
@@ -487,7 +475,7 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
             <h1 className="text-6xl font-black mb-1 tracking-tighter leading-none">
                 <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
             </h1>
-            <span className="text-gray-400 text-sm font-bold uppercase tracking-[0.3em]">Ämme</span>
+            <span className="text-gray-400 text-lg font-bold uppercase tracking-[0.4em] ml-2">Ämme</span>
         </div>
 
         <div className="bg-[#121212] border border-gray-900 rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden">
@@ -515,7 +503,7 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
                 )}
                 {step === 'password' && (
                     <form onSubmit={handlePasswordSubmit} className="space-y-6">
-                        <div className="flex flex-col items-center gap-3 mb-2 text-center">
+                        <div className="flex flex-col items-center gap-3 mb-2 text-center mx-auto">
                             <div className="w-16 h-16 bg-orange-500/10 rounded-3xl flex items-center justify-center text-orange-500 mx-auto">
                                 <Lock size={32} />
                             </div>
@@ -530,7 +518,7 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
                     <form onSubmit={handleSetupSubmit} className="space-y-6">
                         <div className="flex flex-col items-center gap-3">
                             <ShieldAlert size={40} className="text-blue-500" />
-                            <div className="text-center"><span className="text-xs font-black block uppercase text-blue-400 mb-1">Passwort einrichten</span><span className="text-[10px] text-gray-500 italic block leading-tight">Individuelles Vorstands-Passwort setzen.</span></div>
+                            <div className="text-center mx-auto"><span className="text-xs font-black block uppercase text-blue-400 mb-1">Passwort einrichten</span><span className="text-[10px] text-gray-500 italic block leading-tight">Individuelles Vorstands-Passwort setzen.</span></div>
                         </div>
                         <input type="password" required autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Neues Passwort" className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-5 text-white focus:outline-none focus:border-orange-500 transition-colors text-center font-bold" />
                         <button type="submit" className="w-full bg-orange-500 text-black font-black py-5 rounded-2xl uppercase text-xs tracking-widest">Speichern & Weiter</button>
@@ -541,6 +529,169 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
         </div>
       </div>
     </div>
+  );
+}
+
+function MinutesView({ minutes, users, dbAppId, db, fbUser, forceCreate, onCreated }) {
+  const [editingMinute, setEditingMinute] = useState(null);
+  const [isCreating, setIsCreating] = useState(false);
+
+  useEffect(() => { if(forceCreate) setIsCreating(true); }, [forceCreate]);
+
+  const handleSave = async (data) => {
+    if (!fbUser) return;
+    const id = data.id || Date.now().toString();
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', id), { ...data, id });
+    setIsCreating(false);
+    setEditingMinute(null);
+    if(onCreated) onCreated();
+  };
+
+  const handleDelete = async (id) => {
+    if (!fbUser || !confirm('Protokoll unwiderruflich löschen?')) return;
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', id));
+  };
+
+  if (isCreating || editingMinute) {
+    return <MinutesForm initialData={editingMinute} boardMembers={users.filter(u => (u.groups || []).includes('Vorstand'))} onSave={handleSave} onCancel={() => { setIsCreating(false); setEditingMinute(null); if(onCreated) onCreated(); }} />;
+  }
+
+  return (
+    <div className="space-y-4 text-left">
+      {minutes.length === 0 ? <EmptyPlaceholder message="Erfasse das erste Protokoll für den Vorstand." /> : (
+        <div className="grid gap-3 text-left">{minutes.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(m => (
+            <div key={m.id} className="bg-[#121212] border border-gray-900 p-5 rounded-3xl flex justify-between items-center group hover:border-orange-500/30 transition-all shadow-lg text-left">
+              <div className="flex items-center gap-4 text-left">
+                <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center text-orange-500 border border-gray-900">
+                  <FileText size={24} />
+                </div>
+                <div className="text-left">
+                   <h3 className="text-lg font-bold text-white text-left">Sitzung vom {new Date(m.date).toLocaleDateString('de-CH')}</h3>
+                   <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mt-1 text-left">Vorstandsprotokoll</p>
+                </div>
+              </div>
+              <div className="flex gap-1 text-left">
+                <button onClick={() => setEditingMinute(m)} className="p-3 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg transition-all" title="Bearbeiten"><Edit2 size={18} /></button>
+                <button onClick={() => handleDelete(m.id)} className="p-3 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all" title="Löschen"><Trash2 size={18} /></button>
+              </div>
+            </div>
+          ))}</div>
+      )}
+    </div>
+  );
+}
+
+function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
+  const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
+  const [attendance, setAttendance] = useState(initialData?.attendance || {});
+  const [agenda, setAgenda] = useState(() => {
+    const base = BOARD_ROLES.reduce((acc, role) => ({ ...acc, [role]: [] }), {});
+    if (initialData?.agenda) {
+      Object.keys(initialData.agenda).forEach(role => {
+        const val = initialData.agenda[role];
+        if (Array.isArray(val)) {
+            base[role] = val.map(p => {
+                if (typeof p === 'string') return { text: p, files: [] };
+                return { text: p?.text || "", files: p?.files || [] };
+            });
+        }
+      });
+    }
+    return base;
+  });
+
+  const [newPoints, setNewPoints] = useState(BOARD_ROLES.reduce((acc, role) => ({ ...acc, [role]: '' }), {}));
+  const [editingPoint, setEditingPoint] = useState({ role: null, index: null, text: '' });
+  const fileInputRef = useRef(null);
+  const [uploadingFor, setUploadingFor] = useState({ role: null, index: null });
+
+  const toggleAttendance = (userId) => setAttendance(prev => ({ ...prev, [userId]: !prev[userId] }));
+  const handleNewPointChange = (role, val) => setNewPoints(prev => ({ ...prev, [role]: val }));
+  const addPoint = (role) => { const text = newPoints[role].trim(); if (!text) return; setAgenda(prev => ({ ...prev, [role]: [...(prev[role] || []), { text, files: [] }] })); setNewPoints(prev => ({ ...prev, [role]: '' })); };
+  const removePoint = (role, index) => setAgenda(prev => ({ ...prev, [role]: prev[role].filter((_, i) => i !== index) }));
+  const startEditing = (role, index, text) => setEditingPoint({ role, index, text });
+  const saveEdit = () => { const { role, index, text } = editingPoint; if (!role || index === null || !text.trim()) { setEditingPoint({ role: null, index: null, text: '' }); return; } setAgenda(prev => ({ ...prev, [role]: prev[role].map((p, i) => i === index ? { ...p, text: text.trim() } : p) })); setEditingPoint({ role: null, index: null, text: '' }); };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    const { role, index } = uploadingFor;
+    if (!file || !role || index === null) return;
+    if (file.size > 800 * 1024) return alert("Datei zu gross (max 800KB).");
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        setAgenda(prev => ({ ...prev, [role]: prev[role].map((p, i) => i === index ? { ...p, files: [...(p.files || []), { name: file.name, type: file.type, data: ev.target.result }] } : p) }));
+        setUploadingFor({ role: null, index: null });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const removeFile = (role, pointIndex, fileIndex) => setAgenda(prev => ({ ...prev, [role]: prev[role].map((p, i) => i === pointIndex ? { ...p, files: p.files.filter((_, fi) => fi !== fileIndex) } : p) }));
+  const downloadFile = (file) => { const link = document.createElement('a'); link.href = file.data; link.download = file.name; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSave({ id: initialData?.id, date, attendance, agenda }); }} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20 text-left">
+      <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left">
+        <div className="flex items-center gap-4 text-left"><button type="button" onClick={onCancel} className="text-gray-400 hover:text-white bg-[#121212] p-2 rounded-lg border border-gray-800 transition-all"><ChevronRight className="rotate-180" size={20} /></button><h2 className="text-2xl font-bold text-white tracking-tight text-left">{initialData ? 'Protokoll bearbeiten' : 'Neue Sitzung'}</h2></div>
+        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-6 py-3 rounded-xl flex items-center gap-2 shadow-lg active:scale-95 text-left"><Save size={18} /> Speichern</button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 text-left">
+        <div className="lg:col-span-1 space-y-6 text-left">
+          <div className="bg-[#121212] border border-gray-900 p-6 rounded-2xl shadow-xl text-left">
+            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 ml-1 text-left">Datum</label>
+            <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 focus:outline-none font-bold text-left" />
+          </div>
+          <div className="bg-[#121212] border border-gray-900 p-6 rounded-2xl shadow-xl text-left">
+            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2 text-left"><ClipboardCheck size={16} className="text-orange-500" /> Anwesenheit</h3>
+            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-hide text-left">
+              {boardMembers.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(m => (
+                <div key={m.id} onClick={() => toggleAttendance(m.id)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${attendance[m.id] ? 'bg-orange-500/10 border-orange-500/30' : 'bg-black border-gray-900 opacity-60'} text-left`}>
+                  <span className="text-sm font-bold text-white text-left">{m.firstName} {m.lastName}</span>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${attendance[m.id] ? 'bg-orange-500 border-orange-500' : 'border-gray-700'} text-left`}>{attendance[m.id] && <Check size={12} className="text-black stroke-[4]" />}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="lg:col-span-2 space-y-4 text-left">
+          <div className="bg-[#121212] border border-gray-900 p-6 rounded-2xl shadow-xl text-left">
+            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6 flex items-center gap-2 text-left"><FileText size={16} className="text-orange-500" /> Traktanden</h3>
+            <div className="space-y-8 text-left">
+              {BOARD_ROLES.map(role => (
+                <div key={role} className="space-y-4 pb-6 border-b border-gray-900 last:border-0 text-left">
+                  <label className="block text-[10px] font-black text-orange-500 uppercase tracking-[0.2em] ml-1 text-left">{role}</label>
+                  <div className="space-y-3 text-left">
+                    {(agenda[role] || []).map((point, idx) => (
+                      <div key={idx} className="flex flex-col gap-3 p-4 bg-black border border-gray-900 rounded-xl group hover:border-gray-700 transition-all shadow-sm text-left">
+                        {editingPoint.role === role && editingPoint.index === idx ? (
+                          <div className="flex gap-2 text-left"><textarea autoFocus value={editingPoint.text} onChange={e => setEditingPoint({...editingPoint, text: e.target.value})} className="flex-1 bg-gray-900 border border-orange-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none transition-all resize-none font-medium text-left" rows={2} /><div className="flex flex-col gap-1 text-left"><button type="button" onClick={saveEdit} className="p-2 bg-green-500/20 text-green-500 rounded-lg hover:bg-green-500/30 transition-all text-left"><Check size={16}/></button><button type="button" onClick={() => setEditingPoint({ role: null, index: null, text: '' })} className="p-2 bg-red-500/20 text-red-500 rounded-lg hover:bg-red-500/30 transition-all text-left"><X size={16}/></button></div></div>
+                        ) : (
+                          <div className="space-y-2 text-left">
+                            <div className="flex items-start gap-3 text-left">
+                                <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0 text-left"></div>
+                                <p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap leading-relaxed text-left">{point.text}</p>
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all text-left">
+                                    <button type="button" onClick={() => { setUploadingFor({role, index: idx}); fileInputRef.current?.click(); }} className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg text-left" title="Datei anhängen"><Paperclip size={16} /></button>
+                                    <button type="button" onClick={() => startEditing(role, idx, point.text)} className="p-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg text-left" title="Bearbeiten"><Edit2 size={16} /></button>
+                                    <button type="button" onClick={() => removePoint(role, index)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg text-left" title="Löschen"><Trash2 size={16} /></button>
+                                </div>
+                            </div>
+                            {point.files && point.files.length > 0 && (<div className="flex flex-wrap gap-2 ml-4 text-left">{point.files.map((file, fi) => (<div key={fi} className="flex items-center gap-2 bg-[#121212] border border-gray-900 px-3 py-1.5 rounded-lg group/file shadow-sm text-left"><File size={12} className="text-orange-500/70" /><span className="text-[10px] text-gray-400 font-medium truncate max-w-[120px] uppercase text-left">{file.name}</span><div className="flex gap-1 text-left"><button type="button" onClick={() => downloadFile(file)} className="p-1 text-gray-500 hover:text-orange-400 transition-colors text-left"><Download size={12}/></button><button type="button" onClick={() => removeFile(role, idx, fi)} className="p-1 text-gray-500 hover:text-red-500 transition-colors text-left"><X size={12}/></button></div></div>))}</div>)}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-4 text-left"><input type="text" value={newPoints[role]} onChange={e => handleNewPointChange(role, e.target.value)} onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addPoint(role))} placeholder="Punkt erfassen..." className="flex-1 bg-black border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:border-orange-500 focus:outline-none transition-all shadow-inner font-bold text-left" /><button type="button" onClick={() => addPoint(role)} className="bg-gray-800 hover:bg-gray-700 text-orange-500 p-2.5 rounded-xl transition-all shadow-sm text-left"><Plus size={20} /></button></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
   );
 }
 
@@ -599,29 +750,29 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
 
   return (
     <div className="space-y-6 text-left">
-      <div className="flex flex-wrap justify-between items-center gap-4">
+      <div className="flex flex-wrap justify-between items-center gap-4 text-left">
         <div className="flex gap-2 text-left">
-            <button onClick={() => setShowImport(!showImport)} className="bg-gray-900 hover:bg-gray-800 text-gray-300 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors border border-gray-800 shadow-lg">
+            <button onClick={() => setShowImport(!showImport)} className="bg-gray-900 hover:bg-gray-800 text-gray-300 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors border border-gray-800 shadow-lg text-left">
                 <FileSpreadsheet size={18} /> Import
             </button>
-            <button onClick={() => setShowAdd(true)} className="bg-orange-500 hover:bg-orange-600 text-black font-black px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-xl active:scale-95">
+            <button onClick={() => setShowAdd(true)} className="bg-orange-500 hover:bg-orange-600 text-black font-black px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-xl active:scale-95 text-left">
                 <UserPlus size={18} /> Neu
             </button>
         </div>
       </div>
       
       {showImport && (
-        <div className="bg-[#121212] border border-gray-900 p-8 rounded-3xl text-center animate-in fade-in slide-in-from-top-2 duration-300 shadow-xl">
-            <Upload className="mx-auto text-orange-500 mb-4" size={40} />
+        <div className="bg-[#121212] border border-gray-900 p-8 rounded-3xl text-center animate-in fade-in slide-in-from-top-2 duration-300 shadow-xl text-center">
+            <Upload className="mx-auto text-orange-500 mb-4 text-center" size={40} />
             <h3 className="text-white font-bold text-lg mb-2 text-center">CSV Import</h3>
-            <input type="file" ref={fileInputRef} accept=".csv" onChange={handleCsvUpload} className="hidden" />
-            <button onClick={() => fileInputRef.current?.click()} className="bg-orange-500 text-black font-black px-8 py-3 rounded-xl shadow-lg uppercase text-[10px] tracking-widest">Datei auswählen</button>
+            <input type="file" ref={fileInputRef} accept=".csv" onChange={handleCsvUpload} className="hidden text-center" />
+            <button onClick={() => fileInputRef.current?.click()} className="bg-orange-500 text-black font-black px-8 py-3 rounded-xl shadow-lg uppercase text-[10px] tracking-widest text-center">Datei auswählen</button>
         </div>
       )}
 
       {users.length === 0 ? <EmptyPlaceholder message="Keine Mitglieder gefunden." /> : (
-        <div className="bg-[#121212] border border-gray-900 rounded-3xl overflow-hidden shadow-2xl">
-            <div className="overflow-x-auto scrollbar-hide">
+        <div className="bg-[#121212] border border-gray-900 rounded-3xl overflow-hidden shadow-2xl text-left">
+            <div className="overflow-x-auto scrollbar-hide text-left">
             <table className="w-full text-left border-collapse">
                 <thead>
                 <tr className="bg-black/50 border-b border-gray-900 text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] text-left">
@@ -646,10 +797,10 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
                     </td>
                     <td className="p-6 text-right flex justify-end gap-1 text-left">
                         {(u.groups || []).includes('Vorstand') && (
-                            <button onClick={() => resetPassword(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all" title="Reset PW"><Key size={18} /></button>
+                            <button onClick={() => resetPassword(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all text-left" title="Reset PW"><Key size={18} /></button>
                         )}
-                        <button onClick={() => setEditingUser(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all" title="Edit"><Edit2 size={18} /></button>
-                        <button onClick={() => removeUser(u.id)} className="text-gray-500 hover:text-red-500 p-2 rounded-lg transition-all" title="Delete"><Trash2 size={18} /></button>
+                        <button onClick={() => setEditingUser(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all text-left" title="Edit"><Edit2 size={18} /></button>
+                        <button onClick={() => removeUser(u.id)} className="text-gray-500 hover:text-red-500 p-2 rounded-lg transition-all text-left" title="Delete"><Trash2 size={18} /></button>
                     </td>
                     </tr>
                 ))}
@@ -662,5 +813,5 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
   );
 }
 
-function FatalErrorScreen({ message }) { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center"><div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-3xl p-10 shadow-2xl"><ShieldAlert className="mx-auto text-red-500 mb-6" size={60} /><h1 className="text-3xl font-black text-white mb-3 tracking-tight text-center">Systemfehler</h1><p className="text-red-300 text-sm mb-6 leading-relaxed italic text-center">{message}</p></div></div>); }
-function SetupScreen() { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center"><div className="max-w-2xl w-full bg-gray-900 border border-orange-500/50 rounded-3xl p-10 shadow-2xl text-center"><Settings className="mx-auto text-orange-500 mb-6" size={60} /><h1 className="text-3xl font-black text-white mb-2 tracking-tight text-center">Konfiguration fehlt</h1></div></div>); }
+function FatalErrorScreen({ message }) { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center"><div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-3xl p-10 shadow-2xl text-center"><ShieldAlert className="mx-auto text-red-500 mb-6 text-center" size={60} /><h1 className="text-3xl font-black text-white mb-3 tracking-tight text-center">Systemfehler</h1><p className="text-red-300 text-sm mb-6 leading-relaxed italic text-center">{message}</p></div></div>); }
+function SetupScreen() { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center"><div className="max-w-2xl w-full bg-gray-900 border border-orange-500/50 rounded-3xl p-10 shadow-2xl text-center"><Settings className="mx-auto text-orange-500 mb-6 text-center" size={60} /><h1 className="text-3xl font-black text-white mb-2 tracking-tight text-center">Konfiguration fehlt</h1></div></div>); }
