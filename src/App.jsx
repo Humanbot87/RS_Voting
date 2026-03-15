@@ -112,7 +112,7 @@ export default function App() {
           setUsers(snap.docs.map(d => d.data()));
           setIsDBReady(true);
         }, (err) => {
-          if (err.code === 'permission-denied') setPermissionsError("Fehlende Berechtigungen.");
+          if (err.code === 'permission-denied') setPermissionsError("Berechtigungsfehler.");
         }
       );
       unsubEvents = onSnapshot(eventsRef, (snap) => {
@@ -193,7 +193,6 @@ export default function App() {
     const footer = "</body></html>";
     const sourceHTML = header + contentHtml + footer;
     
-    // Improved Export using Blob for better browser compatibility
     const blob = new Blob(['\ufeff', sourceHTML], {
         type: 'application/msword'
     });
@@ -420,14 +419,14 @@ function SearchView({ events, minutes, isBoardMember }) {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-300">
-            <div className="relative">
+            <div className="relative text-left">
                 <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
                 <input 
                     type="text" 
                     autoFocus
                     value={query}
                     onChange={e => setQuery(e.target.value)}
-                    placeholder="Suche nach Events, Umfragen oder Protokollen..."
+                    placeholder="Suche Events, Umfragen, Protokolle..."
                     className="w-full bg-[#121212] border border-gray-900 rounded-[1.5rem] pl-14 pr-6 py-5 text-white focus:outline-none focus:border-orange-500 font-bold transition-all shadow-xl"
                 />
             </div>
@@ -440,7 +439,7 @@ function SearchView({ events, minutes, isBoardMember }) {
                 <div className="space-y-10">
                     {filteredEvents.length > 0 && (
                         <section className="text-left">
-                            <h4 className="text-xs font-black text-orange-500 uppercase tracking-widest mb-4 ml-2">Gefundene Events & Umfragen</h4>
+                            <h4 className="text-xs font-black text-orange-500 uppercase tracking-widest mb-4 ml-2">Events & Umfragen</h4>
                             <div className="grid gap-3">
                                 {filteredEvents.map(e => (
                                     <div key={e.id} className="bg-[#121212] border border-gray-900 p-5 rounded-2xl flex items-center gap-4 text-left">
@@ -457,7 +456,7 @@ function SearchView({ events, minutes, isBoardMember }) {
 
                     {filteredMinutes.length > 0 && (
                         <section className="text-left">
-                            <h4 className="text-xs font-black text-blue-500 uppercase tracking-widest mb-4 ml-2">Gefundene Protokollinhalte</h4>
+                            <h4 className="text-xs font-black text-blue-500 uppercase tracking-widest mb-4 ml-2">Protokollinhalte</h4>
                             <div className="grid gap-3">
                                 {filteredMinutes.map(m => (
                                     <div key={m.id} className="bg-[#121212] border border-gray-900 p-5 rounded-2xl flex items-center gap-4 text-left">
@@ -509,7 +508,7 @@ function CreateOption({ icon, label, onClick }) {
 function EmptyPlaceholder({ message }) {
     return (
         <div className="flex flex-col items-center justify-center py-24 text-center opacity-60">
-            <div className="w-24 h-24 border-2 border-gray-800 rounded-3xl flex items-center justify-center mb-6 text-gray-800">
+            <div className="w-24 h-24 border-2 border-gray-800 rounded-3xl flex items-center justify-center mb-6 text-gray-800 mx-auto">
                 <Package size={40} />
             </div>
             <h3 className="text-xl font-bold text-white mb-2 tracking-tight">Noch nix da.</h3>
@@ -562,17 +561,17 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center">
       <div className="max-w-md w-full">
-        <div className="flex flex-col items-center mb-12">
-            <h1 className="text-6xl font-black mb-1 tracking-tighter leading-none">
+        <div className="flex flex-col items-center mb-12 text-center mx-auto">
+            <h1 className="text-6xl font-black mb-1 tracking-tighter leading-none text-center">
                 <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
             </h1>
-            <span className="text-gray-400 text-sm font-bold uppercase tracking-[0.3em]">Ämme</span>
+            <span className="text-gray-400 text-lg font-bold uppercase tracking-[0.4em] ml-2 text-center">Ämme</span>
         </div>
 
-        <div className="bg-[#121212] border border-gray-900 rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden">
+        <div className="bg-[#121212] border border-gray-900 rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden text-left">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-orange-500"></div>
             {users.length === 0 ? (
-                <div className="py-6 flex flex-col items-center">
+                <div className="py-6 flex flex-col items-center text-center">
                     <Database className="text-gray-700 mb-6" size={56} />
                     <h3 className="text-white font-bold text-xl mb-6 tracking-tight">Datenbank bereitstellen</h3>
                     <button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 text-black font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-lg">Vereinsdaten laden</button>
@@ -593,23 +592,23 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
                     </form>
                 )}
                 {step === 'password' && (
-                    <form onSubmit={handlePasswordSubmit} className="space-y-6">
+                    <form onSubmit={handlePasswordSubmit} className="space-y-6 text-center">
                         <div className="flex flex-col items-center gap-3 mb-2 text-center mx-auto">
                             <div className="w-16 h-16 bg-orange-500/10 rounded-3xl flex items-center justify-center text-orange-500 mx-auto">
                                 <Lock size={32} />
                             </div>
-                            <span className="text-[11px] font-black text-orange-500 uppercase tracking-widest">Vorstand Authentifizierung</span>
+                            <span className="text-[11px] font-black text-orange-500 uppercase tracking-widest">Vorstand Login</span>
                         </div>
                         <input type="password" required autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="••••" className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-5 text-white focus:outline-none focus:border-orange-500 transition-colors text-center text-2xl tracking-[0.5em] font-black" />
                         <button type="submit" className="w-full bg-orange-500 text-black font-black py-5 rounded-2xl uppercase text-xs tracking-[0.2em] shadow-lg active:scale-95 transition-all">Entsperren</button>
-                        <button type="button" onClick={() => setStep('name')} className="text-gray-500 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors mt-2">Zurück</button>
+                        <button type="button" onClick={() => setStep('name')} className="text-gray-500 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors mt-2 mx-auto block">Zurück</button>
                     </form>
                 )}
                 {step === 'setup' && (
-                    <form onSubmit={handleSetupSubmit} className="space-y-6">
-                        <div className="flex flex-col items-center gap-3">
-                            <ShieldAlert size={40} className="text-blue-500" />
-                            <div className="text-center mx-auto"><span className="text-xs font-black block uppercase text-blue-400 mb-1">Passwort einrichten</span><span className="text-[10px] text-gray-500 italic block leading-tight">Individuelles Vorstands-Passwort setzen.</span></div>
+                    <form onSubmit={handleSetupSubmit} className="space-y-6 text-left">
+                        <div className="flex flex-col items-center gap-3 text-center mx-auto">
+                            <ShieldAlert size={40} className="text-blue-500 mx-auto" />
+                            <div className="text-center mx-auto"><span className="text-xs font-black block uppercase text-blue-400 mb-1">Passwort einrichten</span><span className="text-[10px] text-gray-500 italic block leading-tight">Privater Vorstandszugang.</span></div>
                         </div>
                         <input type="password" required autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Neues Passwort" className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-5 text-white focus:outline-none focus:border-orange-500 transition-colors text-center font-bold" />
                         <button type="submit" className="w-full bg-orange-500 text-black font-black py-5 rounded-2xl uppercase text-xs tracking-widest">Speichern & Weiter</button>
@@ -649,14 +648,14 @@ function MinutesView({ minutes, users, dbAppId, db, fbUser, forceCreate, onCreat
 
   return (
     <div className="space-y-4 text-left">
-      {minutes.length === 0 ? <EmptyPlaceholder message="Erfasse das erste Protokoll für den Vorstand." /> : (
+      {minutes.length === 0 ? <EmptyPlaceholder message="Erfasse das erste Protokoll." /> : (
         <div className="grid gap-3 text-left">{minutes.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(m => (
             <div key={m.id} className="bg-[#121212] border border-gray-900 p-5 rounded-3xl flex justify-between items-center group hover:border-orange-500/30 transition-all shadow-lg text-left">
-              <div className="flex items-center gap-4 text-left text-left">
+              <div className="flex items-center gap-4 text-left">
                 <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center text-orange-500 border border-gray-900">
                   <FileText size={24} />
                 </div>
-                <div className="text-left text-left">
+                <div className="text-left">
                    <h3 className="text-lg font-bold text-white text-left leading-tight">Sitzung vom {new Date(m.date).toLocaleDateString('de-CH')}</h3>
                    <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mt-1 text-left">Vorstandsprotokoll</p>
                 </div>
@@ -724,7 +723,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
     <form onSubmit={(e) => { e.preventDefault(); onSave({ id: initialData?.id, date, attendance, agenda }); }} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20 text-left">
       <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left">
-        <div className="flex items-center gap-4 text-left text-left text-left text-left"><button type="button" onClick={onCancel} className="text-gray-400 hover:text-white bg-[#121212] p-2 rounded-lg border border-gray-800 transition-all shadow-lg active:scale-90"><ChevronRight className="rotate-180" size={20} /></button><h2 className="text-2xl font-bold text-white tracking-tight text-left leading-none">{initialData ? 'Protokoll bearbeiten' : 'Neue Sitzung'}</h2></div>
+        <div className="flex items-center gap-4 text-left"><button type="button" onClick={onCancel} className="text-gray-400 hover:text-white bg-[#121212] p-2 rounded-lg border border-gray-800 transition-all shadow-lg active:scale-90"><ChevronRight className="rotate-180" size={20} /></button><h2 className="text-2xl font-bold text-white tracking-tight text-left leading-none">{initialData ? 'Protokoll bearbeiten' : 'Neue Sitzung'}</h2></div>
         <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-gray-950 font-black px-6 py-3 rounded-xl flex items-center gap-2 shadow-lg active:scale-95 text-left"><Save size={18} /> Speichern</button>
       </div>
 
@@ -735,10 +734,10 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
             <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 focus:outline-none font-bold text-left" />
           </div>
           <div className="bg-[#121212] border border-gray-900 p-6 rounded-2xl shadow-xl text-left">
-            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2 text-left text-left"><ClipboardCheck size={16} className="text-orange-500" /> Anwesenheit</h3>
+            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2 text-left"><ClipboardCheck size={16} className="text-orange-500" /> Anwesenheit</h3>
             <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-hide text-left">
               {boardMembers.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(m => (
-                <div key={m.id} onClick={() => toggleAttendance(m.id)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${attendance[m.id] ? 'bg-orange-500/10 border-orange-500/30' : 'bg-black border-gray-900 opacity-60'} text-left text-left text-left`}>
+                <div key={m.id} onClick={() => toggleAttendance(m.id)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${attendance[m.id] ? 'bg-orange-500/10 border-orange-500/30' : 'bg-black border-gray-900 opacity-60'} text-left`}>
                   <span className="text-sm font-bold text-white text-left">{m.firstName} {m.lastName}</span>
                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${attendance[m.id] ? 'bg-orange-500 border-orange-500' : 'border-gray-700'} text-left`}>{attendance[m.id] && <Check size={12} className="text-black stroke-[4]" />}</div>
                 </div>
@@ -747,7 +746,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
           </div>
         </div>
         <div className="lg:col-span-2 space-y-4 text-left">
-          <div className="bg-[#121212] border border-gray-900 p-6 rounded-2xl shadow-xl text-left text-left text-left">
+          <div className="bg-[#121212] border border-gray-900 p-6 rounded-2xl shadow-xl text-left">
             <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6 flex items-center gap-2 text-left"><FileText size={16} className="text-orange-500" /> Traktanden</h3>
             <div className="space-y-8 text-left">
               {BOARD_ROLES.map(role => (
@@ -757,9 +756,9 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
                     {(agenda[role] || []).map((point, idx) => (
                       <div key={idx} className="flex flex-col gap-3 p-4 bg-black border border-gray-900 rounded-xl group hover:border-gray-700 transition-all shadow-sm text-left">
                         {editingPoint.role === role && editingPoint.index === idx ? (
-                          <div className="flex gap-2 text-left"><textarea autoFocus value={editingPoint.text} onChange={e => setEditingPoint({...editingPoint, text: e.target.value})} className="flex-1 bg-gray-900 border border-orange-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none transition-all resize-none font-medium text-left" rows={2} /><div className="flex flex-col gap-1 text-left"><button type="button" onClick={saveEdit} className="p-2 bg-green-500/20 text-green-500 rounded-lg hover:bg-green-500/30 transition-all text-left text-left"><Check size={16}/></button><button type="button" onClick={() => setEditingPoint({ role: null, index: null, text: '' })} className="p-2 bg-red-500/20 text-red-500 rounded-lg hover:bg-red-500/30 transition-all text-left text-left"><X size={16}/></button></div></div>
+                          <div className="flex gap-2 text-left"><textarea autoFocus value={editingPoint.text} onChange={e => setEditingPoint({...editingPoint, text: e.target.value})} className="flex-1 bg-gray-900 border border-orange-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none transition-all resize-none font-medium text-left" rows={2} /><div className="flex flex-col gap-1 text-left"><button type="button" onClick={saveEdit} className="p-2 bg-green-500/20 text-green-500 rounded-lg hover:bg-green-500/30 transition-all text-left"><Check size={16}/></button><button type="button" onClick={() => setEditingPoint({ role: null, index: null, text: '' })} className="p-2 bg-red-500/20 text-red-500 rounded-lg hover:bg-red-500/30 transition-all text-left"><X size={16}/></button></div></div>
                         ) : (
-                          <div className="space-y-2 text-left">
+                          <div className="space-y-2 text-left text-left">
                             <div className="flex items-start gap-3 text-left">
                                 <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0 text-left"></div>
                                 <p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap leading-relaxed text-left leading-relaxed">{point.text}</p>
@@ -769,13 +768,13 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
                                     <button type="button" onClick={() => removePoint(role, index)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg text-left" title="Löschen"><Trash2 size={16} /></button>
                                 </div>
                             </div>
-                            {point.files && point.files.length > 0 && (<div className="flex flex-wrap gap-2 ml-4 text-left">{point.files.map((file, fi) => (<div key={fi} className="flex items-center gap-2 bg-[#121212] border border-gray-900 px-3 py-1.5 rounded-lg group/file shadow-sm text-left"><File size={12} className="text-orange-500/70" /><span className="text-[10px] text-gray-400 font-medium truncate max-w-[120px] uppercase text-left">{file.name}</span><div className="flex gap-1 text-left"><button type="button" onClick={() => downloadFile(file)} className="p-1 text-gray-500 hover:text-orange-400 transition-colors text-left text-left"><Download size={12}/></button><button type="button" onClick={() => removeFile(role, idx, fi)} className="p-1 text-gray-500 hover:text-red-500 transition-colors text-left text-left"><X size={12}/></button></div></div>))}</div>)}
+                            {point.files && point.files.length > 0 && (<div className="flex flex-wrap gap-2 ml-4 text-left">{point.files.map((file, fi) => (<div key={fi} className="flex items-center gap-2 bg-[#121212] border border-gray-900 px-3 py-1.5 rounded-lg group/file shadow-sm text-left"><File size={12} className="text-orange-500/70" /><span className="text-[10px] text-gray-400 font-medium truncate max-w-[120px] uppercase text-left">{file.name}</span><div className="flex gap-1 text-left text-left"><button type="button" onClick={() => downloadFile(file)} className="p-1 text-gray-500 hover:text-orange-400 transition-colors text-left"><Download size={12}/></button><button type="button" onClick={() => removeFile(role, idx, fi)} className="p-1 text-gray-500 hover:text-red-500 transition-colors text-left text-left"><X size={12}/></button></div></div>))}</div>)}
                           </div>
                         )}
                       </div>
                     ))}
                   </div>
-                  <div className="flex gap-2 mt-4 text-left"><input type="text" value={newPoints[role]} onChange={e => handleNewPointChange(role, e.target.value)} onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addPoint(role))} placeholder="Punkt erfassen..." className="flex-1 bg-black border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:border-orange-500 focus:outline-none transition-all shadow-inner font-bold text-left" /><button type="button" onClick={() => addPoint(role)} className="bg-gray-800 hover:bg-gray-700 text-orange-500 p-2.5 rounded-xl transition-all shadow-sm text-left text-left"><Plus size={20} /></button></div>
+                  <div className="flex gap-2 mt-4 text-left text-left text-left text-left"><input type="text" value={newPoints[role]} onChange={e => handleNewPointChange(role, e.target.value)} onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addPoint(role))} placeholder="Punkt erfassen..." className="flex-1 bg-black border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:border-orange-500 focus:outline-none transition-all shadow-inner font-bold text-left" /><button type="button" onClick={() => addPoint(role)} className="bg-gray-800 hover:bg-gray-700 text-orange-500 p-2.5 rounded-xl transition-all shadow-sm text-left"><Plus size={20} /></button></div>
                 </div>
               ))}
             </div>
@@ -864,7 +863,7 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
       {users.length === 0 ? <EmptyPlaceholder message="Keine Mitglieder gefunden." /> : (
         <div className="bg-[#121212] border border-gray-900 rounded-3xl overflow-hidden shadow-2xl text-left">
             <div className="overflow-x-auto scrollbar-hide text-left">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse text-left text-left">
                 <thead>
                 <tr className="bg-black/50 border-b border-gray-900 text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] text-left">
                     <th className="p-6">Name</th><th className="p-6">Rolle</th><th className="p-6">Sektionen</th><th className="p-6 text-right">Optionen</th>
@@ -872,7 +871,7 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
                 </thead>
                 <tbody className="divide-y divide-gray-900 text-left">
                 {users.sort((a,b) => (a.lastName || '').localeCompare(b.lastName || '')).map(u => (
-                    <tr key={u.id} className="hover:bg-orange-500/[0.02] transition-colors group text-left">
+                    <tr key={u.id} className="hover:bg-orange-500/[0.02] transition-colors group text-left text-left text-left">
                     <td className="p-6 text-white font-bold text-left leading-tight text-left">{u.lastName} {u.firstName}</td>
                     <td className="p-6 text-left">
                         <span className={`text-[10px] px-3 py-1.5 rounded-xl font-black uppercase tracking-widest inline-flex items-center gap-2 ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20 text-left' : 'bg-gray-900 text-gray-400'}`}>
@@ -886,7 +885,7 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
                             ))}
                         </div>
                     </td>
-                    <td className="p-6 text-right flex justify-end gap-1 text-left">
+                    <td className="p-6 text-right flex justify-end gap-1 text-left text-left">
                         {(u.groups || []).includes('Vorstand') && (
                             <button onClick={() => resetPassword(u)} className="text-gray-500 hover:text-orange-500 p-2 rounded-lg transition-all text-left" title="Reset PW"><Key size={18} /></button>
                         )}
@@ -904,86 +903,5 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
   );
 }
 
-function MemberForm({ onSubmit, initialData, onCancel }) {
-  const [firstName, setFirstName] = useState(initialData?.firstName || '');
-  const [lastName, setLastName] = useState(initialData?.lastName || '');
-  const [role, setRole] = useState(initialData?.role || 'member');
-  const [selectedGroups, setSelectedGroups] = useState(initialData?.groups || []);
-  const toggleGroup = (group) => setSelectedGroups(p => p.includes(group) ? p.filter(g => g !== group) : [...p, group]);
-  
-  return (
-    <form onSubmit={(e) => { e.preventDefault(); onSubmit({ ...(initialData || {}), firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups, password: initialData?.password || "" }); }} className="bg-[#121212] border border-gray-900 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
-      <h3 className="text-xl font-bold text-white mb-6 tracking-tight text-left">{initialData ? 'Profil bearbeiten' : 'Neues Mitglied erfassen'}</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
-        <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6">
-        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest text-left">Berechtigung</label><div className="bg-black border border-gray-800 p-1 rounded-2xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-4 py-3 text-white font-bold focus:ring-0 border-none outline-none cursor-pointer"><option value="member" className="bg-gray-900">Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500 font-bold">Administrator</option></select></div></div>
-        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest text-left">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-black border border-gray-800 p-4 rounded-2xl">
-          {GROUPS.map(g => (
-            <label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all text-left text-left">
-              <input type="checkbox" checked={selectedGroups.includes(g)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}
-            </label>
-          ))}
-        </div></div>
-      </div>
-      <div className="flex justify-end gap-6 pt-6 border-t border-gray-800"><button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all">Abbrechen</button><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 text-xs uppercase tracking-widest">{initialData ? 'Speichern' : 'Anlegen'}</button></div>
-    </form>
-  );
-}
-
-function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db, fbUser, isAutoArchived, forceCreate, onCreated }) {
-  const [showCreate, setShowCreate] = useState(false); const [selectedEvent, setSelectedEvent] = useState(null); const getDbRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'events', id);
-  
-  useEffect(() => { if(forceCreate) setShowCreate(true); }, [forceCreate]);
-
-  const handleCreateEvent = async (n) => { if (!fbUser) return; const id = Date.now().toString(); await setDoc(getDbRef(id), { ...n, id, isArchived: false, surveys: [] }); setShowCreate(false); if(onCreated) onCreated(); };
-  const handleArchive = async (id, s) => { if (!fbUser) return; const e = events.find(ev => ev.id === id); if(e) await setDoc(getDbRef(id), { ...e, isArchived: s }); setSelectedEvent(null); };
-  const handleDeleteEvent = async (id) => { if (!fbUser || !confirm('Event wirklich löschen?')) return; await deleteDoc(getDbRef(id)); setSelectedEvent(null); };
-  
-  if (selectedEvent) { 
-      const evData = events.find(e => e.id === selectedEvent.id); 
-      if (evData) {
-          const isExp = evData.endDate && new Date(evData.endDate) <= new Date(); 
-          return <EventDetail event={evData} onBack={() => setSelectedEvent(null)} currentUser={currentUser} onArchive={handleArchive} onDelete={handleDeleteEvent} users={users} dbAppId={dbAppId} db={db} fbUser={fbUser} isAutoArchived={isExp} />; 
-      } else {
-          setSelectedEvent(null);
-          return null;
-      }
-  }
-  
-  return (
-    <div className="space-y-6 text-left">
-      {!isArchive && showCreate && <CreateEventForm onSubmit={handleCreateEvent} onCancel={() => { setShowCreate(false); if(onCreated) onCreated(); }} />}
-      {events.length === 0 ? (<EmptyPlaceholder message={isArchive ? "Archiv ist leer." : "Keine aktuellen Events."} />) : (<div className="grid gap-4 md:grid-cols-2">{events.map(e => { const isExp = e.endDate && new Date(e.endDate) <= new Date(); return (<div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-[#121212] border border-gray-900 p-6 rounded-3xl cursor-pointer hover:border-orange-500/50 transition-all group active:scale-[0.98] shadow-lg text-left text-left"><div className="flex justify-between items-start mb-2 text-left text-left"><div className="flex flex-wrap gap-2 text-left text-left text-left"><span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20 text-left text-left">{e.category}</span>{(isExp && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1 text-left text-left"><Clock size={10}/> ABGELAUFEN</span>}</div><ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" /></div><h3 className="text-xl font-bold text-white mt-1 mb-4 group-hover:text-orange-50 transition-colors text-left text-left">{e.title}</h3><div className="flex justify-between text-xs text-gray-500 font-bold pt-4 border-t border-gray-800/50 text-left text-left"><span className="flex items-center gap-1 text-left text-left"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span><span className="flex items-center gap-1 text-left text-left"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span></div></div>); })}</div>)}
-    </div>
-  );
-}
-
-function CreateEventForm({ onSubmit, onCancel }) {
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0]);
-  const [date, setDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [customCategory, setCustomCategory] = useState('');
-  const submit = (e) => { e.preventDefault(); const finalCategory = category === 'Freitext' ? customCategory.trim() : category; if (category === 'Freitext' && !finalCategory) return; onSubmit({ title, category: finalCategory, date, endDate }); };
-  return (
-    <form onSubmit={submit} className="bg-[#121212] border border-gray-900 p-8 rounded-3xl mb-8 space-y-6 shadow-xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
-      <div className="absolute top-0 left-0 w-full h-2 bg-orange-500"></div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Titel" className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Kategorie</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>{category === 'Freitext' && (<input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Kategorie Name" className="w-full mt-2 bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold" />)}</div>
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Datum</label><input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
-        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest text-left">Ende (Archiv)</label><input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
-      </div>
-      <div className="flex justify-end gap-4 pt-2 text-left">
-        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold text-xs uppercase tracking-widest text-left">Abbrechen</button>
-        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest text-left">Speichern</button>
-      </div>
-    </form>
-  );
-}
-
-function FatalErrorScreen({ message }) { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center"><div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-3xl p-10 shadow-2xl text-center shadow-red-500/10"><ShieldAlert className="mx-auto text-red-500 mb-6 text-center" size={60} /><h1 className="text-3xl font-black text-white mb-3 tracking-tight text-center">Systemfehler</h1><p className="text-red-300 text-sm mb-6 leading-relaxed italic text-center">{message}</p></div></div>); }
-function SetupScreen() { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center"><div className="max-w-2xl w-full bg-[#121212] border border-gray-900 rounded-[2.5rem] p-10 shadow-2xl text-center"><Settings className="mx-auto text-orange-500 mb-6 text-center animate-spin-slow" size={60} /><h1 className="text-3xl font-black text-white mb-2 tracking-tight text-center">Konfiguration fehlt</h1><p className="text-gray-400 text-center">Bitte Firebase-Daten in der App.jsx eintragen.</p></div></div>); }
+function FatalErrorScreen({ message }) { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center"><div className="max-w-md w-full bg-red-950 border border-red-500/50 rounded-3xl p-10 shadow-2xl text-center shadow-red-500/10"><ShieldAlert className="mx-auto text-red-500 mb-6 text-center" size={60} /><h1 className="text-3xl font-black text-white mb-3 tracking-tight text-center leading-none text-center">Systemfehler</h1><p className="text-red-300 text-sm mb-6 leading-relaxed italic text-center text-center">{message}</p></div></div>); }
+function SetupScreen() { return (<div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center text-center"><div className="max-w-2xl w-full bg-gray-900 border border-orange-500/50 rounded-3xl p-10 shadow-2xl text-center"><Settings className="mx-auto text-orange-500 mb-6 text-center animate-spin-slow" size={60} /><h1 className="text-3xl font-black text-white mb-2 tracking-tight text-center text-center leading-none text-center">Konfiguration fehlt</h1><p className="text-gray-400 text-center text-center">Bitte Firebase-Daten in der App.jsx eintragen.</p></div></div>); }
