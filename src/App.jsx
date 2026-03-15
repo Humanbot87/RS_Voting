@@ -240,7 +240,6 @@ export default function App() {
   if (firebaseInitError) return <FatalErrorScreen message={`Firebase Fehler: ${firebaseInitError}`} />;
   if (authError || permissionsError) return <FatalErrorScreen message={authError || permissionsError} />;
 
-  // SPLASH SCREEN
   if (!fbUser || !isDBReady || isCheckingSession) {
      return (
         <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
@@ -261,13 +260,13 @@ export default function App() {
 
   if (!currentUser) return <LoginScreen onLogin={handleLoginSuccess} users={users} activeSessions={activeSessions} onSeed={seedDatabase} isSeeding={isSeeding} db={db} appId={appId} deobfuscate={deobfuscate} obfuscate={obfuscate} />;
 
+  const isBoardMember = (currentUser.groups || []).includes('Vorstand');
   const itemsCount = activeTab === 'events' ? events.filter(e => !e.isArchived).length : 
                      activeTab === 'archive' ? events.filter(e => e.isArchived).length :
                      activeTab === 'minutes' ? minutes.length : users.length;
 
   return (
     <div className="min-h-screen bg-black text-gray-200 font-sans selection:bg-orange-500 selection:text-white flex flex-col">
-      {/* HEADER LOGO ANPASSUNG */}
       <header className="px-6 pt-10 pb-4">
         <div className="max-w-5xl mx-auto flex justify-between items-start">
           <div className="flex flex-col text-left">
@@ -289,7 +288,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* TABS OBEN */}
       <div className="px-6 py-4 overflow-x-auto scrollbar-hide">
         <div className="max-w-5xl mx-auto flex gap-3">
           <TabButton active={activeTab === 'events'} onClick={() => setActiveTab('events')} label="EVENTS" />
@@ -307,7 +305,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* BOTTOM NAV BAR */}
       <footer className="fixed bottom-0 left-0 right-0 bg-[#121212] border-t border-gray-900 px-6 py-4 z-20">
         <div className="max-w-xl mx-auto flex justify-between items-center relative">
           <button onClick={() => { setActiveTab('events'); setCreationTrigger(null); }} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'events' ? 'text-orange-500' : 'text-gray-500'}`}>
@@ -329,7 +326,6 @@ export default function App() {
         </div>
       </footer>
 
-      {/* CREATE MODAL */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowCreateModal(false)}>
           <div className="bg-gray-900 border border-gray-800 w-full max-w-sm rounded-3xl p-6 space-y-3 animate-in slide-in-from-bottom-4" onClick={e => e.stopPropagation()}>
@@ -342,7 +338,6 @@ export default function App() {
         </div>
       )}
 
-      {/* EXPORT MODAL */}
       {showExportModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowExportModal(false)}>
           <div className="bg-gray-900 border border-gray-800 w-full max-w-md rounded-[2.5rem] p-8 space-y-6 animate-in slide-in-from-bottom-6 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -398,17 +393,6 @@ export default function App() {
   );
 }
 
-function CreateOption({ icon, label, onClick }) {
-  return (
-    <button onClick={onClick} className="w-full flex items-center gap-4 p-4 bg-gray-950 border border-gray-800 rounded-2xl hover:border-orange-500/50 transition-all group text-left">
-      <div className="w-10 h-10 bg-orange-500/10 text-orange-500 rounded-xl flex items-center justify-center group-hover:bg-orange-500 group-hover:text-black transition-colors">
-        {React.cloneElement(icon, { size: 20 })}
-      </div>
-      <span className="text-white font-bold">{label}</span>
-    </button>
-  );
-}
-
 function TabButton({ active, onClick, label }) {
   return (
     <button onClick={onClick} className="flex flex-col items-center gap-2 group min-w-[100px]">
@@ -426,13 +410,12 @@ function EmptyPlaceholder({ message }) {
             <div className="w-24 h-24 border-2 border-gray-800 rounded-3xl flex items-center justify-center mb-6 text-gray-800">
                 <Package size={40} />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2 tracking-tight">Noch nix da.</h3>
+            <h3 className="text-xl font-bold text-white mb-2 tracking-tight leading-none">Noch nix da.</h3>
             <p className="text-sm text-gray-500">{message || 'Drück den orangen Knopf.'}</p>
         </div>
     );
 }
 
-// LOGIN SCREEN LOGO ANPASSUNG
 function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, appId, deobfuscate, obfuscate }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -477,7 +460,6 @@ function LoginScreen({ onLogin, users, activeSessions, onSeed, isSeeding, db, ap
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center">
       <div className="max-w-md w-full">
-        {/* LOGO WIE IM LADEBILDSCHIRM */}
         <div className="flex flex-col items-center mb-12">
             <h1 className="text-6xl font-black mb-1 tracking-tighter leading-none">
                 <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
@@ -680,7 +662,7 @@ function MinutesForm({ initialData, boardMembers, onSave, onCancel }) {
                                 <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50 mt-1.5 shrink-0 text-left"></div>
                                 <p className="text-sm text-gray-300 flex-1 whitespace-pre-wrap leading-relaxed text-left leading-relaxed">{point.text}</p>
                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all text-left">
-                                    <button type="button" onClick={() => { setUploadingFor({role, index: idx}); fileInputRef.current?.click(); }} className="p-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg text-left" title="Datei anhängen"><Paperclip size={16} /></button>
+                                    <button type="button" onClick={() => { setUploadingFor({role, index: idx}); fileInputRef.current?.click(); }} className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg text-left" title="Datei anhängen"><Paperclip size={16} /></button>
                                     <button type="button" onClick={() => startEditing(role, idx, point.text)} className="p-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg text-left" title="Bearbeiten"><Edit2 size={16} /></button>
                                     <button type="button" onClick={() => removePoint(role, index)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg text-left" title="Löschen"><Trash2 size={16} /></button>
                                 </div>
@@ -817,6 +799,87 @@ function MembersView({ users, dbAppId, db, fbUser, deobfuscate, obfuscate, force
         </div>
       )}
     </div>
+  );
+}
+
+function MemberForm({ onSubmit, initialData, onCancel }) {
+  const [firstName, setFirstName] = useState(initialData?.firstName || '');
+  const [lastName, setLastName] = useState(initialData?.lastName || '');
+  const [role, setRole] = useState(initialData?.role || 'member');
+  const [selectedGroups, setSelectedGroups] = useState(initialData?.groups || []);
+  const toggleGroup = (group) => setSelectedGroups(p => p.includes(group) ? p.filter(g => g !== group) : [...p, group]);
+  
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSubmit({ ...(initialData || {}), firstName: firstName.trim(), lastName: lastName.trim(), role, groups: selectedGroups, password: initialData?.password || "" }); }} className="bg-[#121212] border border-gray-900 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
+      <h3 className="text-xl font-bold text-white mb-6 tracking-tight">{initialData ? 'Profil bearbeiten' : 'Neues Mitglied erfassen'}</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <input type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Vorname" className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
+        <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nachname" className="w-full bg-black border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-orange-500 font-bold" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6 border-t border-gray-800 pt-6">
+        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Berechtigung</label><div className="bg-black border border-gray-800 p-1 rounded-2xl"><select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-transparent px-4 py-3 text-white font-bold focus:ring-0 border-none outline-none cursor-pointer"><option value="member" className="bg-gray-900">Mitglied</option><option value="admin" className="bg-gray-900 text-orange-500 font-bold">Administrator</option></select></div></div>
+        <div><label className="text-[10px] font-bold text-gray-500 uppercase block mb-2 tracking-widest">Gruppen</label><div className="grid grid-cols-2 gap-2 bg-black border border-gray-800 p-4 rounded-2xl">
+          {GROUPS.map(g => (
+            <label key={g} className="flex items-center gap-2 text-xs font-bold text-gray-400 cursor-pointer hover:text-white transition-all text-left">
+              <input type="checkbox" checked={selectedGroups.includes(g)} onChange={() => toggleGroup(g)} className="w-4 h-4 accent-orange-500 rounded" />{g}
+            </label>
+          ))}
+        </div></div>
+      </div>
+      <div className="flex justify-end gap-6 pt-6 border-t border-gray-800"><button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold uppercase text-[10px] tracking-widest transition-all">Abbrechen</button><button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 text-xs uppercase tracking-widest">{initialData ? 'Speichern' : 'Anlegen'}</button></div>
+    </form>
+  );
+}
+
+function EventsView({ events, currentUser, isArchive = false, users, dbAppId, db, fbUser, isAutoArchived, forceCreate, onCreated }) {
+  const [showCreate, setShowCreate] = useState(false); const [selectedEvent, setSelectedEvent] = useState(null); const getDbRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'events', id);
+  
+  useEffect(() => { if(forceCreate) setShowCreate(true); }, [forceCreate]);
+
+  const handleCreateEvent = async (n) => { if (!fbUser) return; const id = Date.now().toString(); await setDoc(getDbRef(id), { ...n, id, isArchived: false, surveys: [] }); setShowCreate(false); if(onCreated) onCreated(); };
+  const handleArchive = async (id, s) => { if (!fbUser) return; const e = events.find(ev => ev.id === id); if(e) await setDoc(getDbRef(id), { ...e, isArchived: s }); setSelectedEvent(null); };
+  const handleDeleteEvent = async (id) => { if (!fbUser || !confirm('Event wirklich löschen?')) return; await deleteDoc(getDbRef(id)); setSelectedEvent(null); };
+  
+  if (selectedEvent) { 
+      const evData = events.find(e => e.id === selectedEvent.id); 
+      if (evData) {
+          const isExp = evData.endDate && new Date(evData.endDate) <= new Date(); 
+          return <EventDetail event={evData} onBack={() => setSelectedEvent(null)} currentUser={currentUser} onArchive={handleArchive} onDelete={handleDeleteEvent} users={users} dbAppId={dbAppId} db={db} fbUser={fbUser} isAutoArchived={isExp} />; 
+      } else {
+          setSelectedEvent(null);
+          return null;
+      }
+  }
+  
+  return (
+    <div className="space-y-6 text-left">
+      {!isArchive && showCreate && <CreateEventForm onSubmit={handleCreateEvent} onCancel={() => { setShowCreate(false); if(onCreated) onCreated(); }} />}
+      {events.length === 0 ? (<EmptyPlaceholder message={isArchive ? "Archiv ist leer." : "Keine aktuellen Events."} />) : (<div className="grid gap-4 md:grid-cols-2">{events.map(e => { const isExp = e.endDate && new Date(e.endDate) <= new Date(); return (<div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-[#121212] border border-gray-900 p-6 rounded-3xl cursor-pointer hover:border-orange-500/50 transition-all group active:scale-[0.98] shadow-lg text-left"><div className="flex justify-between items-start mb-2 text-left"><div className="flex flex-wrap gap-2 text-left"><span className="text-[10px] font-bold text-orange-500 uppercase bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20 text-left">{e.category}</span>{(isExp && !e.isArchived) && <span className="text-[10px] font-bold text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20 flex items-center gap-1 text-left"><Clock size={10}/> ABGELAUFEN</span>}</div><ChevronRight className="text-gray-700 group-hover:text-orange-500 transition-colors" /></div><h3 className="text-xl font-bold text-white mt-1 mb-4 group-hover:text-orange-50 transition-colors text-left">{e.title}</h3><div className="flex justify-between text-xs text-gray-500 font-bold pt-4 border-t border-gray-800/50 text-left"><span className="flex items-center gap-1 text-left"><Calendar size={14} className="text-orange-500" /> {new Date(e.date).toLocaleDateString('de-CH')}</span><span className="flex items-center gap-1 text-left"><BarChart3 size={14} className="text-orange-500" /> {(e.surveys || []).length} Umfragen</span></div></div>); })}</div>)}
+    </div>
+  );
+}
+
+function CreateEventForm({ onSubmit, onCancel }) {
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState(CATEGORIES[0]);
+  const [date, setDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [customCategory, setCustomCategory] = useState('');
+  const submit = (e) => { e.preventDefault(); const finalCategory = category === 'Freitext' ? customCategory.trim() : category; if (category === 'Freitext' && !finalCategory) return; onSubmit({ title, category: finalCategory, date, endDate }); };
+  return (
+    <form onSubmit={submit} className="bg-[#121212] border border-gray-900 p-8 rounded-3xl mb-8 space-y-6 shadow-xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 text-left">
+      <div className="absolute top-0 left-0 w-full h-2 bg-orange-500"></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Titel</label><input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="Titel" className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Kategorie</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>{category === 'Freitext' && (<input type="text" required value={customCategory} onChange={e => setCustomCategory(e.target.value)} placeholder="Kategorie Name" className="w-full mt-2 bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold" />)}</div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Datum</label><input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
+        <div className="space-y-1"><label className="block text-[10px] font-black text-gray-500 uppercase ml-1 tracking-widest">Ende (Archiv)</label><input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-black border border-gray-800 rounded-2xl px-4 py-3 text-white focus:border-orange-500 font-bold focus:outline-none" /></div>
+      </div>
+      <div className="flex justify-end gap-4 pt-2 text-left">
+        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold text-xs uppercase tracking-widest">Abbrechen</button>
+        <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-black px-10 py-4 rounded-2xl transition-all shadow-xl shadow-orange-500/20 active:scale-95 uppercase text-xs tracking-widest">Speichern</button>
+      </div>
+    </form>
   );
 }
 
