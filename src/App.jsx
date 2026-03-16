@@ -268,7 +268,7 @@ export default function App() {
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-black italic tracking-tighter">
-              <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
+              <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span> <span className="text-gray-400">Ämme</span>
             </h1>
           </div>
           <div className="flex items-center gap-4">
@@ -377,7 +377,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
       <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl">
         <div className="text-center mb-10">
           <h1 className="text-5xl font-black mb-2 italic tracking-tighter">
-            <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
+            <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span> <span className="text-gray-400">Ämme</span>
           </h1>
           <p className="text-gray-500 font-medium tracking-wide">Internes Portal & Voting</p>
         </div>
@@ -781,11 +781,24 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
 
 function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, isArchived }) {
   const [showSurveyForm, setShowSurveyForm] = useState(false);
+  const [editingSurvey, setEditingSurvey] = useState(null);
 
-  const addSurvey = (s) => {
-    const newSurveys = [...(event.surveys || []), { ...s, id: Date.now().toString(), status: 'draft', votedUsers: [] }];
-    onUpdate({ surveys: newSurveys });
-    setShowSurveyForm(false);
+  const saveSurvey = (s) => {
+    if (editingSurvey) {
+      const newSurveys = event.surveys.map(x => x.id === editingSurvey.id ? { ...x, ...s } : x);
+      onUpdate({ surveys: newSurveys });
+      setEditingSurvey(null);
+    } else {
+      const newSurveys = [...(event.surveys || []), { ...s, id: Date.now().toString(), status: 'draft', votedUsers: [] }];
+      onUpdate({ surveys: newSurveys });
+      setShowSurveyForm(false);
+    }
+  };
+
+  const deleteSurvey = (id) => {
+    if (confirm('Soll diese Umfrage wirklich gelöscht werden?')) {
+      onUpdate({ surveys: event.surveys.filter(x => x.id !== id) });
+    }
   };
 
   return (
@@ -807,26 +820,42 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
         )}
       </div>
 
-      {currentUser.role === 'admin' && !isArchived && (
+      {currentUser.role === 'admin' && !isArchived && !editingSurvey && (
         <button onClick={() => setShowSurveyForm(!showSurveyForm)} className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all">
           {showSurveyForm ? 'Abbrechen' : 'Neue Umfrage hinzufügen'}
         </button>
       )}
 
-      {showSurveyForm && <CreateSurveyForm onSubmit={addSurvey} />}
+      {(showSurveyForm || editingSurvey) && (
+        <CreateSurveyForm 
+          initialData={editingSurvey} 
+          onSubmit={saveSurvey} 
+          onCancel={() => { setShowSurveyForm(false); setEditingSurvey(null); }} 
+        />
+      )}
 
       <div className="space-y-6">
         {event.surveys?.map(s => (
-          <SurveyCard key={s.id} survey={s} currentUser={currentUser} isArchived={isArchived} onVote={opts => {
-            const newSurveys = event.surveys.map(x => {
-              if (x.id === s.id) {
-                const optMap = x.options.map(o => opts.includes(o.id) ? { ...o, votes: (o.votes || 0) + 1 } : o);
-                return { ...x, options: optMap, votedUsers: [...x.votedUsers, currentUser.id] };
-              }
-              return x;
-            });
-            onUpdate({ surveys: newSurveys });
-          }} onStatusChange={st => onUpdate({ surveys: event.surveys.map(x => x.id === s.id ? {...x, status: st} : x) })} users={users} />
+          <SurveyCard 
+            key={s.id} 
+            survey={s} 
+            currentUser={currentUser} 
+            isArchived={isArchived} 
+            onEdit={() => setEditingSurvey(s)}
+            onDelete={() => deleteSurvey(s.id)}
+            onVote={opts => {
+              const newSurveys = event.surveys.map(x => {
+                if (x.id === s.id) {
+                  const optMap = x.options.map(o => opts.includes(o.id) ? { ...o, votes: (o.votes || 0) + 1 } : o);
+                  return { ...x, options: optMap, votedUsers: [...x.votedUsers, currentUser.id] };
+                }
+                return x;
+              });
+              onUpdate({ surveys: newSurveys });
+            }} 
+            onStatusChange={st => onUpdate({ surveys: event.surveys.map(x => x.id === s.id ? {...x, status: st} : x) })} 
+            users={users} 
+          />
         ))}
       </div>
     </div>
@@ -870,47 +899,87 @@ function CreateEventForm({ onSubmit }) {
   );
 }
 
-function CreateSurveyForm({ onSubmit }) {
-  const [title, setTitle] = useState('');
-  const [options, setOptions] = useState([{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
+function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
+  const [title, setTitle] = useState(initialData?.title || '');
+  const [maxAnswers, setMaxAnswers] = useState(initialData?.maxAnswers || 1);
+  const [options, setOptions] = useState(initialData?.options || [{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
+
+  const removeOption = (id) => {
+    if (options.length > 2) {
+      setOptions(options.filter(o => o.id !== id));
+    }
+  };
+
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit({ title, options: options.filter(o => o.text.trim()), maxAnswers: 1 }); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl space-y-6">
-      <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-4 text-white focus:border-orange-500 outline-none" placeholder="Was ist die Frage?" value={title} onChange={e => setTitle(e.target.value)} />
+    <form onSubmit={e => { e.preventDefault(); onSubmit({ title, maxAnswers, options: options.filter(o => o.text.trim()) }); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl space-y-6 animate-in slide-in-from-top-4 duration-300">
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex-1">
+          <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-4 text-white focus:border-orange-500 outline-none" placeholder="Was ist die Frage?" value={title} onChange={e => setTitle(e.target.value)} />
+        </div>
+        <div className="flex items-center gap-3 bg-gray-950 border border-gray-800 px-4 py-2 rounded-xl shrink-0">
+          <label className="text-xs font-bold text-gray-500 uppercase">Max. Stimmen:</label>
+          <input type="number" min="1" max="10" className="w-16 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none text-center font-bold" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} />
+        </div>
+      </div>
+      
       {options.map((o, i) => (
-        <div key={o.id} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-950 border border-gray-800 rounded-2xl">
+        <div key={o.id} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-950 border border-gray-800 rounded-2xl relative group">
           <input required className="bg-transparent border-b border-gray-800 px-2 py-2 text-white outline-none focus:border-orange-500 font-bold" placeholder={`Option ${i+1}`} value={o.text} onChange={e => { const n = [...options]; n[i].text = e.target.value; setOptions(n); }} />
           <div className="flex items-center gap-2">
             <Youtube size={18} className="text-red-500 shrink-0" />
             <input className="w-full bg-transparent border-b border-gray-800 px-2 py-2 text-gray-500 outline-none focus:border-orange-500 text-xs" placeholder="YouTube Link..." value={o.youtubeUrl} onChange={e => { const n = [...options]; n[i].youtubeUrl = e.target.value; setOptions(n); }} />
+            {options.length > 2 && (
+              <button type="button" onClick={() => removeOption(o.id)} className="p-2 text-gray-700 hover:text-red-500 transition-colors bg-gray-900 rounded-lg ml-2 shrink-0" title="Option entfernen">
+                <Trash2 size={16} />
+              </button>
+            )}
           </div>
         </div>
       ))}
       <button type="button" onClick={() => setOptions([...options, { id: Date.now().toString(), text: '', youtubeUrl: '' }])} className="text-orange-500 text-xs font-bold hover:underline transition-all">+ Option hinzufügen</button>
-      <button type="submit" className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg active:scale-[0.99] transition-all">Umfrage im Entwurf speichern</button>
+      <div className="flex gap-4 pt-4 border-t border-gray-800">
+        <button type="button" onClick={onCancel} className="text-gray-500 font-bold px-4 py-2 hover:text-gray-300">Abbrechen</button>
+        <button type="submit" className="flex-1 bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg active:scale-[0.99] transition-all">Umfrage speichern</button>
+      </div>
     </form>
   );
 }
 
-function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived }) {
+function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete }) {
   const [selected, setSelected] = useState([]);
   const hasVoted = survey.votedUsers?.includes(currentUser.id);
   const totalVotes = survey.options.reduce((sum, o) => sum + (o.votes || 0), 0);
 
   if (survey.status === 'draft' && currentUser.role !== 'admin') return null;
 
+  const toggle = (id) => {
+    if (selected.includes(id)) {
+      setSelected(selected.filter(x => x !== id));
+    } else {
+      if ((survey.maxAnswers || 1) === 1) {
+        setSelected([id]);
+      } else if (selected.length < (survey.maxAnswers || 1)) {
+        setSelected([...selected, id]);
+      }
+    }
+  };
+
   return (
     <div className={`bg-gray-900 border rounded-3xl overflow-hidden shadow-xl transition-all ${survey.status === 'active' && !isArchived ? 'border-orange-500/50' : 'border-gray-800 opacity-80'}`}>
       <div className="p-6 border-b border-gray-800 bg-gray-950/20 flex justify-between items-start">
         <div>
           <span className="text-[10px] font-black uppercase text-orange-500 block mb-1">
-            {isArchived ? 'Abstimmung Beendet' : survey.status}
+            {isArchived ? 'Abstimmung Beendet' : survey.status} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'}
           </span>
           <h4 className="text-xl font-bold text-white leading-tight">{survey.title}</h4>
         </div>
         {currentUser.role === 'admin' && !isArchived && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             {survey.status === 'draft' && <button onClick={() => onStatusChange('active')} className="bg-green-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Starten</button>}
             {survey.status === 'active' && <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Publizieren</button>}
+            
+            <button onClick={onEdit} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors ml-2" title="Bearbeiten"><Edit2 size={16}/></button>
+            <button onClick={onDelete} className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg transition-colors" title="Löschen"><Trash2 size={16}/></button>
           </div>
         )}
       </div>
@@ -935,7 +1004,7 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived })
         ) : (
           <div className="space-y-3">
             {survey.options.map(o => (
-              <div key={o.id} onClick={() => setSelected([o.id])} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between ${selected.includes(o.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
+              <div key={o.id} onClick={() => toggle(o.id)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between ${selected.includes(o.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
                 <div className="flex items-center gap-3">
                    <span className="font-bold">{o.text}</span>
                    {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-red-500 p-1 hover:scale-110 transition-transform"><Youtube size={18}/></a>}
