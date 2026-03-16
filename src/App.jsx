@@ -873,10 +873,13 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived })
 
 function MembersView({ users }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+
   const saveMember = async (m) => {
     const id = m.id || Date.now().toString();
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', id), { ...m, id });
     setShowAdd(false);
+    setEditingUser(null);
   };
 
   return (
@@ -887,13 +890,17 @@ function MembersView({ users }) {
           {showAdd ? 'Abbrechen' : <><UserPlus size={20} /> Mitglied hinzufügen</>}
         </button>
       </div>
+      
       {showAdd && <MemberForm onSubmit={saveMember} onCancel={() => setShowAdd(false)} />}
+      {editingUser && <MemberForm initialData={editingUser} onSubmit={saveMember} onCancel={() => setEditingUser(null)} />}
+
       <div className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-2xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-gray-950 text-[10px] font-black text-gray-600 uppercase tracking-widest border-b border-gray-800">
                 <th className="px-6 py-5">Name & Gruppen</th>
+                <th className="px-6 py-5">Rolle</th>
                 <th className="px-6 py-5">Sicherheit</th>
                 <th className="px-6 py-5 text-right">Optionen</th>
               </tr>
@@ -908,12 +915,18 @@ function MembersView({ users }) {
                     </div>
                   </td>
                   <td className="px-6 py-5">
+                     <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-md ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500' : 'bg-gray-800 text-gray-400'}`}>
+                        {u.role === 'admin' ? 'Administrator' : 'Mitglied'}
+                     </span>
+                  </td>
+                  <td className="px-6 py-5">
                     {u.groups?.includes('Vorstand') ? (
                        u.password ? <span className="text-green-500 flex items-center gap-1 text-[10px] font-black"><Lock size={12}/> PASSWORT AKTIV</span> : <span className="text-orange-500 flex items-center gap-1 text-[10px] font-black animate-pulse"><Unlock size={12}/> EINRICHTUNG NÖTIG</span>
                     ) : <span className="text-gray-700 text-[10px] font-black uppercase">Standard-Login</span>}
                   </td>
-                  <td className="px-6 py-5 text-right">
-                     <button onClick={() => { if(confirm('Soll dieses Mitglied entfernt werden?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id)); }} className="text-gray-700 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-xl active:scale-90"><Trash2 size={18}/></button>
+                  <td className="px-6 py-5 text-right whitespace-nowrap">
+                     <button onClick={() => setEditingUser(u)} className="text-gray-700 hover:text-orange-500 transition-colors p-2 hover:bg-orange-500/10 rounded-xl active:scale-90 mr-1" title="Bearbeiten"><Edit2 size={18}/></button>
+                     <button onClick={() => { if(confirm('Soll dieses Mitglied entfernt werden?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id)); }} className="text-gray-700 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-xl active:scale-90" title="Löschen"><Trash2 size={18}/></button>
                   </td>
                 </tr>
               ))}
@@ -925,12 +938,14 @@ function MembersView({ users }) {
   );
 }
 
-function MemberForm({ onSubmit, onCancel }) {
-  const [form, setForm] = useState({ firstName: '', lastName: '', role: 'member', groups: [] });
+function MemberForm({ onSubmit, onCancel, initialData }) {
+  const [form, setForm] = useState(initialData || { firstName: '', lastName: '', role: 'member', groups: [] });
+  
   const toggleGroup = g => setForm(f => ({ ...f, groups: f.groups.includes(g) ? f.groups.filter(x => x !== g) : [...f.groups, g] }));
+  
   return (
     <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-6 animate-in slide-in-from-top-4 duration-300 shadow-2xl">
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <div className="space-y-1">
           <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Vorname</label>
           <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all" placeholder="z.B. Max" value={form.firstName} onChange={e => setForm({...form, firstName: e.target.value})} />
@@ -938,6 +953,13 @@ function MemberForm({ onSubmit, onCancel }) {
         <div className="space-y-1">
           <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Nachname</label>
           <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all" placeholder="z.B. Muster" value={form.lastName} onChange={e => setForm({...form, lastName: e.target.value})} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Rolle</label>
+          <select required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all appearance-none" value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
+            <option value="member">Mitglied</option>
+            <option value="admin">Administrator</option>
+          </select>
         </div>
       </div>
       <div className="space-y-3">
