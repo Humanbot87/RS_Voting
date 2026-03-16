@@ -5,7 +5,7 @@ import {
   UserPlus, Eye, Check, Database, Settings, ShieldAlert, Edit2,
   FileText, Youtube, Lock, Unlock, Send, ExternalLink,
   ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw,
-  UploadCloud, Loader2
+  UploadCloud, Loader2, Search
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -184,13 +184,13 @@ export default function App() {
     }
   }, [users, currentUser]);
 
-  // --- Auto-Archivierung von abgelaufenen Events ---
+  // --- Auto-Archivierung von abgelaufenen Events (Optional) ---
   useEffect(() => {
     if (!user || currentUser?.role !== 'admin') return;
     
     const now = new Date();
     events.forEach(e => {
-      if (!e.isArchived && e.endDate) {
+      if (!e.isArchived && e.autoArchive && e.endDate) {
         const endDate = new Date(e.endDate);
         if (now > endDate) {
           const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', e.id);
@@ -420,18 +420,62 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   );
 }
 
-// --- Protokoll View & Editor (Mit Upload-Funktion) ---
+// --- Protokoll View & Editor (Mit Upload-Funktion & Suche) ---
 function ProtocolView({ minutes, users, currentUser }) {
   const [editing, setEditing] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const vorstandMembers = useMemo(() => users.filter(u => u.groups?.includes('Vorstand')), [users]);
+
+  const filteredMinutes = useMemo(() => {
+    let sorted = [...minutes].sort((a,b) => b.date.localeCompare(a.date));
+    if (!searchTerm.trim()) return sorted;
+
+    const term = searchTerm.toLowerCase();
+    return sorted.filter(m => {
+      if (m.title?.toLowerCase().includes(term)) return true;
+      if (m.traktanden) {
+        for (const points of Object.values(m.traktanden)) {
+          if (points.some(p => p.text?.toLowerCase().includes(term) || p.docName?.toLowerCase().includes(term))) {
+            return true;
+          }
+        }
+      }
+      return false;
+    });
+  }, [minutes, searchTerm]);
 
   const saveProtocol = async (p) => {
     const id = p.id || Date.now().toString();
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', id), { ...p, id });
     setShowAdd(false);
     setEditing(null);
+  };
+
+  // Rendering von Vorschau-Snippets für Suchtreffer
+  const renderSnippets = (m) => {
+    if (!searchTerm.trim()) return null;
+    const term = searchTerm.toLowerCase();
+    const snippets = [];
+    if (m.traktanden) {
+      for (const [tName, points] of Object.entries(m.traktanden)) {
+        points.forEach(p => {
+          if (p.text?.toLowerCase().includes(term) || p.docName?.toLowerCase().includes(term)) {
+            snippets.push(
+              <div key={p.id} className="mt-3 bg-orange-500/10 border border-orange-500/20 p-3 rounded-xl text-sm">
+                <span className="font-bold text-orange-500 mr-2 uppercase tracking-tighter text-[10px]">{tName}:</span>
+                <span className="text-gray-300">{p.text}</span>
+                {p.docName && p.docName.toLowerCase().includes(term) && (
+                  <span className="ml-2 italic text-orange-400 text-xs">({p.docName})</span>
+                )}
+              </div>
+            );
+          }
+        });
+      }
+    }
+    return snippets.slice(0, 3); // Max 3 Snippets pro Protokoll anzeigen
   };
 
   if (editing || showAdd) {
@@ -447,38 +491,68 @@ function ProtocolView({ minutes, users, currentUser }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-black text-white">Vorstands-Protokolle</h2>
           <p className="text-gray-500 text-sm mt-1">Interne Sitzungsprotokolle und Beschlüsse</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20">
+        <button onClick={() => setShowAdd(true)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 whitespace-nowrap">
           <Plus size={20} /> Neues Protokoll
         </button>
       </div>
 
+      {minutes.length > 0 && (
+        <div className="relative animate-in fade-in">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+          <input 
+            type="text" 
+            placeholder="Protokolle nach Begriffen, Traktanden oder Beschlüssen durchsuchen..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-4 pl-12 pr-12 text-white focus:border-orange-500 outline-none shadow-lg transition-all"
+          />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white p-1">
+              <X size={18} />
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="grid gap-4">
-        {minutes.sort((a,b) => b.date.localeCompare(a.date)).map(m => (
-          <div key={m.id} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-gray-700 transition-all group">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black px-2 py-1 rounded-md border border-orange-500/20 uppercase tracking-widest">{new Date(m.date).toLocaleDateString('de-CH')}</span>
-                <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest italic opacity-50 group-hover:opacity-100 transition-opacity">Archiviert</span>
+        {filteredMinutes.map(m => (
+          <div key={m.id} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl flex flex-col hover:border-gray-700 transition-all group">
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black px-2 py-1 rounded-md border border-orange-500/20 uppercase tracking-widest">{new Date(m.date).toLocaleDateString('de-CH')}</span>
+                  <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest italic opacity-50 group-hover:opacity-100 transition-opacity">Archiviert</span>
+                </div>
+                <h3 className="text-2xl font-black text-white">{m.title}</h3>
+                <p className="text-sm text-gray-500 mt-2 line-clamp-1 italic">Vorsitz: {m.traktanden?.['Präsident']?.[0]?.text || 'Nicht angegeben'}</p>
               </div>
-              <h3 className="text-2xl font-black text-white">{m.title}</h3>
-              <p className="text-sm text-gray-500 mt-2 line-clamp-1 italic">Vorsitz: {m.traktanden?.['Präsident']?.[0]?.text || 'Nicht angegeben'}</p>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={() => setEditing(m)} className="p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90" title="Bearbeiten">
+                  <Edit2 size={20} />
+                </button>
+                <button onClick={() => { if(confirm('Möchtest du dieses Protokoll wirklich löschen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id)); }} className="p-4 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90" title="Löschen">
+                  <Trash2 size={20} />
+                </button>
+              </div>
             </div>
-            <div className="flex gap-2 shrink-0">
-              <button onClick={() => setEditing(m)} className="p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90" title="Bearbeiten">
-                <Edit2 size={20} />
-              </button>
-              <button onClick={() => { if(confirm('Möchtest du dieses Protokoll wirklich löschen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id)); }} className="p-4 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90" title="Löschen">
-                <Trash2 size={20} />
-              </button>
-            </div>
+            
+            {/* Snippets für die Suche anzeigen */}
+            {renderSnippets(m)}
           </div>
         ))}
-        {minutes.length === 0 && (
+
+        {filteredMinutes.length === 0 && searchTerm && (
+          <div className="text-center py-10 text-gray-500 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
+            Keine passenden Protokolle oder Beschlüsse für "{searchTerm}" gefunden.
+          </div>
+        )}
+
+        {minutes.length === 0 && !searchTerm && (
           <div className="text-center py-20 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
             <ClipboardList className="mx-auto text-gray-800 mb-4" size={48} />
             <p className="text-gray-600 font-bold uppercase tracking-widest text-sm">Keine Protokolle vorhanden</p>
@@ -764,7 +838,7 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
             <h3 className="text-xl font-bold text-white mb-2">{e.title}</h3>
             <div className="flex flex-col gap-2 text-xs text-gray-500">
                <span className="flex items-center gap-1.5"><Calendar size={14} className="text-orange-500" /> Start: {new Date(e.date).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>
-               {e.endDate && <span className="flex items-center gap-1.5"><Archive size={14} className="text-orange-500" /> Ende: {new Date(e.endDate).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>}
+               {e.autoArchive && e.endDate && <span className="flex items-center gap-1.5"><Archive size={14} className="text-orange-500" /> Auto-Archiv: {new Date(e.endDate).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>}
                <div className="flex items-center gap-1 mt-2 border-t border-gray-800 pt-2"><BarChart3 size={14}/> {e.surveys?.length || 0} Umfragen</div>
             </div>
           </div>
@@ -867,7 +941,8 @@ function CreateEventForm({ onSubmit }) {
     title: '', 
     category: CATEGORIES[0], 
     date: new Date().toISOString().slice(0,16), 
-    endDate: '' 
+    endDate: '',
+    autoArchive: false
   });
 
   return (
@@ -888,10 +963,11 @@ function CreateEventForm({ onSubmit }) {
           <input type="datetime-local" required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
         </div>
         <div className="space-y-1">
-          <label className="text-xs font-bold text-gray-600 uppercase ml-1 flex items-center gap-2">
-            End-Datum & Zeit <span className="text-[9px] text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded-full">Auto-Archivierung</span>
+          <label className="text-xs font-bold text-gray-600 uppercase ml-1 flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={form.autoArchive} onChange={e => setForm({...form, autoArchive: e.target.checked})} className="accent-orange-500 w-4 h-4" />
+            Auto-Archivierung am:
           </label>
-          <input type="datetime-local" required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} />
+          <input type="datetime-local" required={form.autoArchive} disabled={!form.autoArchive} className={`w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none transition-all ${!form.autoArchive && 'opacity-50 cursor-not-allowed'}`} value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} />
         </div>
       </div>
       <button type="submit" className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg mt-2">Event speichern</button>
