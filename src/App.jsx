@@ -66,6 +66,7 @@ export default function App() {
   const [dbReady, setDbReady] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
   const [connError, setConnError] = useState(null);
+  const [hasCheckedAutoLogin, setHasCheckedAutoLogin] = useState(false);
 
   // --- Authentifizierung ---
   useEffect(() => {
@@ -130,6 +131,59 @@ export default function App() {
     };
   }, [user]);
 
+  // --- Auto-Login prüfen ---
+  useEffect(() => {
+    if (dbReady && !hasCheckedAutoLogin) {
+      const savedUserId = localStorage.getItem('ruesssuuger_userId');
+      const savedSessionId = localStorage.getItem('ruesssuuger_sessionId');
+      if (savedUserId && savedSessionId) {
+        const u = users.find(x => x.id === savedUserId);
+        if (u) {
+          setCurrentUser({ ...u, sessionId: savedSessionId });
+        }
+      }
+      setHasCheckedAutoLogin(true);
+    }
+  }, [dbReady, hasCheckedAutoLogin, users]);
+
+  // --- Sitzungs-Heartbeat (Presence-Tracking) ---
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const updatePresence = async () => {
+      try {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', currentUser.id), {
+          isOnline: true,
+          lastSeen: Date.now(),
+          sessionId: currentUser.sessionId
+        });
+      } catch(e) { console.error("Presence Error", e); }
+    };
+
+    updatePresence(); // Sofort senden
+    const interval = setInterval(updatePresence, 5000); // Alle 5 Sekunden erneuern
+
+    return () => clearInterval(interval);
+  }, [currentUser]);
+
+  // --- Konflikt-Check (Session-Stealing verhindern/übernehmen) ---
+  useEffect(() => {
+    if (!currentUser) return;
+    const u = users.find(x => x.id === currentUser.id);
+    
+    // Wenn die DB eine andere aktive Session-ID hat und das Mitglied online ist, wurden wir gekickt
+    if (u && u.sessionId && u.sessionId !== currentUser.sessionId && u.isOnline) {
+      const timeSinceLastSeen = Date.now() - (u.lastSeen || 0);
+      if (timeSinceLastSeen < 15000) {
+        // Eine neue Sitzung hat übernommen
+        localStorage.removeItem('ruesssuuger_userId');
+        localStorage.removeItem('ruesssuuger_sessionId');
+        setCurrentUser(null);
+        alert("Sitzung beendet: Du wurdest auf einem anderen Gerät angemeldet.");
+      }
+    }
+  }, [users, currentUser]);
+
   // --- Auto-Archivierung von abgelaufenen Events ---
   useEffect(() => {
     if (!user || currentUser?.role !== 'admin') return;
@@ -160,6 +214,18 @@ export default function App() {
     setIsSeeding(false);
   };
 
+  const handleLogout = async () => {
+    if (currentUser) {
+      try {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', currentUser.id), { isOnline: false });
+      } catch(e) {}
+    }
+    localStorage.removeItem('ruesssuuger_userId');
+    localStorage.removeItem('ruesssuuger_sessionId');
+    setCurrentUser(null);
+    setActiveTab('events');
+  };
+
   const isVorstand = useMemo(() => currentUser?.groups?.includes('Vorstand'), [currentUser]);
 
   if (connError) {
@@ -178,7 +244,7 @@ export default function App() {
     );
   }
 
-  if (!user || !dbReady) {
+  if (!user || !dbReady || !hasCheckedAutoLogin) {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center">
         <div className="relative">
@@ -210,7 +276,7 @@ export default function App() {
               <p className="text-sm font-bold text-white">{currentUser.firstName} {currentUser.lastName}</p>
               <p className="text-[10px] text-orange-500 font-bold uppercase tracking-widest">{currentUser.role}</p>
             </div>
-            <button onClick={() => setCurrentUser(null)} className="p-2.5 bg-gray-800 hover:bg-gray-700 rounded-xl transition-all active:scale-95 group">
+            <button onClick={handleLogout} className="p-2.5 bg-gray-800 hover:bg-gray-700 rounded-xl transition-all active:scale-95 group">
               <LogOut size={20} className="text-gray-400 group-hover:text-orange-500 transition-colors" />
             </button>
           </div>
@@ -251,6 +317,13 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
+  const finalizeLogin = (u) => {
+    const newSession = Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('ruesssuuger_sessionId', newSession);
+    localStorage.setItem('ruesssuuger_userId', u.id);
+    onLogin({ ...u, sessionId: newSession });
+  };
+
   const handleNameSubmit = (e) => {
     e.preventDefault();
     const u = users.find(x => x.firstName.toLowerCase() === firstName.toLowerCase() && x.lastName.toLowerCase() === lastName.toLowerCase());
@@ -259,12 +332,21 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
       return;
     }
     
+    // Anwesenheits-Check: Verhindern von doppelten Logins
+    const timeSinceLastSeen = Date.now() - (u.lastSeen || 0);
+    const savedSession = localStorage.getItem('ruesssuuger_sessionId');
+    
+    if (u.isOnline && timeSinceLastSeen < 15000 && u.sessionId !== savedSession) {
+      setError("Dieses Mitglied ist bereits aktiv angemeldet. Bei Verbindungsabbruch bitte ca. 15 Sekunden warten.");
+      return;
+    }
+    
     if (u.groups?.includes('Vorstand')) {
       setFoundUser(u);
       setStep(!u.password ? 'setPassword' : 'password');
       setError('');
     } else {
-      onLogin(u);
+      finalizeLogin(u);
     }
   };
 
@@ -277,13 +359,13 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
       }
       try {
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', foundUser.id), { password });
-        onLogin({ ...foundUser, password });
+        finalizeLogin({ ...foundUser, password });
       } catch (err) {
         setError("Fehler beim Speichern.");
       }
     } else {
       if (password === foundUser.password) {
-        onLogin(foundUser);
+        finalizeLogin(foundUser);
       } else {
         setError("Falsches Passwort.");
       }
