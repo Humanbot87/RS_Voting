@@ -39,6 +39,14 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
+// Hilfsfunktion zum Hashen von Passwörtern (SHA-256)
+const hashPassword = async (password) => {
+  const msgBuffer = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
 const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder'];
 const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitext'];
 const TRAKTANDEN = [
@@ -358,13 +366,16 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
         return;
       }
       try {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', foundUser.id), { password });
-        finalizeLogin({ ...foundUser, password });
+        const hashedPw = await hashPassword(password);
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', foundUser.id), { password: hashedPw });
+        finalizeLogin({ ...foundUser, password: hashedPw });
       } catch (err) {
         setError("Fehler beim Speichern.");
       }
     } else {
-      if (password === foundUser.password) {
+      const hashedInput = await hashPassword(password);
+      // Fallback-Überprüfung, falls noch unverschlüsselte Passwörter in der DB sind (Übergangsphase)
+      if (hashedInput === foundUser.password || password === foundUser.password) {
         finalizeLogin(foundUser);
       } else {
         setError("Falsches Passwort.");
