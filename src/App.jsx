@@ -20,7 +20,7 @@ try {
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'ruesssuuger-app-v1';
 
-// Initialisierung der Firebase-Dienste (außerhalb um Re-Renders zu vermeiden)
+// Initialisierung der Firebase-Dienste
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -82,7 +82,7 @@ export default function App() {
     const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
     const minutesRef = collection(db, 'artifacts', appId, 'public', 'data', 'minutes');
 
-    // Subscription für Benutzer (Wichtig für Login)
+    // Subscription für Benutzer
     const unsubUsers = onSnapshot(usersRef, 
       (s) => {
         setUsers(s.docs.map(d => ({ ...d.data(), id: d.id })));
@@ -121,6 +121,16 @@ export default function App() {
       for (const u of INITIAL_USERS) {
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id), u);
       }
+      // Optional: Ein Beispiel-Event anlegen
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', 'init-event'), {
+        id: 'init-event',
+        title: 'Erste Sitzung',
+        category: 'Generalversammlung',
+        date: new Date().toISOString().split('T')[0],
+        isArchived: false,
+        surveys: [],
+        createdAt: new Date().toISOString()
+      });
     } catch (e) { 
       console.error(e);
       setConnError("Fehler beim Initialisieren der Datenbank.");
@@ -130,7 +140,7 @@ export default function App() {
 
   const isVorstand = useMemo(() => currentUser?.groups?.includes('Vorstand'), [currentUser]);
 
-  // --- Ladezustand / Fehlerbildschirm ---
+  // --- Fehlerbildschirm ---
   if (connError) {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-6 text-center">
@@ -147,8 +157,8 @@ export default function App() {
     );
   }
 
-  // Warte auf Authentifizierung und erste DB-Antwort
-  if (!user || (!dbReady && users.length === 0)) {
+  // Warte NUR auf die grundlegende Authentifizierung
+  if (!user || !dbReady) {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center">
         <div className="relative">
@@ -157,7 +167,7 @@ export default function App() {
             <div className="h-8 w-8 bg-gray-950 rounded-full"></div>
           </div>
         </div>
-        <p className="text-gray-400 font-bold mt-6 tracking-widest animate-pulse uppercase text-xs">Synchronisiere Workspace...</p>
+        <p className="text-gray-400 font-bold mt-6 tracking-widest animate-pulse uppercase text-xs">Verbindung wird aufgebaut...</p>
       </div>
     );
   }
@@ -273,15 +283,15 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
         </div>
 
         {users.length === 0 ? (
-          <div className="space-y-6 text-center">
+          <div className="space-y-6 text-center animate-in fade-in">
             <Database className="mx-auto text-gray-800" size={48} />
-            <p className="text-gray-400 text-sm">Keine Mitglieder gefunden. Datenbank initialisieren?</p>
+            <p className="text-gray-400 text-sm">Die Datenbank ist neu oder leer. Möchtest du den Administrator-Account jetzt erstellen?</p>
             <button 
               onClick={onSeed} 
               disabled={isSeeding} 
-              className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl transition-all shadow-lg shadow-orange-500/10 disabled:opacity-50"
+              className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl transition-all shadow-lg shadow-orange-500/10 disabled:opacity-50 active:scale-95"
             >
-              {isSeeding ? 'Wird erstellt...' : 'Admin-Account erstellen'}
+              {isSeeding ? 'Wird erstellt...' : 'Admin Suuger jetzt erstellen'}
             </button>
           </div>
         ) : (
@@ -302,7 +312,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
             <button type="submit" className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg shadow-orange-500/20 active:scale-95 transition-all text-lg">
               {step === 'name' ? 'Weiter' : 'Anmelden'}
             </button>
-            {error && <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 py-3 rounded-xl animate-in shake duration-300">{error}</p>}
+            {error && <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 py-3 rounded-xl animate-in shake duration-300 mt-2">{error}</p>}
           </form>
         )}
       </div>
@@ -587,7 +597,7 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-black text-white">{isArchive ? 'Archiv' : 'Aktuelle Events'}</h2>
         {!isArchive && currentUser.role === 'admin' && (
-          <button onClick={() => setShowCreate(!showCreate)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center gap-2">
+          <button onClick={() => setShowCreate(!showCreate)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center gap-2 active:scale-95 transition-all">
             {showCreate ? 'Schliessen' : <><Plus size={20} /> Neuer Event</>}
           </button>
         )}
@@ -599,7 +609,7 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
       }} />}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {events.map(e => (
-          <div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl cursor-pointer hover:border-orange-500 transition-all group shadow-lg">
+          <div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl cursor-pointer hover:border-orange-500 transition-all group shadow-lg active:scale-95 transition-transform">
             <span className="text-[9px] font-black text-orange-500 uppercase bg-orange-500/10 px-3 py-1 rounded-full mb-4 inline-block tracking-widest">{e.category}</span>
             <h3 className="text-xl font-bold text-white mb-2">{e.title}</h3>
             <div className="flex justify-between items-center text-xs text-gray-500">
@@ -630,21 +640,21 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users }) 
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4">
       <div className="flex items-center gap-6">
-        <button onClick={onBack} className="bg-gray-900 p-3 rounded-2xl hover:text-orange-500 transition-all"><ChevronRight className="rotate-180" size={24} /></button>
+        <button onClick={onBack} className="bg-gray-900 p-3 rounded-2xl hover:text-orange-500 transition-all active:scale-90"><ChevronRight className="rotate-180" size={24} /></button>
         <div className="flex-1">
           <h2 className="text-3xl font-black text-white">{event.title}</h2>
           <p className="text-orange-500 text-xs font-bold uppercase">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
         </div>
         {currentUser.role === 'admin' && (
           <div className="flex gap-2">
-            <button onClick={() => onUpdate({ isArchived: !event.isArchived })} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-orange-500 transition-all"><Archive size={20}/></button>
+            <button onClick={() => onUpdate({ isArchived: !event.isArchived })} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-orange-500 transition-all" title="Archivieren"><Archive size={20}/></button>
             <button onClick={() => { if(confirm('Soll dieser Event gelöscht werden?')) onDelete(); }} className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500/20"><Trash2 size={20}/></button>
           </div>
         )}
       </div>
 
       {currentUser.role === 'admin' && !event.isArchived && (
-        <button onClick={() => setShowSurveyForm(!showSurveyForm)} className="w-full bg-orange-500 text-gray-950 font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-all">
+        <button onClick={() => setShowSurveyForm(!showSurveyForm)} className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all">
           {showSurveyForm ? 'Abbrechen' : 'Neue Umfrage hinzufügen'}
         </button>
       )}
@@ -808,7 +818,7 @@ function MembersView({ users }) {
                     ) : <span className="text-gray-700 text-[10px] font-black uppercase">Standard-Login</span>}
                   </td>
                   <td className="px-6 py-5 text-right">
-                     <button onClick={() => { if(confirm('Soll dieses Mitglied entfernt werden?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id)); }} className="text-gray-700 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-xl"><Trash2 size={18}/></button>
+                     <button onClick={() => { if(confirm('Soll dieses Mitglied entfernt werden?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id)); }} className="text-gray-700 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-xl active:scale-90"><Trash2 size={18}/></button>
                   </td>
                 </tr>
               ))}
