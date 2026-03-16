@@ -4,11 +4,13 @@ import {
   ChevronRight, BarChart3, AlertCircle, CheckCircle2, 
   UserPlus, Eye, Check, Database, Settings, ShieldAlert, Edit2,
   FileText, Youtube, Lock, Unlock, Send, ExternalLink,
-  ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw
+  ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw,
+  UploadCloud, Loader2
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, updateDoc } from 'firebase/firestore';
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
 // --- Sichere Konfigurations-Initialisierung ---
 const MY_FIREBASE_CONFIG = {
@@ -35,6 +37,7 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'ruesssuuger-app-v1';
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder'];
 const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitext'];
@@ -64,7 +67,7 @@ export default function App() {
   const [isSeeding, setIsSeeding] = useState(false);
   const [connError, setConnError] = useState(null);
 
-  // --- Authentifizierung (Rule 3) ---
+  // --- Authentifizierung ---
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -85,7 +88,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // --- Daten-Subscription (Rule 1 & 2) ---
+  // --- Daten-Subscription ---
   useEffect(() => {
     if (!user) return;
     
@@ -93,7 +96,6 @@ export default function App() {
     const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
     const minutesRef = collection(db, 'artifacts', appId, 'public', 'data', 'minutes');
 
-    // Subscription für Benutzer
     const unsubUsers = onSnapshot(usersRef, 
       (s) => {
         setUsers(s.docs.map(d => ({ ...d.data(), id: d.id })));
@@ -102,7 +104,7 @@ export default function App() {
       },
       (err) => {
         console.error("Users Snapshot Error:", err);
-        setDbReady(true); // Verhindert unendlichen Ladebildschirm
+        setDbReady(true);
         if (err.code === 'permission-denied') {
           setConnError("Keine Berechtigung zum Lesen der Daten. Prüfe die Firestore Regeln.");
         } else {
@@ -128,6 +130,22 @@ export default function App() {
     };
   }, [user]);
 
+  // --- Auto-Archivierung von abgelaufenen Events ---
+  useEffect(() => {
+    if (!user || currentUser?.role !== 'admin') return;
+    
+    const now = new Date();
+    events.forEach(e => {
+      if (!e.isArchived && e.endDate) {
+        const endDate = new Date(e.endDate);
+        if (now > endDate) {
+          const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', e.id);
+          updateDoc(eventRef, { isArchived: true }).catch(err => console.error("Auto-Archive Error:", err));
+        }
+      }
+    });
+  }, [events, user, currentUser]);
+
   const seedDatabase = async () => {
     if (!user) return;
     setIsSeeding(true);
@@ -135,16 +153,6 @@ export default function App() {
       for (const u of INITIAL_USERS) {
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id), u);
       }
-      // Optional: Ein Beispiel-Event anlegen
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', 'init-event'), {
-        id: 'init-event',
-        title: 'Erste Sitzung',
-        category: 'Generalversammlung',
-        date: new Date().toISOString().split('T')[0],
-        isArchived: false,
-        surveys: [],
-        createdAt: new Date().toISOString()
-      });
     } catch (e) { 
       console.error(e);
       setConnError("Fehler beim Initialisieren der Datenbank.");
@@ -154,7 +162,6 @@ export default function App() {
 
   const isVorstand = useMemo(() => currentUser?.groups?.includes('Vorstand'), [currentUser]);
 
-  // --- Fehlerbildschirm ---
   if (connError) {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-6 text-center">
@@ -171,7 +178,6 @@ export default function App() {
     );
   }
 
-  // Warte NUR auf die grundlegende Authentifizierung
   if (!user || !dbReady) {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center">
@@ -186,12 +192,10 @@ export default function App() {
     );
   }
 
-  // --- Login Screen ---
   if (!currentUser) {
     return <LoginScreen users={users} onLogin={u => setCurrentUser(u)} onSeed={seedDatabase} isSeeding={isSeeding} />;
   }
 
-  // --- Haupt-UI ---
   return (
     <div className="min-h-screen bg-gray-950 text-gray-200 selection:bg-orange-500 selection:text-white">
       <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-50 shadow-2xl">
@@ -230,7 +234,7 @@ export default function App() {
         <div className="animate-in fade-in duration-500">
           {activeTab === 'events' && <EventsView events={events.filter(e => !e.isArchived)} currentUser={currentUser} users={users} />}
           {activeTab === 'minutes' && isVorstand && <ProtocolView minutes={minutes} users={users} currentUser={currentUser} />}
-          {activeTab === 'archive' && currentUser.role === 'admin' && <EventsView events={events.filter(e => e.isArchived)} currentUser={currentUser} isArchive users={users} />}
+          {activeTab === 'archive' && <EventsView events={events.filter(e => e.isArchived)} currentUser={currentUser} isArchive users={users} />}
           {activeTab === 'members' && currentUser.role === 'admin' && <MembersView users={users} />}
         </div>
       </main>
@@ -334,7 +338,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   );
 }
 
-// --- Protokoll View & Editor ---
+// --- Protokoll View & Editor (Mit Upload-Funktion) ---
 function ProtocolView({ minutes, users, currentUser }) {
   const [editing, setEditing] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -410,6 +414,8 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
     attendance: {}, 
     traktanden: TRAKTANDEN.reduce((acc, curr) => ({ ...acc, [curr]: [] }), {})
   });
+  
+  const [uploading, setUploading] = useState({}); // { pointId: progress }
 
   const updateAttendance = (userId, status) => {
     setForm(prev => ({
@@ -447,6 +453,34 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
         [traktandum]: prev.traktanden[traktandum].map(p => p.id === pointId ? { ...p, [field]: value } : p)
       }
     }));
+  };
+
+  const handleFileUpload = (e, traktandum, pointId) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const storageRef = ref(storage, `artifacts/${appId}/public/uploads/${Date.now()}_${file.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    setUploading(prev => ({ ...prev, [pointId]: 1 }));
+
+    uploadTask.on('state_changed', 
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploading(prev => ({ ...prev, [pointId]: progress }));
+      }, 
+      (error) => {
+        console.error("Upload Error:", error);
+        alert("Fehler beim Datei-Upload. Bitte stellen Sie sicher, dass Firebase Storage in Ihrem Projekt aktiviert ist und die Rules (Regeln) Schreibzugriff erlauben.");
+        setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
+      }, 
+      async () => {
+        const url = await getDownloadURL(uploadTask.snapshot.ref);
+        updatePoint(traktandum, pointId, 'docUrl', url);
+        updatePoint(traktandum, pointId, 'docName', file.name);
+        setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
+      }
+    );
   };
 
   return (
@@ -543,18 +577,37 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-center gap-4 pt-4 border-t border-gray-900">
-                      <div className="w-full flex items-center gap-3 bg-gray-900 px-4 py-2.5 rounded-xl border border-gray-800">
-                        <Paperclip size={16} className="text-orange-500 shrink-0" />
-                        <input 
-                          className="w-full bg-transparent text-[11px] text-gray-500 focus:text-white outline-none" 
-                          placeholder="Link (PDF/Word/Excel)..."
-                          value={point.docUrl}
-                          onChange={e => updatePoint(traktandum, point.id, 'docUrl', e.target.value)}
-                        />
+                      <div className="flex-1 flex items-center gap-3 bg-gray-900 px-4 py-3 rounded-xl border border-gray-800 relative overflow-hidden">
+                        {uploading[point.id] && (
+                          <div className="absolute left-0 top-0 h-full bg-orange-500/20 transition-all" style={{ width: `${uploading[point.id]}%` }} />
+                        )}
+                        <Paperclip size={16} className="text-orange-500 shrink-0 z-10" />
+                        
+                        <div className="flex-1 z-10 flex items-center">
+                          {uploading[point.id] ? (
+                            <span className="text-[11px] text-orange-500 font-bold">Wird hochgeladen... {Math.round(uploading[point.id])}%</span>
+                          ) : point.docUrl ? (
+                            <div className="flex items-center justify-between w-full">
+                              <a href={point.docUrl} target="_blank" rel="noreferrer" className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
+                                {point.docName || 'Dokument ansehen'}
+                              </a>
+                              <button type="button" onClick={() => { updatePoint(traktandum, point.id, 'docUrl', ''); updatePoint(traktandum, point.id, 'docName', ''); }} className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md">
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="cursor-pointer text-[11px] text-gray-500 hover:text-white w-full block font-bold transition-colors">
+                              <UploadCloud size={14} className="inline mr-2" />
+                              Datei anhängen (PDF, Word, Excel)
+                              <input type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => handleFileUpload(e, traktandum, point.id)} />
+                            </label>
+                          )}
+                        </div>
                       </div>
+                      
                       <input 
-                        className="w-full sm:w-48 bg-gray-900 px-4 py-2.5 rounded-xl border border-gray-800 text-[11px] text-gray-500 focus:text-white outline-none" 
-                        placeholder="Dokument-Name..."
+                        className="w-full sm:w-48 bg-gray-900 px-4 py-3 rounded-xl border border-gray-800 text-[11px] text-gray-500 focus:text-white outline-none" 
+                        placeholder="Anzeige-Name (optional)"
                         value={point.docName}
                         onChange={e => updatePoint(traktandum, point.id, 'docName', e.target.value)}
                       />
@@ -602,6 +655,7 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
         onUpdate={data => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', current.id), data, { merge: true })}
         onDelete={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', current.id))}
         users={users}
+        isArchived={isArchive}
       />
     );
   }
@@ -626,9 +680,10 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
           <div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl cursor-pointer hover:border-orange-500 transition-all group shadow-lg active:scale-95 transition-transform">
             <span className="text-[9px] font-black text-orange-500 uppercase bg-orange-500/10 px-3 py-1 rounded-full mb-4 inline-block tracking-widest">{e.category}</span>
             <h3 className="text-xl font-bold text-white mb-2">{e.title}</h3>
-            <div className="flex justify-between items-center text-xs text-gray-500">
-               <span>{new Date(e.date).toLocaleDateString('de-CH')}</span>
-               <div className="flex items-center gap-1"><BarChart3 size={14}/> {e.surveys?.length || 0} Umfragen</div>
+            <div className="flex flex-col gap-2 text-xs text-gray-500">
+               <span className="flex items-center gap-1.5"><Calendar size={14} className="text-orange-500" /> Start: {new Date(e.date).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>
+               {e.endDate && <span className="flex items-center gap-1.5"><Archive size={14} className="text-orange-500" /> Ende: {new Date(e.endDate).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>}
+               <div className="flex items-center gap-1 mt-2 border-t border-gray-800 pt-2"><BarChart3 size={14}/> {e.surveys?.length || 0} Umfragen</div>
             </div>
           </div>
         ))}
@@ -642,7 +697,7 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
   );
 }
 
-function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users }) {
+function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, isArchived }) {
   const [showSurveyForm, setShowSurveyForm] = useState(false);
 
   const addSurvey = (s) => {
@@ -656,18 +711,21 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users }) 
       <div className="flex items-center gap-6">
         <button onClick={onBack} className="bg-gray-900 p-3 rounded-2xl hover:text-orange-500 transition-all active:scale-90"><ChevronRight className="rotate-180" size={24} /></button>
         <div className="flex-1">
-          <h2 className="text-3xl font-black text-white">{event.title}</h2>
+          <h2 className="text-3xl font-black text-white flex items-center gap-3">
+            {event.title}
+            {isArchived && <span className="bg-red-500/10 text-red-500 text-[10px] uppercase font-black px-2 py-1 rounded-md border border-red-500/20">Archiviert (Read-Only)</span>}
+          </h2>
           <p className="text-orange-500 text-xs font-bold uppercase">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
         </div>
-        {currentUser.role === 'admin' && (
+        {currentUser.role === 'admin' && !isArchived && (
           <div className="flex gap-2">
-            <button onClick={() => onUpdate({ isArchived: !event.isArchived })} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-orange-500 transition-all" title="Archivieren"><Archive size={20}/></button>
+            <button onClick={() => onUpdate({ isArchived: !event.isArchived })} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-orange-500 transition-all" title="Manuell Archivieren"><Archive size={20}/></button>
             <button onClick={() => { if(confirm('Soll dieser Event gelöscht werden?')) onDelete(); }} className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500/20"><Trash2 size={20}/></button>
           </div>
         )}
       </div>
 
-      {currentUser.role === 'admin' && !event.isArchived && (
+      {currentUser.role === 'admin' && !isArchived && (
         <button onClick={() => setShowSurveyForm(!showSurveyForm)} className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all">
           {showSurveyForm ? 'Abbrechen' : 'Neue Umfrage hinzufügen'}
         </button>
@@ -677,7 +735,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users }) 
 
       <div className="space-y-6">
         {event.surveys?.map(s => (
-          <SurveyCard key={s.id} survey={s} currentUser={currentUser} onVote={opts => {
+          <SurveyCard key={s.id} survey={s} currentUser={currentUser} isArchived={isArchived} onVote={opts => {
             const newSurveys = event.surveys.map(x => {
               if (x.id === s.id) {
                 const optMap = x.options.map(o => opts.includes(o.id) ? { ...o, votes: (o.votes || 0) + 1 } : o);
@@ -694,17 +752,38 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users }) 
 }
 
 function CreateEventForm({ onSubmit }) {
-  const [form, setForm] = useState({ title: '', category: CATEGORIES[0], date: '' });
+  const [form, setForm] = useState({ 
+    title: '', 
+    category: CATEGORIES[0], 
+    date: new Date().toISOString().slice(0,16), 
+    endDate: '' 
+  });
+
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-4">
-      <div className="grid gap-4 md:grid-cols-3">
-        <input required className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none" placeholder="Titel" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
-        <select className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
-          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <input type="date" required className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
+    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-5">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-gray-600 uppercase ml-1">Event Titel</label>
+          <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none" placeholder="z.B. GV 2026" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-gray-600 uppercase ml-1">Kategorie</label>
+          <select className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-gray-600 uppercase ml-1">Start-Datum & Zeit</label>
+          <input type="datetime-local" required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-gray-600 uppercase ml-1 flex items-center gap-2">
+            End-Datum & Zeit <span className="text-[9px] text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded-full">Auto-Archivierung</span>
+          </label>
+          <input type="datetime-local" required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} />
+        </div>
       </div>
-      <button type="submit" className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg">Event speichern</button>
+      <button type="submit" className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg mt-2">Event speichern</button>
     </form>
   );
 }
@@ -730,7 +809,7 @@ function CreateSurveyForm({ onSubmit }) {
   );
 }
 
-function SurveyCard({ survey, currentUser, onVote, onStatusChange }) {
+function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived }) {
   const [selected, setSelected] = useState([]);
   const hasVoted = survey.votedUsers?.includes(currentUser.id);
   const totalVotes = survey.options.reduce((sum, o) => sum + (o.votes || 0), 0);
@@ -738,13 +817,15 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange }) {
   if (survey.status === 'draft' && currentUser.role !== 'admin') return null;
 
   return (
-    <div className={`bg-gray-900 border rounded-3xl overflow-hidden shadow-xl transition-all ${survey.status === 'active' ? 'border-orange-500/50' : 'border-gray-800'}`}>
+    <div className={`bg-gray-900 border rounded-3xl overflow-hidden shadow-xl transition-all ${survey.status === 'active' && !isArchived ? 'border-orange-500/50' : 'border-gray-800 opacity-80'}`}>
       <div className="p-6 border-b border-gray-800 bg-gray-950/20 flex justify-between items-start">
         <div>
-          <span className="text-[10px] font-black uppercase text-orange-500 block mb-1">{survey.status}</span>
+          <span className="text-[10px] font-black uppercase text-orange-500 block mb-1">
+            {isArchived ? 'Abstimmung Beendet' : survey.status}
+          </span>
           <h4 className="text-xl font-bold text-white leading-tight">{survey.title}</h4>
         </div>
-        {currentUser.role === 'admin' && (
+        {currentUser.role === 'admin' && !isArchived && (
           <div className="flex gap-2">
             {survey.status === 'draft' && <button onClick={() => onStatusChange('active')} className="bg-green-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Starten</button>}
             {survey.status === 'active' && <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Publizieren</button>}
@@ -752,7 +833,7 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange }) {
         )}
       </div>
       <div className="p-6 space-y-3">
-        {hasVoted || survey.status === 'published' ? (
+        {hasVoted || survey.status === 'published' || isArchived ? (
           survey.options.map(o => {
             const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
             return (
