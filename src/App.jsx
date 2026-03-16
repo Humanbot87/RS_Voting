@@ -10,7 +10,6 @@ import {
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, updateDoc } from 'firebase/firestore';
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
 // --- Sichere Konfigurations-Initialisierung ---
 const MY_FIREBASE_CONFIG = {
@@ -37,7 +36,6 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'ruesssuuger-app-v1';
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 // Hilfsfunktion zum Hashen von Passwörtern (SHA-256)
 const hashPassword = async (password) => {
@@ -637,36 +635,33 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Reset des Input-Values, damit die gleiche Datei bei einem Fehler nochmal gewählt werden kann
+    // Reset des Input-Values
     e.target.value = '';
 
-    const storageRef = ref(storage, `artifacts/${appId}/public/uploads/${Date.now()}_${file.name}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+    // Firestore hat ein Limit von 1MB pro Dokument. 
+    // Wir setzen ein sicheres Limit von 500 KB, da Base64 ca. 33% grösser wird.
+    if (file.size > 500 * 1024) {
+      alert(`Die Datei "${file.name}" ist zu gross!\n\nDa Dateien nun direkt in der Datenbank gespeichert werden (und nicht mehr in einem externen Storage), darf eine Datei maximal 500 KB gross sein.\n\nBitte komprimiere die Datei oder nutze einen externen Link.`);
+      return;
+    }
 
-    setUploading(prev => ({ ...prev, [pointId]: 1 }));
+    setUploading(prev => ({ ...prev, [pointId]: 50 })); // Optisches Feedback starten
 
-    uploadTask.on('state_changed', 
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploading(prev => ({ ...prev, [pointId]: progress || 1 }));
-      }, 
-      (error) => {
-        console.error("Upload Error:", error);
-        alert(`Fehler beim Datei-Upload: ${error.message}\n\nBitte stelle sicher, dass in der Firebase Console "Storage" aktiviert ist und die Rules Schreibzugriff erlauben.`);
-        setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
-      }, 
-      async () => {
-        try {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          updatePointFields(traktandum, pointId, { docUrl: url, docName: file.name });
-        } catch (err) {
-          console.error("Download URL Error:", err);
-          alert("Datei wurde hochgeladen, aber der Link konnte nicht generiert werden.");
-        } finally {
-          setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
-        }
-      }
-    );
+    const reader = new FileReader();
+    
+    reader.onload = (event) => {
+      const base64Data = event.target.result; // "data:application/pdf;base64,..."
+      updatePointFields(traktandum, pointId, { docUrl: base64Data, docName: file.name });
+      setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
+    };
+
+    reader.onerror = (error) => {
+      console.error("FileReader Error:", error);
+      alert("Es gab einen Fehler beim Einlesen der Datei. Bitte versuche es noch einmal.");
+      setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
+    };
+
+    reader.readAsDataURL(file); // Liest die Datei und konvertiert sie in Base64
   };
 
   return (
@@ -771,11 +766,11 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                         
                         <div className="flex-1 z-10 flex items-center">
                           {uploading[point.id] !== undefined ? (
-                            <span className="text-[11px] text-orange-500 font-bold">Wird hochgeladen... {Math.round(uploading[point.id])}%</span>
+                            <span className="text-[11px] text-orange-500 font-bold">Lese Datei...</span>
                           ) : point.docUrl ? (
                             <div className="flex items-center justify-between w-full">
-                              <a href={point.docUrl} target="_blank" rel="noreferrer" className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
-                                {point.docName || 'Dokument ansehen'}
+                              <a href={point.docUrl} download={point.docName || 'Dokument'} className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
+                                {point.docName || 'Dokument herunterladen'}
                               </a>
                               <button type="button" onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })} className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md" title="Datei entfernen">
                                 <X size={14} />
@@ -784,7 +779,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                           ) : (
                             <label className="cursor-pointer text-[11px] text-gray-500 hover:text-white w-full block font-bold transition-colors">
                               <UploadCloud size={14} className="inline mr-2" />
-                              Datei anhängen (PDF, Word, Excel)
+                              Datei in DB speichern (Max. 500 KB)
                               <input type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => handleFileUpload(e, traktandum, point.id)} />
                             </label>
                           )}
