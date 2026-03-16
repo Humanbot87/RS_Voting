@@ -420,7 +420,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   );
 }
 
-// --- Protokoll View & Editor (Mit Upload-Funktion & Suche) ---
+// --- Protokoll View & Editor (Mit robuster Upload-Funktion & Suche) ---
 function ProtocolView({ minutes, users, currentUser }) {
   const [editing, setEditing] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -611,9 +611,23 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
     }));
   };
 
+  // Hilfsfunktion zum sicheren, gleichzeitigen Aktualisieren mehrerer Felder (verhindert Race Conditions)
+  const updatePointFields = (traktandum, pointId, fieldsObj) => {
+    setForm(prev => ({
+      ...prev,
+      traktanden: {
+        ...prev.traktanden,
+        [traktandum]: prev.traktanden[traktandum].map(p => p.id === pointId ? { ...p, ...fieldsObj } : p)
+      }
+    }));
+  };
+
   const handleFileUpload = (e, traktandum, pointId) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // Reset des Input-Values, damit die gleiche Datei bei einem Fehler nochmal gewählt werden kann
+    e.target.value = '';
 
     const storageRef = ref(storage, `artifacts/${appId}/public/uploads/${Date.now()}_${file.name}`);
     const uploadTask = uploadBytesResumable(storageRef, file);
@@ -623,18 +637,23 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
     uploadTask.on('state_changed', 
       (snapshot) => {
         const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploading(prev => ({ ...prev, [pointId]: progress }));
+        setUploading(prev => ({ ...prev, [pointId]: progress || 1 }));
       }, 
       (error) => {
         console.error("Upload Error:", error);
-        alert("Fehler beim Datei-Upload. Bitte stellen Sie sicher, dass Firebase Storage in Ihrem Projekt aktiviert ist und die Rules (Regeln) Schreibzugriff erlauben.");
+        alert(`Fehler beim Datei-Upload: ${error.message}\n\nBitte stelle sicher, dass in der Firebase Console "Storage" aktiviert ist und die Rules Schreibzugriff erlauben.`);
         setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
       }, 
       async () => {
-        const url = await getDownloadURL(uploadTask.snapshot.ref);
-        updatePoint(traktandum, pointId, 'docUrl', url);
-        updatePoint(traktandum, pointId, 'docName', file.name);
-        setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          updatePointFields(traktandum, pointId, { docUrl: url, docName: file.name });
+        } catch (err) {
+          console.error("Download URL Error:", err);
+          alert("Datei wurde hochgeladen, aber der Link konnte nicht generiert werden.");
+        } finally {
+          setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
+        }
       }
     );
   };
@@ -734,20 +753,20 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
 
                     <div className="flex flex-col sm:flex-row items-center gap-4 pt-4 border-t border-gray-900">
                       <div className="flex-1 flex items-center gap-3 bg-gray-900 px-4 py-3 rounded-xl border border-gray-800 relative overflow-hidden">
-                        {uploading[point.id] && (
+                        {uploading[point.id] !== undefined && (
                           <div className="absolute left-0 top-0 h-full bg-orange-500/20 transition-all" style={{ width: `${uploading[point.id]}%` }} />
                         )}
                         <Paperclip size={16} className="text-orange-500 shrink-0 z-10" />
                         
                         <div className="flex-1 z-10 flex items-center">
-                          {uploading[point.id] ? (
+                          {uploading[point.id] !== undefined ? (
                             <span className="text-[11px] text-orange-500 font-bold">Wird hochgeladen... {Math.round(uploading[point.id])}%</span>
                           ) : point.docUrl ? (
                             <div className="flex items-center justify-between w-full">
                               <a href={point.docUrl} target="_blank" rel="noreferrer" className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
                                 {point.docName || 'Dokument ansehen'}
                               </a>
-                              <button type="button" onClick={() => { updatePoint(traktandum, point.id, 'docUrl', ''); updatePoint(traktandum, point.id, 'docName', ''); }} className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md">
+                              <button type="button" onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })} className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md" title="Datei entfernen">
                                 <X size={14} />
                               </button>
                             </div>
