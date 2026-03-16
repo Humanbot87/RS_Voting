@@ -4,17 +4,23 @@ import {
   ChevronRight, BarChart3, AlertCircle, CheckCircle2, 
   UserPlus, Eye, Check, Database, Settings, ShieldAlert, Edit2,
   FileText, Youtube, Lock, Unlock, Send, ExternalLink,
-  ClipboardList, UserCheck, Paperclip, Save, X
+  ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, updateDoc } from 'firebase/firestore';
 
-// --- Firebase Konfiguration ---
-const firebaseConfig = JSON.parse(__firebase_config);
+// --- Sichere Konfigurations-Initialisierung ---
+let firebaseConfig = {};
+try {
+  firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+} catch (e) {
+  console.error("Firebase Config Error:", e);
+}
+
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'ruesssuuger-app-v1';
 
-// Initialisierung
+// Initialisierung der Firebase-Dienste (außerhalb um Re-Renders zu vermeiden)
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -45,38 +51,67 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('events');
   const [dbReady, setDbReady] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [connError, setConnError] = useState(null);
 
-  // Auth (Rule 3)
+  // --- Authentifizierung (Rule 3) ---
   useEffect(() => {
     const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth error:", err);
+        setConnError("Authentifizierung fehlgeschlagen. Bitte Seite neu laden.");
       }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, u => setUser(u));
+    const unsubscribe = onAuthStateChanged(auth, u => {
+      setUser(u);
+    });
     return () => unsubscribe();
   }, []);
 
-  // Daten-Subscription (Rule 1 & 2)
+  // --- Daten-Subscription (Rule 1 & 2) ---
   useEffect(() => {
     if (!user) return;
-    const getCollection = (name) => collection(db, 'artifacts', appId, 'public', 'data', name);
+    
+    const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
+    const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
+    const minutesRef = collection(db, 'artifacts', appId, 'public', 'data', 'minutes');
 
-    const unsubUsers = onSnapshot(getCollection('users'), s => {
-      setUsers(s.docs.map(d => ({ ...d.data(), id: d.id })));
-      setDbReady(true);
-    });
-    const unsubEvents = onSnapshot(getCollection('events'), s => {
-      setEvents(s.docs.map(d => ({ ...d.data(), id: d.id })));
-    });
-    const unsubMinutes = onSnapshot(getCollection('minutes'), s => {
-      setMinutes(s.docs.map(d => ({ ...d.data(), id: d.id })));
-    });
+    // Subscription für Benutzer (Wichtig für Login)
+    const unsubUsers = onSnapshot(usersRef, 
+      (s) => {
+        setUsers(s.docs.map(d => ({ ...d.data(), id: d.id })));
+        setDbReady(true);
+        setConnError(null);
+      },
+      (err) => {
+        console.error("Users Snapshot Error:", err);
+        if (err.code === 'permission-denied') {
+          setConnError("Keine Berechtigung zum Lesen der Daten. Prüfe die Firestore Regeln.");
+        }
+      }
+    );
 
-    return () => { unsubUsers(); unsubEvents(); unsubMinutes(); };
+    const unsubEvents = onSnapshot(eventsRef, 
+      (s) => setEvents(s.docs.map(d => ({ ...d.data(), id: d.id }))),
+      (err) => console.error("Events Error:", err)
+    );
+
+    const unsubMinutes = onSnapshot(minutesRef, 
+      (s) => setMinutes(s.docs.map(d => ({ ...d.data(), id: d.id }))),
+      (err) => console.error("Minutes Error:", err)
+    );
+
+    return () => {
+      unsubUsers();
+      unsubEvents();
+      unsubMinutes();
+    };
   }, [user]);
 
   const seedDatabase = async () => {
@@ -86,28 +121,56 @@ export default function App() {
       for (const u of INITIAL_USERS) {
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id), u);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e);
+      setConnError("Fehler beim Initialisieren der Datenbank.");
+    }
     setIsSeeding(false);
   };
 
   const isVorstand = useMemo(() => currentUser?.groups?.includes('Vorstand'), [currentUser]);
 
-  if (!user || (!dbReady && users.length === 0)) {
+  // --- Ladezustand / Fehlerbildschirm ---
+  if (connError) {
     return (
-      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mb-4"></div>
-        <p className="text-gray-500 font-bold">Synchronisiere Workspace...</p>
+      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-6 text-center">
+        <ShieldAlert className="text-red-500 mb-4" size={64} />
+        <h2 className="text-2xl font-bold text-white mb-2">Verbindungsproblem</h2>
+        <p className="text-gray-400 max-w-md mb-8">{connError}</p>
+        <button 
+          onClick={() => window.location.reload()} 
+          className="flex items-center gap-2 bg-orange-500 text-gray-950 font-black px-6 py-3 rounded-2xl active:scale-95 transition-all"
+        >
+          <RefreshCw size={20} /> Seite neu laden
+        </button>
       </div>
     );
   }
 
+  // Warte auf Authentifizierung und erste DB-Antwort
+  if (!user || (!dbReady && users.length === 0)) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center">
+        <div className="relative">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-orange-500"></div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="h-8 w-8 bg-gray-950 rounded-full"></div>
+          </div>
+        </div>
+        <p className="text-gray-400 font-bold mt-6 tracking-widest animate-pulse uppercase text-xs">Synchronisiere Workspace...</p>
+      </div>
+    );
+  }
+
+  // --- Login Screen ---
   if (!currentUser) {
     return <LoginScreen users={users} onLogin={u => setCurrentUser(u)} onSeed={seedDatabase} isSeeding={isSeeding} />;
   }
 
+  // --- Haupt-UI ---
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-200">
-      <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-50">
+    <div className="min-h-screen bg-gray-950 text-gray-200 selection:bg-orange-500 selection:text-white">
+      <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-50 shadow-2xl">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-black italic tracking-tighter">
@@ -119,8 +182,8 @@ export default function App() {
               <p className="text-sm font-bold text-white">{currentUser.firstName} {currentUser.lastName}</p>
               <p className="text-[10px] text-orange-500 font-bold uppercase tracking-widest">{currentUser.role}</p>
             </div>
-            <button onClick={() => setCurrentUser(null)} className="p-2.5 bg-gray-800 hover:bg-gray-700 rounded-xl transition-all active:scale-95">
-              <LogOut size={20} className="text-gray-400" />
+            <button onClick={() => setCurrentUser(null)} className="p-2.5 bg-gray-800 hover:bg-gray-700 rounded-xl transition-all active:scale-95 group">
+              <LogOut size={20} className="text-gray-400 group-hover:text-orange-500 transition-colors" />
             </button>
           </div>
         </div>
@@ -151,7 +214,7 @@ export default function App() {
   );
 }
 
-// --- Login Screen ---
+// --- Login Screen Komponente ---
 function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -163,11 +226,15 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   const handleNameSubmit = (e) => {
     e.preventDefault();
     const u = users.find(x => x.firstName.toLowerCase() === firstName.toLowerCase() && x.lastName.toLowerCase() === lastName.toLowerCase());
-    if (!u) return setError("Mitglied nicht gefunden.");
+    if (!u) {
+      setError("Mitglied nicht gefunden.");
+      return;
+    }
     
     if (u.groups?.includes('Vorstand')) {
       setFoundUser(u);
       setStep(!u.password ? 'setPassword' : 'password');
+      setError('');
     } else {
       onLogin(u);
     }
@@ -176,12 +243,22 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   const handlePasswordAction = async (e, type) => {
     e.preventDefault();
     if (type === 'set') {
-      if (password.length < 4) return setError("Min. 4 Zeichen.");
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', foundUser.id), { password });
-      onLogin({ ...foundUser, password });
+      if (password.length < 4) {
+        setError("Passwort zu kurz (min. 4 Zeichen).");
+        return;
+      }
+      try {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', foundUser.id), { password });
+        onLogin({ ...foundUser, password });
+      } catch (err) {
+        setError("Fehler beim Speichern.");
+      }
     } else {
-      if (password === foundUser.password) onLogin(foundUser);
-      else setError("Falsches Passwort.");
+      if (password === foundUser.password) {
+        onLogin(foundUser);
+      } else {
+        setError("Falsches Passwort.");
+      }
     }
   };
 
@@ -189,33 +266,43 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
       <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl">
         <div className="text-center mb-10">
-          <h1 className="text-5xl font-black mb-2 italic"><span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span></h1>
-          <p className="text-gray-500 font-medium tracking-wide">Portal für Aktive & Vorstand</p>
+          <h1 className="text-5xl font-black mb-2 italic tracking-tighter">
+            <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span>
+          </h1>
+          <p className="text-gray-500 font-medium tracking-wide">Internes Portal & Voting</p>
         </div>
 
         {users.length === 0 ? (
-          <button onClick={onSeed} disabled={isSeeding} className="w-full bg-orange-500 font-black py-4 rounded-2xl transition-all">
-            {isSeeding ? 'Wird erstellt...' : 'Admin-Account initialisieren'}
-          </button>
+          <div className="space-y-6 text-center">
+            <Database className="mx-auto text-gray-800" size={48} />
+            <p className="text-gray-400 text-sm">Keine Mitglieder gefunden. Datenbank initialisieren?</p>
+            <button 
+              onClick={onSeed} 
+              disabled={isSeeding} 
+              className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl transition-all shadow-lg shadow-orange-500/10 disabled:opacity-50"
+            >
+              {isSeeding ? 'Wird erstellt...' : 'Admin-Account erstellen'}
+            </button>
+          </div>
         ) : (
           <form onSubmit={step === 'name' ? handleNameSubmit : e => handlePasswordAction(e, step === 'setPassword' ? 'set' : 'check')} className="space-y-4">
             {step === 'name' ? (
-              <>
-                <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none" placeholder="Vorname" value={firstName} onChange={e => setFirstName(e.target.value)} />
-                <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none" placeholder="Nachname" value={lastName} onChange={e => setLastName(e.target.value)} />
-              </>
+              <div className="space-y-4">
+                <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all" placeholder="Vorname" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all" placeholder="Nachname" value={lastName} onChange={e => setLastName(e.target.value)} />
+              </div>
             ) : (
-              <div className="animate-in slide-in-from-right-4">
+              <div className="animate-in slide-in-from-right-4 duration-300">
                 <p className="text-xs text-center text-orange-500 font-bold uppercase mb-4 tracking-widest flex items-center justify-center gap-2">
-                  <Lock size={12}/> {step === 'setPassword' ? 'Erster Login: Passwort setzen' : 'Vorstand-Passwort erforderlich'}
+                  <Lock size={12}/> {step === 'setPassword' ? 'Passwort festlegen' : 'Vorstand-Passwort'}
                 </p>
                 <input autoFocus type="password" required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none text-center text-3xl tracking-[0.5em]" placeholder="••••" value={password} onChange={e => setPassword(e.target.value)} />
               </div>
             )}
-            <button type="submit" className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg shadow-orange-500/20 active:scale-95 transition-all">
+            <button type="submit" className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg shadow-orange-500/20 active:scale-95 transition-all text-lg">
               {step === 'name' ? 'Weiter' : 'Anmelden'}
             </button>
-            {error && <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 py-3 rounded-xl">{error}</p>}
+            {error && <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 py-3 rounded-xl animate-in shake duration-300">{error}</p>}
           </form>
         )}
       </div>
@@ -262,20 +349,20 @@ function ProtocolView({ minutes, users, currentUser }) {
 
       <div className="grid gap-4">
         {minutes.sort((a,b) => b.date.localeCompare(a.date)).map(m => (
-          <div key={m.id} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-gray-700 transition-all">
+          <div key={m.id} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-gray-700 transition-all group">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-2">
                 <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black px-2 py-1 rounded-md border border-orange-500/20 uppercase tracking-widest">{new Date(m.date).toLocaleDateString('de-CH')}</span>
-                <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">Sitzung</span>
+                <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest italic opacity-50 group-hover:opacity-100 transition-opacity">Archiviert</span>
               </div>
               <h3 className="text-2xl font-black text-white">{m.title}</h3>
-              <p className="text-sm text-gray-500 mt-2 line-clamp-1 italic">Vorsitz: {m.traktanden?.['Präsident']?.[0]?.text || 'Unbekannt'}</p>
+              <p className="text-sm text-gray-500 mt-2 line-clamp-1 italic">Vorsitz: {m.traktanden?.['Präsident']?.[0]?.text || 'Nicht angegeben'}</p>
             </div>
             <div className="flex gap-2 shrink-0">
               <button onClick={() => setEditing(m)} className="p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90" title="Bearbeiten">
                 <Edit2 size={20} />
               </button>
-              <button onClick={() => { if(confirm('Löschen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id)); }} className="p-4 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90" title="Löschen">
+              <button onClick={() => { if(confirm('Möchtest du dieses Protokoll wirklich löschen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id)); }} className="p-4 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90" title="Löschen">
                 <Trash2 size={20} />
               </button>
             </div>
@@ -284,7 +371,7 @@ function ProtocolView({ minutes, users, currentUser }) {
         {minutes.length === 0 && (
           <div className="text-center py-20 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
             <ClipboardList className="mx-auto text-gray-800 mb-4" size={48} />
-            <p className="text-gray-600 font-bold uppercase tracking-widest text-sm">Keine Protokolle archiviert</p>
+            <p className="text-gray-600 font-bold uppercase tracking-widest text-sm">Keine Protokolle vorhanden</p>
           </div>
         )}
       </div>
@@ -296,7 +383,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
   const [form, setForm] = useState(initialData || {
     title: '',
     date: new Date().toISOString().split('T')[0],
-    attendance: {}, // {userId: 'present'|'absent'|'excused'}
+    attendance: {}, 
     traktanden: TRAKTANDEN.reduce((acc, curr) => ({ ...acc, [curr]: [] }), {})
   });
 
@@ -344,7 +431,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
         <div className="flex-1 space-y-4">
           <input 
             className="w-full bg-transparent text-4xl font-black text-white border-b-2 border-gray-800 focus:border-orange-500 outline-none transition-all placeholder:text-gray-800" 
-            placeholder="Name der Sitzung..." 
+            placeholder="Sitzungstitel..." 
             value={form.title} 
             onChange={e => setForm({...form, title: e.target.value})} 
           />
@@ -360,17 +447,16 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
         </div>
         <div className="flex gap-3">
           <button onClick={onCancel} className="px-6 py-3 text-gray-500 font-bold hover:text-white transition-colors">Abbrechen</button>
-          <button onClick={() => onSave(form)} className="px-8 py-3 bg-orange-500 text-gray-950 font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-500/20 active:scale-95 transition-all">
-            <Save size={20} /> Protokoll speichern
+          <button onClick={() => { if(!form.title) return alert("Bitte Titel eingeben."); onSave(form); }} className="px-8 py-3 bg-orange-500 text-gray-950 font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-500/20 active:scale-95 transition-all">
+            <Save size={20} /> Speichern
           </button>
         </div>
       </div>
 
       <div className="grid gap-8 lg:grid-cols-3">
-        {/* Anwesenheitsliste */}
         <div className="lg:col-span-1 bg-gray-900 border border-gray-800 p-8 rounded-3xl h-fit sticky top-24 shadow-xl">
           <h3 className="text-xl font-black text-white mb-6 flex items-center gap-3">
-            <UserCheck className="text-orange-500" /> Anwesenheit (Vorstand)
+            <UserCheck className="text-orange-500" /> Anwesenheit
           </h3>
           <div className="space-y-4">
             {vorstand.map(m => (
@@ -386,7 +472,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                       key={status.id}
                       onClick={() => updateAttendance(m.id, status.id)}
                       className={`text-[9px] font-black uppercase py-2 rounded-lg border transition-all ${
-                        form.attendance[m.id] === status.id ? status.color : 'bg-gray-900 text-gray-600 border-gray-800'
+                        form.attendance[m.id] === status.id ? status.color : 'bg-gray-900 text-gray-600 border-gray-800 hover:border-gray-600'
                       }`}
                     >
                       {status.label}
@@ -398,10 +484,9 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
           </div>
         </div>
 
-        {/* Traktanden / Rollen */}
         <div className="lg:col-span-2 space-y-6">
           {TRAKTANDEN.map(traktandum => (
-            <div key={traktandum} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl shadow-xl animate-in fade-in duration-500">
+            <div key={traktandum} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl shadow-xl">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-2xl font-black text-white italic tracking-tight underline decoration-orange-500 decoration-4 underline-offset-8">
                   {traktandum}
@@ -409,7 +494,6 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                 <button 
                   onClick={() => addPoint(traktandum)} 
                   className="p-3 bg-gray-950 border border-gray-800 text-orange-500 hover:bg-orange-500 hover:text-gray-950 rounded-xl transition-all active:scale-90"
-                  title="Punkt hinzufügen"
                 >
                   <Plus size={20} />
                 </button>
@@ -421,7 +505,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                     <div className="flex justify-between gap-4">
                       <textarea 
                         className="flex-1 bg-transparent text-gray-200 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-800 text-sm font-medium leading-relaxed" 
-                        placeholder="Beschreibe den Diskussionspunkt oder Beschluss..."
+                        placeholder="Beschluss oder Notiz schreiben..."
                         rows={2}
                         value={point.text}
                         onChange={e => updatePoint(traktandum, point.id, 'text', e.target.value)}
@@ -439,14 +523,14 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                         <Paperclip size={16} className="text-orange-500 shrink-0" />
                         <input 
                           className="w-full bg-transparent text-[11px] text-gray-500 focus:text-white outline-none" 
-                          placeholder="Link zum Dokument (PDF/Word/Excel)..."
+                          placeholder="Link (PDF/Word/Excel)..."
                           value={point.docUrl}
                           onChange={e => updatePoint(traktandum, point.id, 'docUrl', e.target.value)}
                         />
                       </div>
                       <input 
                         className="w-full sm:w-48 bg-gray-900 px-4 py-2.5 rounded-xl border border-gray-800 text-[11px] text-gray-500 focus:text-white outline-none" 
-                        placeholder="Name des Dokuments..."
+                        placeholder="Dokument-Name..."
                         value={point.docName}
                         onChange={e => updatePoint(traktandum, point.id, 'docName', e.target.value)}
                       />
@@ -454,7 +538,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                   </div>
                 ))}
                 {(!form.traktanden[traktandum] || form.traktanden[traktandum].length === 0) && (
-                  <p className="text-center text-gray-700 text-xs py-4 font-bold uppercase tracking-widest italic opacity-50">Keine Einträge vorhanden</p>
+                  <p className="text-center text-gray-700 text-xs py-4 font-bold uppercase tracking-widest italic opacity-50">Keine Einträge</p>
                 )}
               </div>
             </div>
@@ -479,7 +563,6 @@ function TabButton({ active, onClick, icon, label }) {
   );
 }
 
-// (EventsView, MembersView, SurveyCard etc. bleiben funktional wie zuvor, angepasst an das neue Design)
 function EventsView({ events, currentUser, isArchive = false, users }) {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -525,6 +608,11 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
             </div>
           </div>
         ))}
+        {events.length === 0 && !showCreate && (
+          <div className="md:col-span-2 lg:col-span-3 text-center py-20 bg-gray-900/30 border border-gray-800 border-dashed rounded-3xl">
+            <p className="text-gray-600 font-bold uppercase tracking-widest text-sm">Keine Events geplant</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -542,21 +630,21 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users }) 
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4">
       <div className="flex items-center gap-6">
-        <button onClick={onBack} className="bg-gray-900 p-3 rounded-2xl hover:text-orange-500"><ChevronRight className="rotate-180" size={24} /></button>
+        <button onClick={onBack} className="bg-gray-900 p-3 rounded-2xl hover:text-orange-500 transition-all"><ChevronRight className="rotate-180" size={24} /></button>
         <div className="flex-1">
           <h2 className="text-3xl font-black text-white">{event.title}</h2>
           <p className="text-orange-500 text-xs font-bold uppercase">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
         </div>
         {currentUser.role === 'admin' && (
           <div className="flex gap-2">
-            <button onClick={() => onUpdate({ isArchived: !event.isArchived })} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-orange-500"><Archive size={20}/></button>
-            <button onClick={() => { if(confirm('Löschen?')) onDelete(); }} className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl"><Trash2 size={20}/></button>
+            <button onClick={() => onUpdate({ isArchived: !event.isArchived })} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-orange-500 transition-all"><Archive size={20}/></button>
+            <button onClick={() => { if(confirm('Soll dieser Event gelöscht werden?')) onDelete(); }} className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500/20"><Trash2 size={20}/></button>
           </div>
         )}
       </div>
 
       {currentUser.role === 'admin' && !event.isArchived && (
-        <button onClick={() => setShowSurveyForm(!showSurveyForm)} className="w-full bg-orange-500 text-gray-950 font-bold py-4 rounded-2xl">
+        <button onClick={() => setShowSurveyForm(!showSurveyForm)} className="w-full bg-orange-500 text-gray-950 font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-all">
           {showSurveyForm ? 'Abbrechen' : 'Neue Umfrage hinzufügen'}
         </button>
       )}
@@ -602,18 +690,18 @@ function CreateSurveyForm({ onSubmit }) {
   const [options, setOptions] = useState([{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
   return (
     <form onSubmit={e => { e.preventDefault(); onSubmit({ title, options: options.filter(o => o.text.trim()), maxAnswers: 1 }); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl space-y-6">
-      <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-4 text-white" placeholder="Was ist die Frage?" value={title} onChange={e => setTitle(e.target.value)} />
+      <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-4 text-white focus:border-orange-500 outline-none" placeholder="Was ist die Frage?" value={title} onChange={e => setTitle(e.target.value)} />
       {options.map((o, i) => (
         <div key={o.id} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-950 border border-gray-800 rounded-2xl">
           <input required className="bg-transparent border-b border-gray-800 px-2 py-2 text-white outline-none focus:border-orange-500 font-bold" placeholder={`Option ${i+1}`} value={o.text} onChange={e => { const n = [...options]; n[i].text = e.target.value; setOptions(n); }} />
           <div className="flex items-center gap-2">
             <Youtube size={18} className="text-red-500 shrink-0" />
-            <input className="w-full bg-transparent border-b border-gray-800 px-2 py-2 text-gray-500 outline-none focus:border-orange-500 text-xs" placeholder="YouTube Link (optional)" value={o.youtubeUrl} onChange={e => { const n = [...options]; n[i].youtubeUrl = e.target.value; setOptions(n); }} />
+            <input className="w-full bg-transparent border-b border-gray-800 px-2 py-2 text-gray-500 outline-none focus:border-orange-500 text-xs" placeholder="YouTube Link..." value={o.youtubeUrl} onChange={e => { const n = [...options]; n[i].youtubeUrl = e.target.value; setOptions(n); }} />
           </div>
         </div>
       ))}
-      <button type="button" onClick={() => setOptions([...options, { id: Date.now().toString(), text: '', youtubeUrl: '' }])} className="text-orange-500 text-xs font-bold">+ Option hinzufügen</button>
-      <button type="submit" className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg">Umfrage im Entwurf speichern</button>
+      <button type="button" onClick={() => setOptions([...options, { id: Date.now().toString(), text: '', youtubeUrl: '' }])} className="text-orange-500 text-xs font-bold hover:underline transition-all">+ Option hinzufügen</button>
+      <button type="submit" className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg active:scale-[0.99] transition-all">Umfrage im Entwurf speichern</button>
     </form>
   );
 }
@@ -626,7 +714,7 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange }) {
   if (survey.status === 'draft' && currentUser.role !== 'admin') return null;
 
   return (
-    <div className={`bg-gray-900 border rounded-3xl overflow-hidden shadow-xl ${survey.status === 'active' ? 'border-orange-500/50' : 'border-gray-800'}`}>
+    <div className={`bg-gray-900 border rounded-3xl overflow-hidden shadow-xl transition-all ${survey.status === 'active' ? 'border-orange-500/50' : 'border-gray-800'}`}>
       <div className="p-6 border-b border-gray-800 bg-gray-950/20 flex justify-between items-start">
         <div>
           <span className="text-[10px] font-black uppercase text-orange-500 block mb-1">{survey.status}</span>
@@ -634,8 +722,8 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange }) {
         </div>
         {currentUser.role === 'admin' && (
           <div className="flex gap-2">
-            {survey.status === 'draft' && <button onClick={() => onStatusChange('active')} className="bg-green-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl">Starten</button>}
-            {survey.status === 'active' && <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl">Publizieren</button>}
+            {survey.status === 'draft' && <button onClick={() => onStatusChange('active')} className="bg-green-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Starten</button>}
+            {survey.status === 'active' && <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Publizieren</button>}
           </div>
         )}
       </div>
@@ -644,11 +732,11 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange }) {
           survey.options.map(o => {
             const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
             return (
-              <div key={o.id} className="relative h-14 bg-gray-950 border border-gray-800 rounded-xl overflow-hidden flex items-center px-4">
-                <div className="absolute left-0 top-0 h-full bg-orange-500/10 transition-all duration-700" style={{ width: `${pct}%` }} />
+              <div key={o.id} className="relative h-14 bg-gray-950 border border-gray-800 rounded-xl overflow-hidden flex items-center px-4 group/opt">
+                <div className="absolute left-0 top-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
                 <div className="flex-1 font-bold text-white z-10 flex items-center gap-3">
-                  {o.text}
-                  {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" className="text-red-500 hover:scale-110"><Youtube size={16}/></a>}
+                  <span className="truncate">{o.text}</span>
+                  {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" className="text-red-500 hover:scale-110 transition-transform"><Youtube size={16}/></a>}
                 </div>
                 <div className="text-right z-10">
                   <p className="text-sm font-black">{pct}%</p>
@@ -663,14 +751,14 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange }) {
               <div key={o.id} onClick={() => setSelected([o.id])} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between ${selected.includes(o.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
                 <div className="flex items-center gap-3">
                    <span className="font-bold">{o.text}</span>
-                   {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-red-500 p-1"><Youtube size={18}/></a>}
+                   {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-red-500 p-1 hover:scale-110 transition-transform"><Youtube size={18}/></a>}
                 </div>
-                <div className={`w-6 h-6 rounded-lg border-2 ${selected.includes(o.id) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'} flex items-center justify-center`}>
+                <div className={`w-6 h-6 rounded-lg border-2 ${selected.includes(o.id) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'} flex items-center justify-center transition-all`}>
                   {selected.includes(o.id) && <Check size={16} strokeWidth={4} className="text-gray-950" />}
                 </div>
               </div>
             ))}
-            <button disabled={selected.length === 0} onClick={() => onVote(selected)} className="w-full mt-2 bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95">Abstimmung senden</button>
+            <button disabled={selected.length === 0} onClick={() => onVote(selected)} className="w-full mt-2 bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30">Abstimmung senden</button>
           </div>
         )}
       </div>
@@ -690,41 +778,43 @@ function MembersView({ users }) {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-black text-white">Mitglieder</h2>
-        <button onClick={() => setShowAdd(!showAdd)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center gap-2">
+        <button onClick={() => setShowAdd(!showAdd)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/10">
           {showAdd ? 'Abbrechen' : <><UserPlus size={20} /> Mitglied hinzufügen</>}
         </button>
       </div>
       {showAdd && <MemberForm onSubmit={saveMember} onCancel={() => setShowAdd(false)} />}
       <div className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-2xl">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="bg-gray-950 text-[10px] font-black text-gray-600 uppercase tracking-widest border-b border-gray-800">
-              <th className="px-6 py-5">Name & Gruppen</th>
-              <th className="px-6 py-5">Sicherheit</th>
-              <th className="px-6 py-5 text-right">Optionen</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-800">
-            {users.map(u => (
-              <tr key={u.id} className="hover:bg-gray-800/30">
-                <td className="px-6 py-5">
-                  <p className="font-bold text-white text-lg">{u.firstName} {u.lastName}</p>
-                  <div className="flex flex-wrap gap-1 mt-2">
-                     {u.groups?.map(g => <span key={g} className="text-[8px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-500 uppercase">{g}</span>)}
-                  </div>
-                </td>
-                <td className="px-6 py-5">
-                  {u.groups?.includes('Vorstand') ? (
-                     u.password ? <span className="text-green-500 flex items-center gap-1 text-[10px] font-black"><Lock size={12}/> PASSWORT AKTIV</span> : <span className="text-orange-500 flex items-center gap-1 text-[10px] font-black animate-pulse"><Unlock size={12}/> NICHT GESETZT</span>
-                  ) : <span className="text-gray-700 text-[10px]">KEIN PW NÖTIG</span>}
-                </td>
-                <td className="px-6 py-5 text-right">
-                   <button onClick={() => { if(confirm('Mitglied entfernen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id)); }} className="text-gray-700 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-gray-950 text-[10px] font-black text-gray-600 uppercase tracking-widest border-b border-gray-800">
+                <th className="px-6 py-5">Name & Gruppen</th>
+                <th className="px-6 py-5">Sicherheit</th>
+                <th className="px-6 py-5 text-right">Optionen</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-800">
+              {users.map(u => (
+                <tr key={u.id} className="hover:bg-gray-800/30 transition-colors">
+                  <td className="px-6 py-5">
+                    <p className="font-bold text-white text-lg">{u.firstName} {u.lastName}</p>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                       {u.groups?.map(g => <span key={g} className="text-[8px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-500 uppercase font-black">{g}</span>)}
+                    </div>
+                  </td>
+                  <td className="px-6 py-5">
+                    {u.groups?.includes('Vorstand') ? (
+                       u.password ? <span className="text-green-500 flex items-center gap-1 text-[10px] font-black"><Lock size={12}/> PASSWORT AKTIV</span> : <span className="text-orange-500 flex items-center gap-1 text-[10px] font-black animate-pulse"><Unlock size={12}/> EINRICHTUNG NÖTIG</span>
+                    ) : <span className="text-gray-700 text-[10px] font-black uppercase">Standard-Login</span>}
+                  </td>
+                  <td className="px-6 py-5 text-right">
+                     <button onClick={() => { if(confirm('Soll dieses Mitglied entfernt werden?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id)); }} className="text-gray-700 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-xl"><Trash2 size={18}/></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -734,22 +824,34 @@ function MemberForm({ onSubmit, onCancel }) {
   const [form, setForm] = useState({ firstName: '', lastName: '', role: 'member', groups: [] });
   const toggleGroup = g => setForm(f => ({ ...f, groups: f.groups.includes(g) ? f.groups.filter(x => x !== g) : [...f.groups, g] }));
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-4">
+    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-6 animate-in slide-in-from-top-4 duration-300 shadow-2xl">
       <div className="grid gap-4 md:grid-cols-2">
-        <input required className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white" placeholder="Vorname" value={form.firstName} onChange={e => setForm({...form, firstName: e.target.value})} />
-        <input required className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white" placeholder="Nachname" value={form.lastName} onChange={e => setForm({...form, lastName: e.target.value})} />
+        <div className="space-y-1">
+          <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Vorname</label>
+          <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all" placeholder="z.B. Max" value={form.firstName} onChange={e => setForm({...form, firstName: e.target.value})} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Nachname</label>
+          <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all" placeholder="z.B. Muster" value={form.lastName} onChange={e => setForm({...form, lastName: e.target.value})} />
+        </div>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        {GROUPS.map(g => (
-          <label key={g} className={`flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all ${form.groups.includes(g) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500'}`}>
-            <input type="checkbox" className="hidden" checked={form.groups.includes(g)} onChange={() => toggleGroup(g)} />
-            <span className="text-[10px] font-black uppercase tracking-tighter">{g}</span>
-          </label>
-        ))}
+      <div className="space-y-3">
+        <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Gruppen-Berechtigungen</label>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+          {GROUPS.map(g => (
+            <label key={g} className={`flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all ${form.groups.includes(g) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
+              <input type="checkbox" className="hidden" checked={form.groups.includes(g)} onChange={() => toggleGroup(g)} />
+              <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all ${form.groups.includes(g) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'}`}>
+                {form.groups.includes(g) && <Check size={12} className="text-gray-950" strokeWidth={4} />}
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-tighter truncate">{g}</span>
+            </label>
+          ))}
+        </div>
       </div>
-      <div className="flex justify-end gap-3">
-        <button type="button" onClick={onCancel} className="text-gray-500 font-bold">Abbrechen</button>
-        <button type="submit" className="bg-orange-500 text-gray-950 font-black px-8 py-3 rounded-2xl">Speichern</button>
+      <div className="flex justify-end gap-4 pt-6 border-t border-gray-800">
+        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold transition-colors">Abbrechen</button>
+        <button type="submit" className="bg-orange-500 text-gray-950 font-black px-10 py-4 rounded-2xl shadow-lg active:scale-95 transition-all">Mitglied speichern</button>
       </div>
     </form>
   );
