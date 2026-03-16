@@ -5,7 +5,7 @@ import {
   UserPlus, Eye, Check, Database, Settings, ShieldAlert, Edit2,
   FileText, Youtube, Lock, Unlock, Send, ExternalLink,
   ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw,
-  UploadCloud, Loader2, Search
+  UploadCloud, Loader2, Search, Download
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -875,6 +875,35 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
     }
   };
 
+  const exportToExcel = () => {
+    let csv = '\uFEFF'; // BOM für saubere UTF-8 Darstellung in Excel
+    csv += `Event:;${event.title}\n`;
+    csv += `Datum:;${new Date(event.date).toLocaleDateString('de-CH')}\n`;
+    csv += `Kategorie:;${event.category}\n\n`;
+    csv += `Umfrage;Option;Stimmen;Prozent\n`;
+
+    if (event.surveys) {
+      event.surveys.forEach(survey => {
+        const totalVotes = survey.options.reduce((sum, o) => sum + (o.votes || 0), 0);
+        survey.options.forEach(opt => {
+          const pct = totalVotes === 0 ? 0 : Math.round(((opt.votes || 0) / totalVotes) * 100);
+          const safeTitle = survey.title.replace(/"/g, '""');
+          const safeOpt = opt.text.replace(/"/g, '""');
+          csv += `"${safeTitle}";"${safeOpt}";${opt.votes || 0};${pct}%\n`;
+        });
+      });
+    }
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${event.title.replace(/\s+/g, '_')}_Resultate.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4">
       <div className="flex items-center gap-6">
@@ -886,10 +915,11 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
           </h2>
           <p className="text-orange-500 text-xs font-bold uppercase">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
         </div>
-        {currentUser.role === 'admin' && !isArchived && (
+        {currentUser.role === 'admin' && (
           <div className="flex gap-2">
-            <button onClick={() => onUpdate({ isArchived: !event.isArchived })} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-orange-500 transition-all" title="Manuell Archivieren"><Archive size={20}/></button>
-            <button onClick={() => { if(confirm('Soll dieser Event gelöscht werden?')) onDelete(); }} className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500/20"><Trash2 size={20}/></button>
+            <button onClick={exportToExcel} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-green-500 transition-all" title="Als Excel (CSV) exportieren"><Download size={20}/></button>
+            {!isArchived && <button onClick={() => onUpdate({ isArchived: !event.isArchived })} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-orange-500 transition-all" title="Manuell Archivieren"><Archive size={20}/></button>}
+            <button onClick={() => { if(confirm('Achtung: Soll dieser Event wirklich komplett und unwiderruflich gelöscht werden? Alle Daten gehen verloren!')) onDelete(); }} className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500/20" title="Event komplett löschen"><Trash2 size={20}/></button>
           </div>
         )}
       </div>
