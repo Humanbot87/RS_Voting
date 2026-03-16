@@ -11,9 +11,20 @@ import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged }
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, updateDoc } from 'firebase/firestore';
 
 // --- Sichere Konfigurations-Initialisierung ---
-let firebaseConfig = {};
+const MY_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyB9sGsbG9WAQfp9xoEqOhzp_IDgMuwOYmE",
+  authDomain: "ruesssuuger-voting.firebaseapp.com",
+  projectId: "ruesssuuger-voting",
+  storageBucket: "ruesssuuger-voting.firebasestorage.app",
+  messagingSenderId: "737751466538",
+  appId: "1:737751466538:web:4fe3f376738accc352f953"
+};
+
+let firebaseConfig = MY_FIREBASE_CONFIG;
 try {
-  firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+  if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+    firebaseConfig = JSON.parse(__firebase_config);
+  }
 } catch (e) {
   console.error("Firebase Config Error:", e);
 }
@@ -91,8 +102,11 @@ export default function App() {
       },
       (err) => {
         console.error("Users Snapshot Error:", err);
+        setDbReady(true); // Verhindert unendlichen Ladebildschirm
         if (err.code === 'permission-denied') {
           setConnError("Keine Berechtigung zum Lesen der Daten. Prüfe die Firestore Regeln.");
+        } else {
+          setConnError("Verbindungsfehler: " + err.message);
         }
       }
     );
