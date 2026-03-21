@@ -444,6 +444,7 @@ function ProtocolView({ minutes, users, currentUser }) {
   const [showAdd, setShowAdd] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedId, setExpandedId] = useState(null);
+  const [enlargedPoint, setEnlargedPoint] = useState(null);
 
   const vorstandMembers = useMemo(() => users.filter(u => u.groups?.includes('Vorstand')), [users]);
 
@@ -602,13 +603,22 @@ function ProtocolView({ minutes, users, currentUser }) {
                           <h4 className="text-white font-black text-lg sm:text-xl mb-4 italic tracking-tight underline decoration-orange-500 decoration-2 underline-offset-4">{t}</h4>
                           <ul className="space-y-4">
                             {points.map(p => (
-                              <li key={p.id} className="bg-gray-900 p-4 sm:p-5 rounded-2xl border border-gray-800 shadow-sm">
-                                <p className="text-gray-300 text-sm whitespace-pre-wrap leading-relaxed">{p.text}</p>
-                                {p.docUrl && (
-                                  <a href={getPreviewUrl(p.docUrl, p.docName)} target="_blank" rel="noreferrer" className="mt-4 flex items-center gap-2 text-[11px] font-bold text-orange-500 hover:text-orange-400 bg-orange-500/10 w-fit px-3.5 py-2.5 rounded-xl border border-orange-500/20 transition-all hover:scale-105 active:scale-95">
-                                    <Paperclip size={16} /> {p.docName || 'Dokument ansehen'}
-                                  </a>
-                                )}
+                              <li key={p.id} className="bg-gray-900 p-4 sm:p-5 rounded-2xl border border-gray-800 shadow-sm relative group">
+                                <div className="pr-10 sm:pr-0">
+                                  <p className="text-gray-300 text-sm whitespace-pre-wrap leading-relaxed">{p.text}</p>
+                                  {p.docUrl && (
+                                    <a href={getPreviewUrl(p.docUrl, p.docName)} target="_blank" rel="noreferrer" className="mt-4 flex items-center gap-2 text-[11px] font-bold text-orange-500 hover:text-orange-400 bg-orange-500/10 w-fit px-3.5 py-2.5 rounded-xl border border-orange-500/20 transition-all hover:scale-105 active:scale-95">
+                                      <Paperclip size={16} /> {p.docName || 'Dokument ansehen'}
+                                    </a>
+                                  )}
+                                </div>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); setEnlargedPoint({ traktandum: t, ...p }); }} 
+                                  className="absolute top-3 right-3 p-2 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100"
+                                  title="Punkt vergrössern"
+                                >
+                                  <Eye size={18} />
+                                </button>
                               </li>
                             ))}
                           </ul>
@@ -635,6 +645,30 @@ function ProtocolView({ minutes, users, currentUser }) {
           </div>
         )}
       </div>
+
+      {/* MODAL FÜR VERGRÖSSERTEN PUNKT */}
+      {enlargedPoint && (
+        <div className="fixed inset-0 z-[100] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
+            <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
+              <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedPoint.traktandum}</h3>
+              <button onClick={() => setEnlargedPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1">
+              <p className="text-white text-base sm:text-lg whitespace-pre-wrap leading-relaxed">{enlargedPoint.text}</p>
+            </div>
+            {enlargedPoint.docUrl && (
+              <div className="p-5 border-t border-gray-800 bg-gray-950/50 rounded-b-3xl">
+                <a href={getPreviewUrl(enlargedPoint.docUrl, enlargedPoint.docName)} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 text-sm font-bold text-gray-950 bg-orange-500 hover:bg-orange-600 w-full py-4 rounded-xl transition-all active:scale-95 shadow-lg">
+                  <Paperclip size={18} /> {enlargedPoint.docName || 'Dokument öffnen'}
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
