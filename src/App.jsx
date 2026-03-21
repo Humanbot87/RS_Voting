@@ -10,6 +10,7 @@ import {
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, updateDoc } from 'firebase/firestore';
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
 // --- Sichere Konfigurations-Initialisierung ---
 const MY_FIREBASE_CONFIG = {
@@ -36,6 +37,7 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'ruesssuuger-app-v1';
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 // Hilfsfunktion zum Hashen von Passwörtern (SHA-256)
 const hashPassword = async (password) => {
@@ -43,6 +45,16 @@ const hashPassword = async (password) => {
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+// Hilfsfunktion für die Datei-Vorschau (Google Docs Viewer für Office Dateien)
+const getPreviewUrl = (url, fileName) => {
+  if (!url) return '#';
+  const name = (fileName || '').toLowerCase();
+  if (name.endsWith('.doc') || name.endsWith('.docx') || name.endsWith('.xls') || name.endsWith('.xlsx')) {
+    return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=false`;
+  }
+  return url;
 };
 
 const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder'];
@@ -429,7 +441,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   );
 }
 
-// --- Protokoll View & Editor (Mit robuster Upload-Funktion & Suche) ---
+// --- Protokoll View & Editor ---
 function ProtocolView({ minutes, users, currentUser }) {
   const [editing, setEditing] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -638,30 +650,33 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
     // Reset des Input-Values
     e.target.value = '';
 
-    // Firestore hat ein Limit von 1MB pro Dokument. 
-    // Wir setzen ein sicheres Limit von 500 KB, da Base64 ca. 33% grösser wird.
-    if (file.size > 500 * 1024) {
-      alert(`Die Datei "${file.name}" ist zu gross!\n\nDa Dateien nun direkt in der Datenbank gespeichert werden (und nicht mehr in einem externen Storage), darf eine Datei maximal 500 KB gross sein.\n\nBitte komprimiere die Datei oder nutze einen externen Link.`);
-      return;
-    }
+    const storageRef = ref(storage, `artifacts/${appId}/public/uploads/${Date.now()}_${file.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
 
-    setUploading(prev => ({ ...prev, [pointId]: 50 })); // Optisches Feedback starten
+    setUploading(prev => ({ ...prev, [pointId]: 1 }));
 
-    const reader = new FileReader();
-    
-    reader.onload = (event) => {
-      const base64Data = event.target.result; // "data:application/pdf;base64,..."
-      updatePointFields(traktandum, pointId, { docUrl: base64Data, docName: file.name });
-      setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
-    };
-
-    reader.onerror = (error) => {
-      console.error("FileReader Error:", error);
-      alert("Es gab einen Fehler beim Einlesen der Datei. Bitte versuche es noch einmal.");
-      setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
-    };
-
-    reader.readAsDataURL(file); // Liest die Datei und konvertiert sie in Base64
+    uploadTask.on('state_changed', 
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploading(prev => ({ ...prev, [pointId]: progress || 1 }));
+      }, 
+      (error) => {
+        console.error("Upload Error:", error);
+        alert(`Fehler beim Datei-Upload: ${error.message}\n\nBitte stelle sicher, dass in der Firebase Console "Storage" aktiviert ist und die Rules Schreibzugriff erlauben.`);
+        setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
+      }, 
+      async () => {
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          updatePointFields(traktandum, pointId, { docUrl: url, docName: file.name });
+        } catch (err) {
+          console.error("Download URL Error:", err);
+          alert("Datei wurde hochgeladen, aber der Link konnte nicht generiert werden.");
+        } finally {
+          setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
+        }
+      }
+    );
   };
 
   return (
@@ -743,11 +758,21 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                   <div key={point.id} className="p-6 bg-gray-950 border border-gray-800 rounded-2xl space-y-4 group">
                     <div className="flex justify-between gap-4">
                       <textarea 
-                        className="flex-1 bg-transparent text-gray-200 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-800 text-sm font-medium leading-relaxed" 
+                        className="flex-1 bg-transparent text-gray-200 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-800 text-sm font-medium leading-relaxed overflow-hidden" 
                         placeholder="Beschluss oder Notiz schreiben..."
-                        rows={2}
+                        rows={1}
                         value={point.text}
-                        onChange={e => updatePoint(traktandum, point.id, 'text', e.target.value)}
+                        onChange={e => {
+                          e.target.style.height = 'auto';
+                          e.target.style.height = `${e.target.scrollHeight}px`;
+                          updatePoint(traktandum, point.id, 'text', e.target.value);
+                        }}
+                        ref={el => {
+                          if (el) {
+                            el.style.height = 'auto';
+                            el.style.height = `${el.scrollHeight}px`;
+                          }
+                        }}
                       />
                       <button 
                         onClick={() => removePoint(traktandum, point.id)} 
@@ -766,11 +791,11 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                         
                         <div className="flex-1 z-10 flex items-center">
                           {uploading[point.id] !== undefined ? (
-                            <span className="text-[11px] text-orange-500 font-bold">Lese Datei...</span>
+                            <span className="text-[11px] text-orange-500 font-bold">Wird hochgeladen... {Math.round(uploading[point.id])}%</span>
                           ) : point.docUrl ? (
                             <div className="flex items-center justify-between w-full">
-                              <a href={point.docUrl} download={point.docName || 'Dokument'} className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
-                                {point.docName || 'Dokument herunterladen'}
+                              <a href={getPreviewUrl(point.docUrl, point.docName)} target="_blank" rel="noopener noreferrer" className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
+                                {point.docName || 'Dokument ansehen'}
                               </a>
                               <button type="button" onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })} className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md" title="Datei entfernen">
                                 <X size={14} />
@@ -779,7 +804,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                           ) : (
                             <label className="cursor-pointer text-[11px] text-gray-500 hover:text-white w-full block font-bold transition-colors">
                               <UploadCloud size={14} className="inline mr-2" />
-                              Datei in DB speichern (Max. 500 KB)
+                              Datei anhängen (PDF, Word, Excel)
                               <input type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => handleFileUpload(e, traktandum, point.id)} />
                             </label>
                           )}
