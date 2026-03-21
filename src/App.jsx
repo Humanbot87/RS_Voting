@@ -45,6 +45,16 @@ const hashPassword = async (password) => {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
+// Hilfsfunktion für die Datei-Vorschau (Google Docs Viewer für Office Dateien)
+const getPreviewUrl = (url, fileName) => {
+  if (!url) return '#';
+  const name = (fileName || '').toLowerCase();
+  if (name.endsWith('.doc') || name.endsWith('.docx') || name.endsWith('.xls') || name.endsWith('.xlsx')) {
+    return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=false`;
+  }
+  return url;
+};
+
 const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder'];
 const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitext'];
 const TRAKTANDEN = [
@@ -190,7 +200,7 @@ export default function App() {
     }
   }, [users, currentUser]);
 
-  // --- Auto-Archivierung von abgelaufenen Events (Optional) ---
+  // --- Auto-Archivierung von abgelaufenen Events ---
   useEffect(() => {
     if (!user || currentUser?.role !== 'admin') return;
     
@@ -372,7 +382,6 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
       }
     } else {
       const hashedInput = await hashPassword(password);
-      // Fallback-Überprüfung, falls noch unverschlüsselte Passwörter in der DB sind (Übergangsphase)
       if (hashedInput === foundUser.password || password === foundUser.password) {
         finalizeLogin(foundUser);
       } else {
@@ -429,11 +438,12 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   );
 }
 
-// --- Protokoll View & Editor ---
+// --- Protokoll View (inkl. Lese-Modus) & Editor ---
 function ProtocolView({ minutes, users, currentUser }) {
   const [editing, setEditing] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [expandedId, setExpandedId] = useState(null);
 
   const vorstandMembers = useMemo(() => users.filter(u => u.groups?.includes('Vorstand')), [users]);
 
@@ -462,7 +472,6 @@ function ProtocolView({ minutes, users, currentUser }) {
     setEditing(null);
   };
 
-  // Rendering von Vorschau-Snippets für Suchtreffer
   const renderSnippets = (m) => {
     if (!searchTerm.trim()) return null;
     const term = searchTerm.toLowerCase();
@@ -484,7 +493,7 @@ function ProtocolView({ minutes, users, currentUser }) {
         });
       }
     }
-    return snippets.slice(0, 3); // Max 3 Snippets pro Protokoll anzeigen
+    return snippets.slice(0, 3);
   };
 
   if (editing || showAdd) {
@@ -515,7 +524,7 @@ function ProtocolView({ minutes, users, currentUser }) {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
           <input 
             type="text" 
-            placeholder="Suchen nach Begriffen..."
+            placeholder="Protokolle durchsuchen..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-4 pl-12 pr-12 text-white focus:border-orange-500 outline-none shadow-lg transition-all"
@@ -529,31 +538,89 @@ function ProtocolView({ minutes, users, currentUser }) {
       )}
 
       <div className="grid gap-4">
-        {filteredMinutes.map(m => (
-          <div key={m.id} className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl flex flex-col hover:border-gray-700 transition-all group">
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-6">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black px-2 py-1 rounded-md border border-orange-500/20 uppercase tracking-widest">{new Date(m.date).toLocaleDateString('de-CH')}</span>
-                  <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest italic opacity-50 group-hover:opacity-100 transition-opacity">Archiviert</span>
+        {filteredMinutes.map(m => {
+          const isExpanded = expandedId === m.id;
+
+          return (
+            <div key={m.id} className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl flex flex-col hover:border-gray-700 transition-all group">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-6 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : m.id)}>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black px-2 py-1 rounded-md border border-orange-500/20 uppercase tracking-widest">{new Date(m.date).toLocaleDateString('de-CH')}</span>
+                    <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest italic opacity-50 group-hover:opacity-100 transition-opacity">Archiviert</span>
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-white break-words">{m.title}</h3>
+                  <p className="text-sm text-gray-500 mt-2 line-clamp-1 italic">Vorsitz: {m.traktanden?.['Präsident']?.[0]?.text || 'Nicht angegeben'}</p>
                 </div>
-                <h3 className="text-xl sm:text-2xl font-black text-white break-words">{m.title}</h3>
-                <p className="text-sm text-gray-500 mt-2 line-clamp-1 italic">Vorsitz: {m.traktanden?.['Präsident']?.[0]?.text || 'Nicht angegeben'}</p>
+                <div className="flex gap-2 shrink-0 mt-3 sm:mt-0 justify-end" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => setExpandedId(isExpanded ? null : m.id)} className="p-3.5 sm:p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90" title="Lesen">
+                    {isExpanded ? <ChevronRight className="-rotate-90" size={20} /> : <Eye size={20} />}
+                  </button>
+                  <button onClick={() => setEditing(m)} className="p-3.5 sm:p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90" title="Bearbeiten">
+                    <Edit2 size={20} />
+                  </button>
+                  <button onClick={() => { if(confirm('Möchtest du dieses Protokoll wirklich löschen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id)); }} className="p-3.5 sm:p-4 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90" title="Löschen">
+                    <Trash2 size={20} />
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2 shrink-0 mt-3 sm:mt-0 justify-end">
-                <button onClick={() => setEditing(m)} className="p-3.5 sm:p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90" title="Bearbeiten">
-                  <Edit2 size={20} />
-                </button>
-                <button onClick={() => { if(confirm('Möchtest du dieses Protokoll wirklich löschen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id)); }} className="p-3.5 sm:p-4 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90" title="Löschen">
-                  <Trash2 size={20} />
-                </button>
-              </div>
+              
+              {!isExpanded && renderSnippets(m)}
+
+              {/* LESE-ANSICHT (EXPANDED) */}
+              {isExpanded && (
+                <div className="mt-6 border-t border-gray-800 pt-6 space-y-8 animate-in slide-in-from-top-2 duration-300">
+                  {/* Anwesenheit */}
+                  {m.attendance && Object.keys(m.attendance).length > 0 && (
+                    <div>
+                      <h4 className="text-orange-500 font-black uppercase text-[10px] tracking-widest mb-3 flex items-center gap-2">
+                        <UserCheck size={14}/> Anwesenheit
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {users.filter(u => u.groups?.includes('Vorstand')).map(u => {
+                          const status = m.attendance?.[u.id];
+                          if (!status) return null;
+                          const label = status === 'present' ? 'Anwesend' : status === 'absent' ? 'Unentschuldigt' : 'Entschuldigt';
+                          const color = status === 'present' ? 'bg-green-500/10 text-green-500 border-green-500/20' : status === 'absent' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+                          return (
+                            <span key={u.id} className={`text-[10px] font-bold px-2 py-1 rounded-md border ${color}`}>
+                              {u.firstName} {u.lastName}: {label}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Traktanden */}
+                  <div className="space-y-6">
+                    {TRAKTANDEN.map(t => {
+                      const points = m.traktanden?.[t];
+                      if (!points || points.length === 0) return null;
+                      return (
+                        <div key={t} className="bg-gray-950 p-5 sm:p-6 rounded-3xl border border-gray-800">
+                          <h4 className="text-white font-black text-lg sm:text-xl mb-4 italic tracking-tight underline decoration-orange-500 decoration-2 underline-offset-4">{t}</h4>
+                          <ul className="space-y-4">
+                            {points.map(p => (
+                              <li key={p.id} className="bg-gray-900 p-4 sm:p-5 rounded-2xl border border-gray-800 shadow-sm">
+                                <p className="text-gray-300 text-sm whitespace-pre-wrap leading-relaxed">{p.text}</p>
+                                {p.docUrl && (
+                                  <a href={getPreviewUrl(p.docUrl, p.docName)} target="_blank" rel="noreferrer" className="mt-4 flex items-center gap-2 text-[11px] font-bold text-orange-500 hover:text-orange-400 bg-orange-500/10 w-fit px-3.5 py-2.5 rounded-xl border border-orange-500/20 transition-all hover:scale-105 active:scale-95">
+                                    <Paperclip size={16} /> {p.docName || 'Dokument ansehen'}
+                                  </a>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-            
-            {/* Snippets für die Suche anzeigen */}
-            {renderSnippets(m)}
-          </div>
-        ))}
+          );
+        })}
 
         {filteredMinutes.length === 0 && searchTerm && (
           <div className="text-center py-10 text-gray-500 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
@@ -580,7 +647,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
     traktanden: TRAKTANDEN.reduce((acc, curr) => ({ ...acc, [curr]: [] }), {})
   });
   
-  const [uploading, setUploading] = useState({}); // { pointId: progress }
+  const [uploading, setUploading] = useState({});
 
   const updateAttendance = (userId, status) => {
     setForm(prev => ({
@@ -656,10 +723,8 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Input zurücksetzen für erneuten Upload der gleichen Datei im Fehlerfall
     e.target.value = '';
 
-    // Da wir direkt in die Datenbank speichern, limitieren wir die Grösse auf 500 KB (Base64 Overhead)
     if (file.size > 500 * 1024) {
       alert(`Die Datei "${file.name}" ist zu gross!\n\nDas Limit beträgt 500 KB, da Dokumente direkt in der Datenbank gespeichert werden. Bitte komprimiere die Datei.`);
       return;
@@ -763,9 +828,8 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                   <div key={point.id} className="p-4 sm:p-6 bg-gray-950 border border-gray-800 rounded-2xl space-y-4 group">
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                       <textarea 
-                        className="w-full flex-1 bg-transparent text-gray-200 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-800 text-sm font-medium leading-relaxed overflow-hidden" 
+                        className="w-full flex-1 bg-transparent text-gray-200 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-800 text-sm font-medium leading-relaxed overflow-hidden min-h-[44px]" 
                         placeholder="Beschluss oder Notiz schreiben..."
-                        rows={1}
                         value={point.text}
                         onChange={e => {
                           e.target.style.height = 'auto';
@@ -774,8 +838,10 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                         }}
                         ref={el => {
                           if (el) {
-                            el.style.height = 'auto';
-                            el.style.height = `${el.scrollHeight}px`;
+                            requestAnimationFrame(() => {
+                              el.style.height = 'auto';
+                              el.style.height = `${el.scrollHeight}px`;
+                            });
                           }
                         }}
                       />
@@ -818,8 +884,8 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                             <span className="text-[11px] text-orange-500 font-bold">Wird hochgeladen... {Math.round(uploading[point.id])}%</span>
                           ) : point.docUrl ? (
                             <div className="flex items-center justify-between w-full">
-                              <a href={point.docUrl} download={point.docName || 'Dokument'} className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
-                                {point.docName || 'Dokument herunterladen'}
+                              <a href={getPreviewUrl(point.docUrl, point.docName)} target="_blank" rel="noreferrer" className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
+                                {point.docName || 'Dokument ansehen'}
                               </a>
                               <button type="button" onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })} className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md shrink-0" title="Datei entfernen">
                                 <X size={14} />
