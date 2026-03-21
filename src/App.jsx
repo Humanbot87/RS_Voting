@@ -474,9 +474,9 @@ function ProtocolView({ minutes, users, currentUser }) {
             snippets.push(
               <div key={p.id} className="mt-3 bg-orange-500/10 border border-orange-500/20 p-3 rounded-xl text-sm">
                 <span className="font-bold text-orange-500 mr-2 uppercase tracking-tighter text-[10px]">{tName}:</span>
-                <span className="text-gray-300">{p.text}</span>
+                <span className="text-gray-300 break-words">{p.text}</span>
                 {p.docName && p.docName.toLowerCase().includes(term) && (
-                  <span className="ml-2 italic text-orange-400 text-xs">({p.docName})</span>
+                  <span className="ml-2 italic text-orange-400 text-xs break-words">({p.docName})</span>
                 )}
               </div>
             );
@@ -502,10 +502,10 @@ function ProtocolView({ minutes, users, currentUser }) {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-black text-white">Vorstands-Protokolle</h2>
+          <h2 className="text-2xl sm:text-3xl font-black text-white">Vorstands-Protokolle</h2>
           <p className="text-gray-500 text-sm mt-1">Interne Sitzungsprotokolle und Beschlüsse</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 whitespace-nowrap">
+        <button onClick={() => setShowAdd(true)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3.5 sm:py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 whitespace-nowrap w-full md:w-auto mt-2 md:mt-0">
           <Plus size={20} /> Neues Protokoll
         </button>
       </div>
@@ -515,7 +515,7 @@ function ProtocolView({ minutes, users, currentUser }) {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
           <input 
             type="text" 
-            placeholder="Protokolle nach Begriffen, Traktanden oder Beschlüssen durchsuchen..."
+            placeholder="Suchen nach Begriffen..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-4 pl-12 pr-12 text-white focus:border-orange-500 outline-none shadow-lg transition-all"
@@ -530,21 +530,21 @@ function ProtocolView({ minutes, users, currentUser }) {
 
       <div className="grid gap-4">
         {filteredMinutes.map(m => (
-          <div key={m.id} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl flex flex-col hover:border-gray-700 transition-all group">
-            <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+          <div key={m.id} className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl flex flex-col hover:border-gray-700 transition-all group">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-6">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black px-2 py-1 rounded-md border border-orange-500/20 uppercase tracking-widest">{new Date(m.date).toLocaleDateString('de-CH')}</span>
                   <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest italic opacity-50 group-hover:opacity-100 transition-opacity">Archiviert</span>
                 </div>
-                <h3 className="text-2xl font-black text-white">{m.title}</h3>
+                <h3 className="text-xl sm:text-2xl font-black text-white break-words">{m.title}</h3>
                 <p className="text-sm text-gray-500 mt-2 line-clamp-1 italic">Vorsitz: {m.traktanden?.['Präsident']?.[0]?.text || 'Nicht angegeben'}</p>
               </div>
-              <div className="flex gap-2 shrink-0">
-                <button onClick={() => setEditing(m)} className="p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90" title="Bearbeiten">
+              <div className="flex gap-2 shrink-0 mt-3 sm:mt-0 justify-end">
+                <button onClick={() => setEditing(m)} className="p-3.5 sm:p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90" title="Bearbeiten">
                   <Edit2 size={20} />
                 </button>
-                <button onClick={() => { if(confirm('Möchtest du dieses Protokoll wirklich löschen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id)); }} className="p-4 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90" title="Löschen">
+                <button onClick={() => { if(confirm('Möchtest du dieses Protokoll wirklich löschen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id)); }} className="p-3.5 sm:p-4 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90" title="Löschen">
                   <Trash2 size={20} />
                 </button>
               </div>
@@ -686,42 +686,42 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
 
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-8 duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gray-900 p-8 rounded-3xl border border-gray-800 shadow-2xl">
-        <div className="flex-1 space-y-4">
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 bg-gray-900 p-5 sm:p-8 rounded-3xl border border-gray-800 shadow-2xl">
+        <div className="flex-1 space-y-4 w-full">
           <input 
-            className="w-full bg-transparent text-4xl font-black text-white border-b-2 border-gray-800 focus:border-orange-500 outline-none transition-all placeholder:text-gray-800" 
+            className="w-full bg-transparent text-2xl sm:text-4xl font-black text-white border-b-2 border-gray-800 focus:border-orange-500 outline-none transition-all placeholder:text-gray-800" 
             placeholder="Sitzungstitel..." 
             value={form.title} 
             onChange={e => setForm({...form, title: e.target.value})} 
           />
           <div className="flex items-center gap-4">
-            <Calendar className="text-orange-500" size={20} />
+            <Calendar className="text-orange-500 shrink-0" size={20} />
             <input 
               type="date" 
-              className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-2 text-white focus:border-orange-500 outline-none" 
+              className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 sm:py-2 text-white focus:border-orange-500 outline-none w-full sm:w-auto" 
               value={form.date} 
               onChange={e => setForm({...form, date: e.target.value})} 
             />
           </div>
         </div>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="px-6 py-3 text-gray-500 font-bold hover:text-white transition-colors">Abbrechen</button>
-          <button onClick={() => { if(!form.title) return alert("Bitte Titel eingeben."); onSave(form); }} className="px-8 py-3 bg-orange-500 text-gray-950 font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-500/20 active:scale-95 transition-all">
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto mt-2 md:mt-0">
+          <button onClick={onCancel} className="w-full sm:w-auto px-6 py-3.5 sm:py-3 text-gray-500 font-bold hover:text-white transition-colors bg-gray-950 md:bg-transparent rounded-2xl md:rounded-none">Abbrechen</button>
+          <button onClick={() => { if(!form.title) return alert("Bitte Titel eingeben."); onSave(form); }} className="w-full sm:w-auto justify-center px-8 py-3.5 sm:py-3 bg-orange-500 text-gray-950 font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-500/20 active:scale-95 transition-all">
             <Save size={20} /> Speichern
           </button>
         </div>
       </div>
 
       <div className="grid gap-8 lg:grid-cols-3">
-        <div className="lg:col-span-1 bg-gray-900 border border-gray-800 p-8 rounded-3xl h-fit sticky top-24 shadow-xl">
+        <div className="lg:col-span-1 bg-gray-900 border border-gray-800 p-5 sm:p-8 rounded-3xl h-fit lg:sticky top-24 shadow-xl">
           <h3 className="text-xl font-black text-white mb-6 flex items-center gap-3">
             <UserCheck className="text-orange-500" /> Anwesenheit
           </h3>
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {vorstand.map(m => (
               <div key={m.id} className="p-4 bg-gray-950 rounded-2xl border border-gray-800">
                 <p className="font-bold text-white mb-3 text-sm">{m.firstName} {m.lastName}</p>
-                <div className="grid grid-cols-3 gap-1">
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-1">
                   {[
                     { id: 'present', label: 'Anw.', color: 'bg-green-500/20 text-green-500 border-green-500/50' },
                     { id: 'absent', label: 'Unen.', color: 'bg-red-500/20 text-red-500 border-red-500/50' },
@@ -730,7 +730,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                     <button
                       key={status.id}
                       onClick={() => updateAttendance(m.id, status.id)}
-                      className={`text-[9px] font-black uppercase py-2 rounded-lg border transition-all ${
+                      className={`text-[10px] sm:text-[9px] font-black uppercase py-2.5 sm:py-2 rounded-lg border transition-all ${
                         form.attendance[m.id] === status.id ? status.color : 'bg-gray-900 text-gray-600 border-gray-800 hover:border-gray-600'
                       }`}
                     >
@@ -745,14 +745,14 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
 
         <div className="lg:col-span-2 space-y-6">
           {TRAKTANDEN.map(traktandum => (
-            <div key={traktandum} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl shadow-xl">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-2xl font-black text-white italic tracking-tight underline decoration-orange-500 decoration-4 underline-offset-8">
+            <div key={traktandum} className="bg-gray-900 border border-gray-800 p-5 sm:p-8 rounded-3xl shadow-xl">
+              <div className="flex justify-between items-center mb-6 gap-2">
+                <h3 className="text-xl sm:text-2xl font-black text-white italic tracking-tight underline decoration-orange-500 decoration-4 underline-offset-8 break-words">
                   {traktandum}
                 </h3>
                 <button 
                   onClick={() => addPoint(traktandum)} 
-                  className="p-3 bg-gray-950 border border-gray-800 text-orange-500 hover:bg-orange-500 hover:text-gray-950 rounded-xl transition-all active:scale-90"
+                  className="p-3 bg-gray-950 border border-gray-800 text-orange-500 hover:bg-orange-500 hover:text-gray-950 rounded-xl transition-all active:scale-90 shrink-0"
                 >
                   <Plus size={20} />
                 </button>
@@ -760,10 +760,10 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
 
               <div className="space-y-4">
                 {form.traktanden[traktandum]?.map((point, index) => (
-                  <div key={point.id} className="p-6 bg-gray-950 border border-gray-800 rounded-2xl space-y-4 group">
-                    <div className="flex gap-4">
+                  <div key={point.id} className="p-4 sm:p-6 bg-gray-950 border border-gray-800 rounded-2xl space-y-4 group">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                       <textarea 
-                        className="flex-1 bg-transparent text-gray-200 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-800 text-sm font-medium leading-relaxed overflow-hidden" 
+                        className="w-full flex-1 bg-transparent text-gray-200 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-800 text-sm font-medium leading-relaxed overflow-hidden" 
                         placeholder="Beschluss oder Notiz schreiben..."
                         rows={1}
                         value={point.text}
@@ -779,41 +779,41 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                           }
                         }}
                       />
-                      <div className="flex gap-2 self-start shrink-0">
+                      <div className="flex justify-end sm:self-start gap-2 shrink-0">
                         <button 
                           onClick={() => movePointUp(traktandum, index)} 
                           disabled={index === 0}
-                          className="p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                          className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"
                           title="Nach oben"
                         >
-                          <ArrowUp size={16} />
+                          <ArrowUp size={18} className="sm:w-4 sm:h-4" />
                         </button>
                         <button 
                           onClick={() => movePointDown(traktandum, index)} 
                           disabled={index === form.traktanden[traktandum].length - 1}
-                          className="p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                          className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"
                           title="Nach unten"
                         >
-                          <ArrowDown size={16} />
+                          <ArrowDown size={18} className="sm:w-4 sm:h-4" />
                         </button>
                         <button 
                           onClick={() => removePoint(traktandum, point.id)} 
-                          className="p-1.5 text-gray-600 hover:text-red-500 transition-colors bg-gray-900 rounded-lg border border-gray-800 ml-2"
+                          className="p-2 sm:p-1.5 text-gray-600 hover:text-red-500 transition-colors bg-gray-900 rounded-lg border border-gray-800 ml-2"
                           title="Punkt löschen"
                         >
-                          <X size={16} />
+                          <X size={18} className="sm:w-4 sm:h-4" />
                         </button>
                       </div>
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-center gap-4 pt-4 border-t border-gray-900">
-                      <div className="flex-1 flex items-center gap-3 bg-gray-900 px-4 py-3 rounded-xl border border-gray-800 relative overflow-hidden">
+                      <div className="w-full flex-1 flex items-center gap-3 bg-gray-900 px-4 py-3 rounded-xl border border-gray-800 relative overflow-hidden">
                         {uploading[point.id] !== undefined && (
                           <div className="absolute left-0 top-0 h-full bg-orange-500/20 transition-all" style={{ width: `${uploading[point.id]}%` }} />
                         )}
                         <Paperclip size={16} className="text-orange-500 shrink-0 z-10" />
                         
-                        <div className="flex-1 z-10 flex items-center">
+                        <div className="flex-1 z-10 flex items-center overflow-hidden">
                           {uploading[point.id] !== undefined ? (
                             <span className="text-[11px] text-orange-500 font-bold">Wird hochgeladen... {Math.round(uploading[point.id])}%</span>
                           ) : point.docUrl ? (
@@ -821,14 +821,14 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                               <a href={point.docUrl} download={point.docName || 'Dokument'} className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
                                 {point.docName || 'Dokument herunterladen'}
                               </a>
-                              <button type="button" onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })} className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md" title="Datei entfernen">
+                              <button type="button" onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })} className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md shrink-0" title="Datei entfernen">
                                 <X size={14} />
                               </button>
                             </div>
                           ) : (
-                            <label className="cursor-pointer text-[11px] text-gray-500 hover:text-white w-full block font-bold transition-colors">
+                            <label className="cursor-pointer text-[11px] text-gray-500 hover:text-white w-full block font-bold transition-colors truncate">
                               <UploadCloud size={14} className="inline mr-2" />
-                              Datei in DB speichern (Max. 500 KB)
+                              Datei anhängen (Max. 500 KB)
                               <input type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => handleFileUpload(e, traktandum, point.id)} />
                             </label>
                           )}
