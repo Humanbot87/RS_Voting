@@ -1034,6 +1034,7 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
   const [title, setTitle] = useState(initialData?.title || '');
   const [maxAnswers, setMaxAnswers] = useState(initialData?.maxAnswers || 1);
   const [options, setOptions] = useState(initialData?.options || [{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
+  const [allowedGroups, setAllowedGroups] = useState(initialData?.allowedGroups || GROUPS);
 
   const removeOption = (id) => {
     if (options.length > 2) {
@@ -1041,8 +1042,10 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
     }
   };
 
+  const toggleGroup = g => setAllowedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
+
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit({ title, maxAnswers, options: options.filter(o => o.text.trim()) }); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl space-y-6 animate-in slide-in-from-top-4 duration-300">
+    <form onSubmit={e => { e.preventDefault(); onSubmit({ title, maxAnswers, allowedGroups, options: options.filter(o => o.text.trim()) }); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl space-y-6 animate-in slide-in-from-top-4 duration-300">
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
           <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-4 text-white focus:border-orange-500 outline-none" placeholder="Was ist die Frage?" value={title} onChange={e => setTitle(e.target.value)} />
@@ -1068,6 +1071,22 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
         </div>
       ))}
       <button type="button" onClick={() => setOptions([...options, { id: Date.now().toString(), text: '', youtubeUrl: '' }])} className="text-orange-500 text-xs font-bold hover:underline transition-all">+ Option hinzufügen</button>
+      
+      <div className="space-y-3 pt-4 border-t border-gray-800">
+        <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Wer darf an dieser Umfrage teilnehmen?</label>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+          {GROUPS.map(g => (
+            <label key={g} className={`flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all ${allowedGroups.includes(g) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
+              <input type="checkbox" className="hidden" checked={allowedGroups.includes(g)} onChange={() => toggleGroup(g)} />
+              <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all ${allowedGroups.includes(g) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'}`}>
+                {allowedGroups.includes(g) && <Check size={12} className="text-gray-950" strokeWidth={4} />}
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-tighter truncate">{g}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
       <div className="flex gap-4 pt-4 border-t border-gray-800">
         <button type="button" onClick={onCancel} className="text-gray-500 font-bold px-4 py-2 hover:text-gray-300">Abbrechen</button>
         <button type="submit" className="flex-1 bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg active:scale-[0.99] transition-all">Umfrage speichern</button>
@@ -1076,11 +1095,16 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
   );
 }
 
-function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete }) {
+function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete, users }) {
   const [selected, setSelected] = useState([]);
   const hasVoted = survey.votedUsers?.includes(currentUser.id);
   const totalVotes = survey.options.reduce((sum, o) => sum + (o.votes || 0), 0);
 
+  const surveyAllowedGroups = survey.allowedGroups || GROUPS;
+  const isEligible = currentUser.role === 'admin' || surveyAllowedGroups.some(g => currentUser.groups?.includes(g));
+  const eligibleUsersCount = users.filter(u => surveyAllowedGroups.some(g => u.groups?.includes(g))).length;
+
+  if (!isEligible) return null;
   if (survey.status === 'draft' && currentUser.role !== 'admin') return null;
 
   const toggle = (id) => {
@@ -1097,22 +1121,28 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
 
   return (
     <div className={`bg-gray-900 border rounded-3xl overflow-hidden shadow-xl transition-all ${survey.status === 'active' && !isArchived ? 'border-orange-500/50' : 'border-gray-800 opacity-80'}`}>
-      <div className="p-6 border-b border-gray-800 bg-gray-950/20 flex justify-between items-start">
+      <div className="p-6 border-b border-gray-800 bg-gray-950/20 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <span className="text-[10px] font-black uppercase text-orange-500 block mb-1">
             {isArchived ? 'Abstimmung Beendet' : survey.status} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'}
           </span>
           <h4 className="text-xl font-bold text-white leading-tight">{survey.title}</h4>
         </div>
-        {currentUser.role === 'admin' && !isArchived && (
-          <div className="flex gap-2 items-center">
-            {survey.status === 'draft' && <button onClick={() => onStatusChange('active')} className="bg-green-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Starten</button>}
-            {survey.status === 'active' && <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Publizieren</button>}
-            
-            <button onClick={onEdit} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors ml-2" title="Bearbeiten"><Edit2 size={16}/></button>
-            <button onClick={onDelete} className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg transition-colors" title="Löschen"><Trash2 size={16}/></button>
+        <div className="flex flex-col sm:items-end gap-3 shrink-0">
+          <div className="text-[10px] font-bold text-gray-400 bg-gray-950 px-3 py-1.5 rounded-lg border border-gray-800 flex items-center w-fit shadow-inner">
+            <Users size={12} className="mr-1.5 text-orange-500" />
+            {survey.votedUsers?.length || 0} / {eligibleUsersCount} haben abgestimmt
           </div>
-        )}
+          {currentUser.role === 'admin' && !isArchived && (
+            <div className="flex gap-2 items-center">
+              {survey.status === 'draft' && <button onClick={() => onStatusChange('active')} className="bg-green-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Starten</button>}
+              {survey.status === 'active' && <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Publizieren</button>}
+              
+              <button onClick={onEdit} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors ml-2" title="Bearbeiten"><Edit2 size={16}/></button>
+              <button onClick={onDelete} className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg transition-colors" title="Löschen"><Trash2 size={16}/></button>
+            </div>
+          )}
+        </div>
       </div>
       <div className="p-6 space-y-3">
         {hasVoted || survey.status === 'published' || isArchived ? (
@@ -1164,13 +1194,61 @@ function MembersView({ users }) {
     setEditingUser(null);
   };
 
+  const handleImportCSV = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target.result;
+      const lines = text.split(/\r?\n/);
+      let count = 0;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // Trennzeichen-Erkennung für Komma oder Semikolon (Standard-CSV aus Excel ist oft Semikolon)
+        const parts = line.split(/[,;]/);
+        if (parts.length >= 2) {
+          const firstName = parts[0].trim();
+          const lastName = parts[1].trim();
+          
+          // Header-Zeile überspringen, falls "Vorname" drin steht
+          if (firstName && lastName && firstName.toLowerCase() !== 'vorname') {
+            const id = Date.now().toString() + i; // Sicherstellen, dass die ID unique ist
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', id), {
+              id, 
+              firstName, 
+              lastName, 
+              role: 'member', 
+              groups: [] 
+            });
+            count++;
+          }
+        }
+      }
+      alert(`${count} Mitglieder wurden erfolgreich importiert.`);
+      e.target.value = ''; // Input zurücksetzen
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-black text-white">Mitglieder</h2>
-        <button onClick={() => setShowAdd(!showAdd)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/10">
-          {showAdd ? 'Abbrechen' : <><UserPlus size={20} /> Mitglied hinzufügen</>}
-        </button>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-black text-white">Mitglieder</h2>
+          <p className="text-gray-500 text-sm mt-1">Verwalte Rollen und Gruppenberechtigungen</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold px-4 py-3 rounded-2xl flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-lg" title="CSV/Excel Import (Format: Vorname;Nachname)">
+            <UploadCloud size={20} /> <span className="hidden sm:inline">CSV Import</span>
+            <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} />
+          </label>
+          <button onClick={() => setShowAdd(!showAdd)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/10">
+            {showAdd ? 'Abbrechen' : <><UserPlus size={20} /> Mitglied hinzufügen</>}
+          </button>
+        </div>
       </div>
       
       {showAdd && <MemberForm onSubmit={saveMember} onCancel={() => setShowAdd(false)} />}
