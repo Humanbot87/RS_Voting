@@ -603,8 +603,8 @@ function ProtocolView({ minutes, users, currentUser }) {
                           <h4 className="text-white font-black text-lg sm:text-xl mb-4 italic tracking-tight underline decoration-orange-500 decoration-2 underline-offset-4">{t}</h4>
                           <ul className="space-y-4">
                             {points.map(p => (
-                              <li key={p.id} className="bg-gray-900 p-4 sm:p-5 rounded-2xl border border-gray-800 shadow-sm relative group">
-                                <div className="pr-10 sm:pr-0">
+                              <li key={p.id} className="bg-gray-900 p-4 sm:p-5 rounded-2xl border border-gray-800 shadow-sm relative">
+                                <div className="pr-12">
                                   <p className="text-gray-300 text-sm whitespace-pre-wrap leading-relaxed">{p.text}</p>
                                   {p.docUrl && (
                                     <a href={getPreviewUrl(p.docUrl, p.docName)} target="_blank" rel="noreferrer" className="mt-4 flex items-center gap-2 text-[11px] font-bold text-orange-500 hover:text-orange-400 bg-orange-500/10 w-fit px-3.5 py-2.5 rounded-xl border border-orange-500/20 transition-all hover:scale-105 active:scale-95">
@@ -614,7 +614,7 @@ function ProtocolView({ minutes, users, currentUser }) {
                                 </div>
                                 <button 
                                   onClick={(e) => { e.stopPropagation(); setEnlargedPoint({ traktandum: t, ...p }); }} 
-                                  className="absolute top-3 right-3 p-2 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100"
+                                  className="absolute top-4 right-4 p-2.5 bg-gray-950 border border-gray-700 text-gray-400 hover:text-orange-500 hover:border-orange-500 rounded-xl transition-all shadow-md"
                                   title="Punkt vergrössern"
                                 >
                                   <Eye size={18} />
@@ -646,7 +646,7 @@ function ProtocolView({ minutes, users, currentUser }) {
         )}
       </div>
 
-      {/* MODAL FÜR VERGRÖSSERTEN PUNKT */}
+      {/* MODAL FÜR VERGRÖSSERTEN PUNKT (LESE-MODUS) */}
       {enlargedPoint && (
         <div className="fixed inset-0 z-[100] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
@@ -682,6 +682,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
   });
   
   const [uploading, setUploading] = useState({});
+  const [enlargedEditPoint, setEnlargedEditPoint] = useState(null); // Für die Vollbild-Eingabe
 
   const updateAttendance = (userId, status) => {
     setForm(prev => ({
@@ -881,7 +882,14 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                       />
                       <div className="flex justify-end sm:self-start gap-2 shrink-0">
                         <button 
-                          onClick={() => movePointUp(traktandum, index)} 
+                          onClick={(e) => { e.preventDefault(); setEnlargedEditPoint({ traktandum, id: point.id, text: point.text }); }}
+                          className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                          title="Im Vollbild bearbeiten"
+                        >
+                          <Eye size={18} className="sm:w-4 sm:h-4" />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.preventDefault(); movePointUp(traktandum, index); }} 
                           disabled={index === 0}
                           className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"
                           title="Nach oben"
@@ -889,7 +897,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                           <ArrowUp size={18} className="sm:w-4 sm:h-4" />
                         </button>
                         <button 
-                          onClick={() => movePointDown(traktandum, index)} 
+                          onClick={(e) => { e.preventDefault(); movePointDown(traktandum, index); }} 
                           disabled={index === form.traktanden[traktandum].length - 1}
                           className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"
                           title="Nach unten"
@@ -897,7 +905,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                           <ArrowDown size={18} className="sm:w-4 sm:h-4" />
                         </button>
                         <button 
-                          onClick={() => removePoint(traktandum, point.id)} 
+                          onClick={(e) => { e.preventDefault(); removePoint(traktandum, point.id); }} 
                           className="p-2 sm:p-1.5 text-gray-600 hover:text-red-500 transition-colors bg-gray-900 rounded-lg border border-gray-800 ml-2"
                           title="Punkt löschen"
                         >
@@ -952,6 +960,41 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
           ))}
         </div>
       </div>
+
+      {/* MODAL FÜR VERGRÖSSERTEN PUNKT (EDITOR-MODUS) */}
+      {enlargedEditPoint && (
+        <div className="fixed inset-0 z-[100] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-3xl flex flex-col shadow-2xl h-[80vh] max-h-[800px]">
+            <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
+              <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedEditPoint.traktandum} - Bearbeiten</h3>
+              <button onClick={() => setEnlargedEditPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 flex-1 flex flex-col">
+              <textarea 
+                className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-2xl p-6 text-white focus:border-orange-500 outline-none resize-none leading-relaxed text-lg"
+                value={enlargedEditPoint.text}
+                onChange={e => setEnlargedEditPoint({...enlargedEditPoint, text: e.target.value})}
+                placeholder="Beschluss oder Notiz..."
+                autoFocus
+              />
+            </div>
+            <div className="p-5 border-t border-gray-800 bg-gray-950/50 rounded-b-3xl flex justify-end">
+              <button 
+                onClick={(e) => { 
+                  e.preventDefault(); 
+                  updatePoint(enlargedEditPoint.traktandum, enlargedEditPoint.id, 'text', enlargedEditPoint.text); 
+                  setEnlargedEditPoint(null); 
+                }} 
+                className="w-full sm:w-auto px-8 py-4 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg"
+              >
+                Text übernehmen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
