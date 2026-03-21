@@ -5,12 +5,11 @@ import {
   UserPlus, Eye, Check, Database, Settings, ShieldAlert, Edit2,
   FileText, Youtube, Lock, Unlock, Send, ExternalLink,
   ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw,
-  UploadCloud, Loader2, Search, Download
+  UploadCloud, Loader2, Search, Download, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, updateDoc } from 'firebase/firestore';
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
 // --- Sichere Konfigurations-Initialisierung ---
 const MY_FIREBASE_CONFIG = {
@@ -37,7 +36,6 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'ruesssuuger-app-v1';
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 // Hilfsfunktion zum Hashen von Passwörtern (SHA-256)
 const hashPassword = async (password) => {
@@ -431,7 +429,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   );
 }
 
-// --- Protokoll View & Editor (Mit Upload-Funktion & Suche) ---
+// --- Protokoll View & Editor ---
 function ProtocolView({ minutes, users, currentUser }) {
   const [editing, setEditing] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -592,7 +590,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
   };
 
   const addPoint = (traktandum) => {
-    const id = Date.now().toString();
+    const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
     setForm(prev => ({
       ...prev,
       traktanden: {
@@ -622,7 +620,6 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
     }));
   };
 
-  // Hilfsfunktion zum sicheren, gleichzeitigen Aktualisieren mehrerer Felder (verhindert Race Conditions)
   const updatePointFields = (traktandum, pointId, fieldsObj) => {
     setForm(prev => ({
       ...prev,
@@ -633,40 +630,58 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
     }));
   };
 
+  const movePointUp = (traktandum, index) => {
+    if (index === 0) return;
+    setForm(prev => {
+      const list = [...prev.traktanden[traktandum]];
+      const temp = list[index - 1];
+      list[index - 1] = list[index];
+      list[index] = temp;
+      return { ...prev, traktanden: { ...prev.traktanden, [traktandum]: list } };
+    });
+  };
+
+  const movePointDown = (traktandum, index) => {
+    if (index === form.traktanden[traktandum].length - 1) return;
+    setForm(prev => {
+      const list = [...prev.traktanden[traktandum]];
+      const temp = list[index + 1];
+      list[index + 1] = list[index];
+      list[index] = temp;
+      return { ...prev, traktanden: { ...prev.traktanden, [traktandum]: list } };
+    });
+  };
+
   const handleFileUpload = (e, traktandum, pointId) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Reset des Input-Values
+    // Input zurücksetzen für erneuten Upload der gleichen Datei im Fehlerfall
     e.target.value = '';
 
-    const storageRef = ref(storage, `artifacts/${appId}/public/uploads/${Date.now()}_${file.name}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+    // Da wir direkt in die Datenbank speichern, limitieren wir die Grösse auf 500 KB (Base64 Overhead)
+    if (file.size > 500 * 1024) {
+      alert(`Die Datei "${file.name}" ist zu gross!\n\nDas Limit beträgt 500 KB, da Dokumente direkt in der Datenbank gespeichert werden. Bitte komprimiere die Datei.`);
+      return;
+    }
 
-    setUploading(prev => ({ ...prev, [pointId]: 1 }));
+    setUploading(prev => ({ ...prev, [pointId]: 50 }));
 
-    uploadTask.on('state_changed', 
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploading(prev => ({ ...prev, [pointId]: progress || 1 }));
-      }, 
-      (error) => {
-        console.error("Upload Error:", error);
-        alert(`Fehler beim Datei-Upload: ${error.message}\n\nBitte stelle sicher, dass in der Firebase Console "Storage" aktiviert ist und die Rules Schreibzugriff erlauben.`);
-        setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
-      }, 
-      async () => {
-        try {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          updatePointFields(traktandum, pointId, { docUrl: url, docName: file.name });
-        } catch (err) {
-          console.error("Download URL Error:", err);
-          alert("Datei wurde hochgeladen, aber der Link konnte nicht generiert werden.");
-        } finally {
-          setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
-        }
-      }
-    );
+    const reader = new FileReader();
+    
+    reader.onload = (event) => {
+      const base64Data = event.target.result;
+      updatePointFields(traktandum, pointId, { docUrl: base64Data, docName: file.name });
+      setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
+    };
+
+    reader.onerror = (error) => {
+      console.error("FileReader Error:", error);
+      alert("Es gab einen Fehler beim Einlesen der Datei.");
+      setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
+    };
+
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -744,9 +759,9 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
               </div>
 
               <div className="space-y-4">
-                {form.traktanden[traktandum]?.map((point) => (
+                {form.traktanden[traktandum]?.map((point, index) => (
                   <div key={point.id} className="p-6 bg-gray-950 border border-gray-800 rounded-2xl space-y-4 group">
-                    <div className="flex justify-between gap-4">
+                    <div className="flex gap-4">
                       <textarea 
                         className="flex-1 bg-transparent text-gray-200 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-800 text-sm font-medium leading-relaxed overflow-hidden" 
                         placeholder="Beschluss oder Notiz schreiben..."
@@ -764,12 +779,31 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                           }
                         }}
                       />
-                      <button 
-                        onClick={() => removePoint(traktandum, point.id)} 
-                        className="text-gray-700 hover:text-red-500 self-start transition-colors"
-                      >
-                        <X size={18} />
-                      </button>
+                      <div className="flex gap-2 self-start shrink-0">
+                        <button 
+                          onClick={() => movePointUp(traktandum, index)} 
+                          disabled={index === 0}
+                          className="p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                          title="Nach oben"
+                        >
+                          <ArrowUp size={16} />
+                        </button>
+                        <button 
+                          onClick={() => movePointDown(traktandum, index)} 
+                          disabled={index === form.traktanden[traktandum].length - 1}
+                          className="p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                          title="Nach unten"
+                        >
+                          <ArrowDown size={16} />
+                        </button>
+                        <button 
+                          onClick={() => removePoint(traktandum, point.id)} 
+                          className="p-1.5 text-gray-600 hover:text-red-500 transition-colors bg-gray-900 rounded-lg border border-gray-800 ml-2"
+                          title="Punkt löschen"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-center gap-4 pt-4 border-t border-gray-900">
@@ -794,7 +828,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                           ) : (
                             <label className="cursor-pointer text-[11px] text-gray-500 hover:text-white w-full block font-bold transition-colors">
                               <UploadCloud size={14} className="inline mr-2" />
-                              Datei anhängen (PDF, Word, Excel)
+                              Datei in DB speichern (Max. 500 KB)
                               <input type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => handleFileUpload(e, traktandum, point.id)} />
                             </label>
                           )}
