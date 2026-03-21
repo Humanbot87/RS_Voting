@@ -47,16 +47,6 @@ const hashPassword = async (password) => {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
-// Hilfsfunktion für die Datei-Vorschau (Google Docs Viewer für Office Dateien)
-const getPreviewUrl = (url, fileName) => {
-  if (!url) return '#';
-  const name = (fileName || '').toLowerCase();
-  if (name.endsWith('.doc') || name.endsWith('.docx') || name.endsWith('.xls') || name.endsWith('.xlsx')) {
-    return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=false`;
-  }
-  return url;
-};
-
 const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder'];
 const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitext'];
 const TRAKTANDEN = [
@@ -441,7 +431,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   );
 }
 
-// --- Protokoll View & Editor ---
+// --- Protokoll View & Editor (Mit Upload-Funktion & Suche) ---
 function ProtocolView({ minutes, users, currentUser }) {
   const [editing, setEditing] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -794,8 +784,8 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                             <span className="text-[11px] text-orange-500 font-bold">Wird hochgeladen... {Math.round(uploading[point.id])}%</span>
                           ) : point.docUrl ? (
                             <div className="flex items-center justify-between w-full">
-                              <a href={getPreviewUrl(point.docUrl, point.docName)} target="_blank" rel="noopener noreferrer" className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
-                                {point.docName || 'Dokument ansehen'}
+                              <a href={point.docUrl} download={point.docName || 'Dokument'} className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
+                                {point.docName || 'Dokument herunterladen'}
                               </a>
                               <button type="button" onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })} className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md" title="Datei entfernen">
                                 <X size={14} />
