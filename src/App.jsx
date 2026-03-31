@@ -10,6 +10,7 @@ import {
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, updateDoc } from 'firebase/firestore';
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
 // --- Sichere Konfigurations-Initialisierung ---
 const MY_FIREBASE_CONFIG = {
@@ -36,6 +37,7 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'ruesssuuger-app-v1';
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 // Hilfsfunktion zum Hashen von Passwörtern (SHA-256)
 const hashPassword = async (password) => {
@@ -43,16 +45,6 @@ const hashPassword = async (password) => {
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-};
-
-// Hilfsfunktion für die Datei-Vorschau (Google Docs Viewer für Office Dateien)
-const getPreviewUrl = (url, fileName) => {
-  if (!url) return '#';
-  const name = (fileName || '').toLowerCase();
-  if (name.endsWith('.doc') || name.endsWith('.docx') || name.endsWith('.xls') || name.endsWith('.xlsx')) {
-    return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=false`;
-  }
-  return url;
 };
 
 const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder'];
@@ -187,11 +179,9 @@ export default function App() {
     if (!currentUser) return;
     const u = users.find(x => x.id === currentUser.id);
     
-    // Wenn die DB eine andere aktive Session-ID hat und das Mitglied online ist, wurden wir gekickt
     if (u && u.sessionId && u.sessionId !== currentUser.sessionId && u.isOnline) {
       const timeSinceLastSeen = Date.now() - (u.lastSeen || 0);
       if (timeSinceLastSeen < 15000) {
-        // Eine neue Sitzung hat übernommen
         localStorage.removeItem('ruesssuuger_userId');
         localStorage.removeItem('ruesssuuger_sessionId');
         setCurrentUser(null);
@@ -348,7 +338,6 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
       return;
     }
     
-    // Anwesenheits-Check: Verhindern von doppelten Logins
     const timeSinceLastSeen = Date.now() - (u.lastSeen || 0);
     const savedSession = localStorage.getItem('ruesssuuger_sessionId');
     
@@ -525,7 +514,7 @@ function ProtocolView({ minutes, users, currentUser }) {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
           <input 
             type="text" 
-            placeholder="Protokolle durchsuchen..."
+            placeholder="Suchen nach Begriffen..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-4 pl-12 pr-12 text-white focus:border-orange-500 outline-none shadow-lg transition-all"
@@ -603,18 +592,18 @@ function ProtocolView({ minutes, users, currentUser }) {
                           <h4 className="text-white font-black text-lg sm:text-xl mb-4 italic tracking-tight underline decoration-orange-500 decoration-2 underline-offset-4">{t}</h4>
                           <ul className="space-y-4">
                             {points.map(p => (
-                              <li key={p.id} className="bg-gray-900 p-4 sm:p-5 rounded-2xl border border-gray-800 shadow-sm relative">
-                                <div className="pr-12">
+                              <li key={p.id} className="bg-gray-900 p-4 sm:p-5 rounded-2xl border border-gray-800 shadow-sm relative group">
+                                <div className="pr-10 sm:pr-0">
                                   <p className="text-gray-300 text-sm whitespace-pre-wrap leading-relaxed">{p.text}</p>
                                   {p.docUrl && (
-                                    <a href={getPreviewUrl(p.docUrl, p.docName)} target="_blank" rel="noreferrer" className="mt-4 flex items-center gap-2 text-[11px] font-bold text-orange-500 hover:text-orange-400 bg-orange-500/10 w-fit px-3.5 py-2.5 rounded-xl border border-orange-500/20 transition-all hover:scale-105 active:scale-95">
-                                      <Paperclip size={16} /> {p.docName || 'Dokument ansehen'}
+                                    <a href={p.docUrl} download target="_blank" rel="noreferrer" className="mt-4 flex items-center gap-2 text-[11px] font-bold text-orange-500 hover:text-orange-400 bg-orange-500/10 w-fit px-3.5 py-2.5 rounded-xl border border-orange-500/20 transition-all hover:scale-105 active:scale-95">
+                                      <Paperclip size={16} /> {p.docName || 'Dokument herunterladen'}
                                     </a>
                                   )}
                                 </div>
                                 <button 
                                   onClick={(e) => { e.stopPropagation(); setEnlargedPoint({ traktandum: t, ...p }); }} 
-                                  className="absolute top-4 right-4 p-2.5 bg-gray-950 border border-gray-700 text-gray-400 hover:text-orange-500 hover:border-orange-500 rounded-xl transition-all shadow-md"
+                                  className="absolute top-3 right-3 p-2 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100"
                                   title="Punkt vergrössern"
                                 >
                                   <Eye size={18} />
@@ -661,8 +650,8 @@ function ProtocolView({ minutes, users, currentUser }) {
             </div>
             {enlargedPoint.docUrl && (
               <div className="p-5 border-t border-gray-800 bg-gray-950/50 rounded-b-3xl">
-                <a href={getPreviewUrl(enlargedPoint.docUrl, enlargedPoint.docName)} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 text-sm font-bold text-gray-950 bg-orange-500 hover:bg-orange-600 w-full py-4 rounded-xl transition-all active:scale-95 shadow-lg">
-                  <Paperclip size={18} /> {enlargedPoint.docName || 'Dokument öffnen'}
+                <a href={enlargedPoint.docUrl} download target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 text-sm font-bold text-gray-950 bg-orange-500 hover:bg-orange-600 w-full py-4 rounded-xl transition-all active:scale-95 shadow-lg">
+                  <Paperclip size={18} /> {enlargedPoint.docName || 'Dokument herunterladen'}
                 </a>
               </div>
             )}
@@ -758,30 +747,35 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
     const file = e.target.files[0];
     if (!file) return;
 
-    e.target.value = '';
+    e.target.value = ''; // Reset Input
 
-    if (file.size > 500 * 1024) {
-      alert(`Die Datei "${file.name}" ist zu gross!\n\nDas Limit beträgt 500 KB, da Dokumente direkt in der Datenbank gespeichert werden. Bitte komprimiere die Datei.`);
-      return;
-    }
+    const storageRef = ref(storage, `artifacts/${appId}/public/uploads/${Date.now()}_${file.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
 
-    setUploading(prev => ({ ...prev, [pointId]: 50 }));
+    setUploading(prev => ({ ...prev, [pointId]: 1 }));
 
-    const reader = new FileReader();
-    
-    reader.onload = (event) => {
-      const base64Data = event.target.result;
-      updatePointFields(traktandum, pointId, { docUrl: base64Data, docName: file.name });
-      setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
-    };
-
-    reader.onerror = (error) => {
-      console.error("FileReader Error:", error);
-      alert("Es gab einen Fehler beim Einlesen der Datei.");
-      setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
-    };
-
-    reader.readAsDataURL(file);
+    uploadTask.on('state_changed', 
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploading(prev => ({ ...prev, [pointId]: progress || 1 }));
+      }, 
+      (error) => {
+        console.error("Upload Error:", error);
+        alert(`Fehler beim Datei-Upload: ${error.message}\n\nBitte stellen Sie sicher, dass Firebase Storage aktiviert ist und die Regeln Schreibzugriff erlauben.`);
+        setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
+      }, 
+      async () => {
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          updatePointFields(traktandum, pointId, { docUrl: url, docName: file.name });
+        } catch (err) {
+          console.error("Download URL Error:", err);
+          alert("Datei wurde hochgeladen, aber der Link konnte nicht generiert werden.");
+        } finally {
+          setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
+        }
+      }
+    );
   };
 
   return (
@@ -926,8 +920,8 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                             <span className="text-[11px] text-orange-500 font-bold">Wird hochgeladen... {Math.round(uploading[point.id])}%</span>
                           ) : point.docUrl ? (
                             <div className="flex items-center justify-between w-full">
-                              <a href={getPreviewUrl(point.docUrl, point.docName)} target="_blank" rel="noreferrer" className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
-                                {point.docName || 'Dokument ansehen'}
+                              <a href={point.docUrl} download target="_blank" rel="noreferrer" className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
+                                {point.docName || 'Dokument herunterladen'}
                               </a>
                               <button type="button" onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })} className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md shrink-0" title="Datei entfernen">
                                 <X size={14} />
@@ -936,7 +930,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                           ) : (
                             <label className="cursor-pointer text-[11px] text-gray-500 hover:text-white w-full block font-bold transition-colors truncate">
                               <UploadCloud size={14} className="inline mr-2" />
-                              Datei anhängen (Max. 500 KB)
+                              Datei anhängen (PDF, Word, Excel)
                               <input type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => handleFileUpload(e, traktandum, point.id)} />
                             </label>
                           )}
