@@ -1,52 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, Calendar, Archive, LogOut, Plus, Trash2, 
-  ChevronRight, BarChart3, AlertCircle, CheckCircle2, 
-  UserPlus, Eye, Check, Database, Settings, ShieldAlert, Edit2,
-  FileText, Youtube, Lock, Unlock, Send, ExternalLink,
-  ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw,
-  UploadCloud, Loader2, Search, Download, ArrowUp, ArrowDown
+  ChevronRight, BarChart3, UserPlus, Eye, Check, Database, ShieldAlert, Edit2,
+  Youtube, Lock, Unlock, ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw,
+  UploadCloud, Search, Download, ArrowUp, ArrowDown
 } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, updateDoc } from 'firebase/firestore';
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import {
+  signInWithCustomToken,
+  signInAnonymously,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updatePassword,
+} from 'firebase/auth';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { auth, db, storage, appId } from './firebase';
 
-// --- Sichere Konfigurations-Initialisierung ---
-const MY_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyB9sGsbG9WAQfp9xoEqOhzp_IDgMuwOYmE",
-  authDomain: "ruesssuuger-voting.firebaseapp.com",
-  projectId: "ruesssuuger-voting",
-  storageBucket: "ruesssuuger-voting.firebasestorage.app",
-  messagingSenderId: "737751466538",
-  appId: "1:737751466538:web:4fe3f376738accc352f953"
-};
-
-let firebaseConfig = MY_FIREBASE_CONFIG;
-try {
-  if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-    firebaseConfig = JSON.parse(__firebase_config);
-  }
-} catch (e) {
-  console.error("Firebase Config Error:", e);
-}
-
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'ruesssuuger-app-v1';
-
-// Initialisierung der Firebase-Dienste
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-
-// Hilfsfunktion zum Hashen von Passwörtern (SHA-256)
-const hashPassword = async (password) => {
-  const msgBuffer = new TextEncoder().encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-};
-
+// --- Konstanten ---
 const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder'];
 const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitext'];
 const TRAKTANDEN = [
@@ -63,6 +34,19 @@ const INITIAL_USERS = [
     password: '' 
   }
 ];
+
+// Hilfsfunktion: Generiert eine Firebase Auth Email aus Vor-/Nachname
+const toAuthEmail = (firstName, lastName) =>
+  `${firstName.toLowerCase().replace(/\s+/g, '')}.${lastName.toLowerCase().replace(/\s+/g, '')}@ruesssuuger.internal`;
+
+// Sichere Session-ID
+const generateSessionId = () => crypto.randomUUID();
+
+// Sanitize-Funktion für Texteingaben (CSV etc.)
+const sanitizeName = (str) => {
+  if (typeof str !== 'string') return '';
+  return str.trim().replace(/[<>"'`]/g, '').slice(0, 100);
+};
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -91,9 +75,7 @@ export default function App() {
       }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, u => {
-      setUser(u);
-    });
+    const unsubscribe = onAuthStateChanged(auth, u => setUser(u));
     return () => unsubscribe();
   }, []);
 
@@ -101,8 +83,8 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     
-    const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
-    const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
+    const usersRef   = collection(db, 'artifacts', appId, 'public', 'data', 'users');
+    const eventsRef  = collection(db, 'artifacts', appId, 'public', 'data', 'events');
     const minutesRef = collection(db, 'artifacts', appId, 'public', 'data', 'minutes');
 
     const unsubUsers = onSnapshot(usersRef, 
@@ -122,42 +104,35 @@ export default function App() {
       }
     );
 
-    const unsubEvents = onSnapshot(eventsRef, 
+    const unsubEvents  = onSnapshot(eventsRef,
       (s) => setEvents(s.docs.map(d => ({ ...d.data(), id: d.id }))),
       (err) => console.error("Events Error:", err)
     );
 
-    const unsubMinutes = onSnapshot(minutesRef, 
+    const unsubMinutes = onSnapshot(minutesRef,
       (s) => setMinutes(s.docs.map(d => ({ ...d.data(), id: d.id }))),
       (err) => console.error("Minutes Error:", err)
     );
 
-    return () => {
-      unsubUsers();
-      unsubEvents();
-      unsubMinutes();
-    };
+    return () => { unsubUsers(); unsubEvents(); unsubMinutes(); };
   }, [user]);
 
   // --- Auto-Login prüfen ---
   useEffect(() => {
     if (dbReady && !hasCheckedAutoLogin) {
-      const savedUserId = localStorage.getItem('ruesssuuger_userId');
-      const savedSessionId = localStorage.getItem('ruesssuuger_sessionId');
-      if (savedUserId && savedSessionId) {
+      const savedUserId  = localStorage.getItem('ruesssuuger_userId');
+      const savedSession = localStorage.getItem('ruesssuuger_sessionId');
+      if (savedUserId && savedSession) {
         const u = users.find(x => x.id === savedUserId);
-        if (u) {
-          setCurrentUser({ ...u, sessionId: savedSessionId });
-        }
+        if (u) setCurrentUser({ ...u, sessionId: savedSession });
       }
       setHasCheckedAutoLogin(true);
     }
   }, [dbReady, hasCheckedAutoLogin, users]);
 
-  // --- Sitzungs-Heartbeat (Presence-Tracking) ---
+  // --- Sitzungs-Heartbeat ---
   useEffect(() => {
     if (!currentUser) return;
-
     const updatePresence = async () => {
       try {
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', currentUser.id), {
@@ -167,18 +142,15 @@ export default function App() {
         });
       } catch(e) { console.error("Presence Error", e); }
     };
-
-    updatePresence(); // Sofort senden
-    const interval = setInterval(updatePresence, 5000); // Alle 5 Sekunden erneuern
-
+    updatePresence();
+    const interval = setInterval(updatePresence, 5000);
     return () => clearInterval(interval);
   }, [currentUser]);
 
-  // --- Konflikt-Check (Session-Stealing verhindern/übernehmen) ---
+  // --- Konflikt-Check ---
   useEffect(() => {
     if (!currentUser) return;
     const u = users.find(x => x.id === currentUser.id);
-    
     if (u && u.sessionId && u.sessionId !== currentUser.sessionId && u.isOnline) {
       const timeSinceLastSeen = Date.now() - (u.lastSeen || 0);
       if (timeSinceLastSeen < 15000) {
@@ -190,17 +162,15 @@ export default function App() {
     }
   }, [users, currentUser]);
 
-  // --- Auto-Archivierung von abgelaufenen Events ---
+  // --- Auto-Archivierung ---
   useEffect(() => {
     if (!user || currentUser?.role !== 'admin') return;
-    
     const now = new Date();
     events.forEach(e => {
       if (!e.isArchived && e.autoArchive && e.endDate) {
-        const endDate = new Date(e.endDate);
-        if (now > endDate) {
-          const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', e.id);
-          updateDoc(eventRef, { isArchived: true }).catch(err => console.error("Auto-Archive Error:", err));
+        if (now > new Date(e.endDate)) {
+          updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', e.id), { isArchived: true })
+            .catch(err => console.error("Auto-Archive Error:", err));
         }
       }
     });
@@ -213,7 +183,7 @@ export default function App() {
       for (const u of INITIAL_USERS) {
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id), u);
       }
-    } catch (e) { 
+    } catch (e) {
       console.error(e);
       setConnError("Fehler beim Initialisieren der Datenbank.");
     }
@@ -291,20 +261,20 @@ export default function App() {
 
       <main className="max-w-6xl mx-auto px-4 py-8">
         <nav className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
-          <TabButton active={activeTab === 'events'} onClick={() => setActiveTab('events')} icon={<Calendar size={18} />} label="Events" />
+          <TabButton active={activeTab === 'events'}  onClick={() => setActiveTab('events')}  icon={<Calendar size={18} />}     label="Events" />
           {isVorstand && (
             <TabButton active={activeTab === 'minutes'} onClick={() => setActiveTab('minutes')} icon={<ClipboardList size={18} />} label="Protokolle" />
           )}
           {currentUser.role === 'admin' && (
             <>
               <TabButton active={activeTab === 'archive'} onClick={() => setActiveTab('archive')} icon={<Archive size={18} />} label="Archiv" />
-              <TabButton active={activeTab === 'members'} onClick={() => setActiveTab('members')} icon={<Users size={18} />} label="Mitglieder" />
+              <TabButton active={activeTab === 'members'} onClick={() => setActiveTab('members')} icon={<Users size={18} />}   label="Mitglieder" />
             </>
           )}
         </nav>
 
         <div className="animate-in fade-in duration-500">
-          {activeTab === 'events' && <EventsView events={events.filter(e => !e.isArchived)} currentUser={currentUser} users={users} />}
+          {activeTab === 'events'  && <EventsView events={events.filter(e => !e.isArchived)} currentUser={currentUser} users={users} />}
           {activeTab === 'minutes' && isVorstand && <ProtocolView minutes={minutes} users={users} currentUser={currentUser} />}
           {activeTab === 'archive' && <EventsView events={events.filter(e => e.isArchived)} currentUser={currentUser} isArchive users={users} />}
           {activeTab === 'members' && currentUser.role === 'admin' && <MembersView users={users} />}
@@ -314,38 +284,38 @@ export default function App() {
   );
 }
 
-// --- Login Screen Komponente ---
+// --- Login Screen ---
 function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [step, setStep] = useState('name'); 
+  const [lastName,  setLastName]  = useState('');
+  const [step,      setStep]      = useState('name');
   const [foundUser, setFoundUser] = useState(null);
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [password,  setPassword]  = useState('');
+  const [error,     setError]     = useState('');
+  const [loading,   setLoading]   = useState(false);
 
   const finalizeLogin = (u) => {
-    const newSession = Math.random().toString(36).substring(2, 15);
+    const newSession = generateSessionId(); // crypto.randomUUID()
     localStorage.setItem('ruesssuuger_sessionId', newSession);
-    localStorage.setItem('ruesssuuger_userId', u.id);
+    localStorage.setItem('ruesssuuger_userId',    u.id);
     onLogin({ ...u, sessionId: newSession });
   };
 
   const handleNameSubmit = (e) => {
     e.preventDefault();
-    const u = users.find(x => x.firstName.toLowerCase() === firstName.toLowerCase() && x.lastName.toLowerCase() === lastName.toLowerCase());
-    if (!u) {
-      setError("Mitglied nicht gefunden.");
-      return;
-    }
-    
+    const u = users.find(
+      x => x.firstName.toLowerCase() === firstName.toLowerCase() &&
+           x.lastName.toLowerCase()  === lastName.toLowerCase()
+    );
+    if (!u) { setError("Mitglied nicht gefunden."); return; }
+
     const timeSinceLastSeen = Date.now() - (u.lastSeen || 0);
     const savedSession = localStorage.getItem('ruesssuuger_sessionId');
-    
     if (u.isOnline && timeSinceLastSeen < 15000 && u.sessionId !== savedSession) {
       setError("Dieses Mitglied ist bereits aktiv angemeldet. Bei Verbindungsabbruch bitte ca. 15 Sekunden warten.");
       return;
     }
-    
+
     if (u.groups?.includes('Vorstand')) {
       setFoundUser(u);
       setStep(!u.password ? 'setPassword' : 'password');
@@ -357,26 +327,51 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
 
   const handlePasswordAction = async (e, type) => {
     e.preventDefault();
-    if (type === 'set') {
-      if (password.length < 4) {
-        setError("Passwort zu kurz (min. 4 Zeichen).");
-        return;
-      }
-      try {
-        const hashedPw = await hashPassword(password);
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', foundUser.id), { password: hashedPw });
-        finalizeLogin({ ...foundUser, password: hashedPw });
-      } catch (err) {
-        setError("Fehler beim Speichern.");
-      }
-    } else {
-      const hashedInput = await hashPassword(password);
-      if (hashedInput === foundUser.password || password === foundUser.password) {
-        finalizeLogin(foundUser);
+    setLoading(true);
+    setError('');
+
+    const email = toAuthEmail(foundUser.firstName, foundUser.lastName);
+
+    try {
+      if (type === 'set') {
+        // Passwort zu kurz abfangen
+        if (password.length < 6) {
+          setError("Passwort zu kurz (min. 6 Zeichen).");
+          setLoading(false);
+          return;
+        }
+        // Firebase Auth: Account anlegen oder Passwort setzen
+        try {
+          await createUserWithEmailAndPassword(auth, email, password);
+        } catch (createErr) {
+          if (createErr.code === 'auth/email-already-in-use') {
+            // Account existiert bereits – Passwort aktualisieren
+            const cred = await signInWithEmailAndPassword(auth, email, password);
+            await updatePassword(cred.user, password);
+          } else {
+            throw createErr;
+          }
+        }
+        // Passwort-Flag in Firestore setzen (kein Hash, kein Plaintext – nur Flag)
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', foundUser.id), { password: '__set__' });
+        finalizeLogin({ ...foundUser, password: '__set__' });
+
       } else {
+        // Login über Firebase Auth
+        await signInWithEmailAndPassword(auth, email, password);
+        finalizeLogin(foundUser);
+      }
+    } catch (err) {
+      console.error("Auth error:", err);
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         setError("Falsches Passwort.");
+      } else if (err.code === 'auth/too-many-requests') {
+        setError("Zu viele Versuche. Bitte kurz warten.");
+      } else {
+        setError("Fehler bei der Anmeldung: " + err.message);
       }
     }
+    setLoading(false);
   };
 
   return (
@@ -402,7 +397,10 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
             </button>
           </div>
         ) : (
-          <form onSubmit={step === 'name' ? handleNameSubmit : e => handlePasswordAction(e, step === 'setPassword' ? 'set' : 'check')} className="space-y-4">
+          <form
+            onSubmit={step === 'name' ? handleNameSubmit : e => handlePasswordAction(e, step === 'setPassword' ? 'set' : 'check')}
+            className="space-y-4"
+          >
             {step === 'name' ? (
               <div className="space-y-4">
                 <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all" placeholder="Vorname" value={firstName} onChange={e => setFirstName(e.target.value)} />
@@ -413,13 +411,29 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
                 <p className="text-xs text-center text-orange-500 font-bold uppercase mb-4 tracking-widest flex items-center justify-center gap-2">
                   <Lock size={12}/> {step === 'setPassword' ? 'Passwort festlegen' : 'Vorstand-Passwort'}
                 </p>
-                <input autoFocus type="password" required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none text-center text-3xl tracking-[0.5em]" placeholder="••••" value={password} onChange={e => setPassword(e.target.value)} />
+                <input
+                  autoFocus
+                  type="password"
+                  required
+                  className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none text-center text-3xl tracking-[0.5em]"
+                  placeholder="••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                />
               </div>
             )}
-            <button type="submit" className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg shadow-orange-500/20 active:scale-95 transition-all text-lg">
-              {step === 'name' ? 'Weiter' : 'Anmelden'}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg shadow-orange-500/20 active:scale-95 transition-all text-lg disabled:opacity-60"
+            >
+              {loading ? 'Bitte warten...' : step === 'name' ? 'Weiter' : 'Anmelden'}
             </button>
-            {error && <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 py-3 rounded-xl animate-in shake duration-300 mt-2">{error}</p>}
+            {error && (
+              <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 py-3 rounded-xl animate-in shake duration-300 mt-2">
+                {error}
+              </p>
+            )}
           </form>
         )}
       </div>
@@ -427,28 +441,25 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   );
 }
 
-// --- Protokoll View (inkl. Lese-Modus) & Editor ---
+// --- Protokoll View ---
 function ProtocolView({ minutes, users, currentUser }) {
-  const [editing, setEditing] = useState(null);
-  const [showAdd, setShowAdd] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [expandedId, setExpandedId] = useState(null);
+  const [editing,       setEditing]       = useState(null);
+  const [showAdd,       setShowAdd]       = useState(false);
+  const [searchTerm,    setSearchTerm]    = useState('');
+  const [expandedId,    setExpandedId]    = useState(null);
   const [enlargedPoint, setEnlargedPoint] = useState(null);
 
   const vorstandMembers = useMemo(() => users.filter(u => u.groups?.includes('Vorstand')), [users]);
 
   const filteredMinutes = useMemo(() => {
-    let sorted = [...minutes].sort((a,b) => b.date.localeCompare(a.date));
+    let sorted = [...minutes].sort((a, b) => b.date.localeCompare(a.date));
     if (!searchTerm.trim()) return sorted;
-
     const term = searchTerm.toLowerCase();
     return sorted.filter(m => {
       if (m.title?.toLowerCase().includes(term)) return true;
       if (m.traktanden) {
         for (const points of Object.values(m.traktanden)) {
-          if (points.some(p => p.text?.toLowerCase().includes(term) || p.docName?.toLowerCase().includes(term))) {
-            return true;
-          }
+          if (points.some(p => p.text?.toLowerCase().includes(term) || p.docName?.toLowerCase().includes(term))) return true;
         }
       }
       return false;
@@ -488,10 +499,10 @@ function ProtocolView({ minutes, users, currentUser }) {
 
   if (editing || showAdd) {
     return (
-      <ProtocolEditor 
-        vorstand={vorstandMembers} 
-        onSave={saveProtocol} 
-        onCancel={() => { setShowAdd(false); setEditing(null); }} 
+      <ProtocolEditor
+        vorstand={vorstandMembers}
+        onSave={saveProtocol}
+        onCancel={() => { setShowAdd(false); setEditing(null); }}
         initialData={editing}
       />
     );
@@ -512,8 +523,8 @@ function ProtocolView({ minutes, users, currentUser }) {
       {minutes.length > 0 && (
         <div className="relative animate-in fade-in">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
-          <input 
-            type="text" 
+          <input
+            type="text"
             placeholder="Suchen nach Begriffen..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
@@ -530,7 +541,6 @@ function ProtocolView({ minutes, users, currentUser }) {
       <div className="grid gap-4">
         {filteredMinutes.map(m => {
           const isExpanded = expandedId === m.id;
-
           return (
             <div key={m.id} className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl flex flex-col hover:border-gray-700 transition-all group">
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-6 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : m.id)}>
@@ -543,24 +553,22 @@ function ProtocolView({ minutes, users, currentUser }) {
                   <p className="text-sm text-gray-500 mt-2 line-clamp-1 italic">Vorsitz: {m.traktanden?.['Präsident']?.[0]?.text || 'Nicht angegeben'}</p>
                 </div>
                 <div className="flex gap-2 shrink-0 mt-3 sm:mt-0 justify-end" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => setExpandedId(isExpanded ? null : m.id)} className="p-3.5 sm:p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90" title="Lesen">
+                  <button onClick={() => setExpandedId(isExpanded ? null : m.id)} className="p-3.5 sm:p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90">
                     {isExpanded ? <ChevronRight className="-rotate-90" size={20} /> : <Eye size={20} />}
                   </button>
-                  <button onClick={() => setEditing(m)} className="p-3.5 sm:p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90" title="Bearbeiten">
+                  <button onClick={() => setEditing(m)} className="p-3.5 sm:p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90">
                     <Edit2 size={20} />
                   </button>
-                  <button onClick={() => { if(confirm('Möchtest du dieses Protokoll wirklich löschen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id)); }} className="p-3.5 sm:p-4 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90" title="Löschen">
+                  <button onClick={() => { if(confirm('Möchtest du dieses Protokoll wirklich löschen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id)); }} className="p-3.5 sm:p-4 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90">
                     <Trash2 size={20} />
                   </button>
                 </div>
               </div>
-              
+
               {!isExpanded && renderSnippets(m)}
 
-              {/* LESE-ANSICHT (EXPANDED) */}
               {isExpanded && (
                 <div className="mt-6 border-t border-gray-800 pt-6 space-y-8 animate-in slide-in-from-top-2 duration-300">
-                  {/* Anwesenheit */}
                   {m.attendance && Object.keys(m.attendance).length > 0 && (
                     <div>
                       <h4 className="text-orange-500 font-black uppercase text-[10px] tracking-widest mb-3 flex items-center gap-2">
@@ -581,8 +589,6 @@ function ProtocolView({ minutes, users, currentUser }) {
                       </div>
                     </div>
                   )}
-
-                  {/* Traktanden */}
                   <div className="space-y-6">
                     {TRAKTANDEN.map(t => {
                       const points = m.traktanden?.[t];
@@ -601,18 +607,14 @@ function ProtocolView({ minutes, users, currentUser }) {
                                     </a>
                                   )}
                                 </div>
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); setEnlargedPoint({ traktandum: t, ...p }); }} 
-                                  className="absolute top-3 right-3 p-2 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100"
-                                  title="Punkt vergrössern"
-                                >
+                                <button onClick={(e) => { e.stopPropagation(); setEnlargedPoint({ traktandum: t, ...p }); }} className="absolute top-3 right-3 p-2 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100">
                                   <Eye size={18} />
                                 </button>
                               </li>
                             ))}
                           </ul>
                         </div>
-                      )
+                      );
                     })}
                   </div>
                 </div>
@@ -623,10 +625,9 @@ function ProtocolView({ minutes, users, currentUser }) {
 
         {filteredMinutes.length === 0 && searchTerm && (
           <div className="text-center py-10 text-gray-500 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
-            Keine passenden Protokolle oder Beschlüsse für "{searchTerm}" gefunden.
+            Keine passenden Protokolle für "{searchTerm}" gefunden.
           </div>
         )}
-
         {minutes.length === 0 && !searchTerm && (
           <div className="text-center py-20 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
             <ClipboardList className="mx-auto text-gray-800 mb-4" size={48} />
@@ -635,15 +636,12 @@ function ProtocolView({ minutes, users, currentUser }) {
         )}
       </div>
 
-      {/* MODAL FÜR VERGRÖSSERTEN PUNKT (LESE-MODUS) */}
       {enlargedPoint && (
         <div className="fixed inset-0 z-[100] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
             <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
               <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedPoint.traktandum}</h3>
-              <button onClick={() => setEnlargedPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90">
-                <X size={20} />
-              </button>
+              <button onClick={() => setEnlargedPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90"><X size={20} /></button>
             </div>
             <div className="p-6 overflow-y-auto flex-1">
               <p className="text-white text-base sm:text-lg whitespace-pre-wrap leading-relaxed">{enlargedPoint.text}</p>
@@ -662,83 +660,52 @@ function ProtocolView({ minutes, users, currentUser }) {
   );
 }
 
+// --- Protocol Editor ---
 function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
   const [form, setForm] = useState(initialData || {
     title: '',
     date: new Date().toISOString().split('T')[0],
-    attendance: {}, 
+    attendance: {},
     traktanden: TRAKTANDEN.reduce((acc, curr) => ({ ...acc, [curr]: [] }), {})
   });
-  
-  const [uploading, setUploading] = useState({});
-  const [enlargedEditPoint, setEnlargedEditPoint] = useState(null); // Für die Vollbild-Eingabe
+  const [uploading,        setUploading]        = useState({});
+  const [enlargedEditPoint, setEnlargedEditPoint] = useState(null);
 
-  const updateAttendance = (userId, status) => {
-    setForm(prev => ({
-      ...prev,
-      attendance: { ...prev.attendance, [userId]: status }
-    }));
-  };
+  const updateAttendance = (userId, status) =>
+    setForm(prev => ({ ...prev, attendance: { ...prev.attendance, [userId]: status } }));
 
   const addPoint = (traktandum) => {
     const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
     setForm(prev => ({
       ...prev,
-      traktanden: {
-        ...prev.traktanden,
-        [traktandum]: [...(prev.traktanden[traktandum] || []), { id, text: '', docUrl: '', docName: '' }]
-      }
+      traktanden: { ...prev.traktanden, [traktandum]: [...(prev.traktanden[traktandum] || []), { id, text: '', docUrl: '', docName: '' }] }
     }));
   };
 
-  const removePoint = (traktandum, pointId) => {
+  const removePoint = (traktandum, pointId) =>
     setForm(prev => ({
       ...prev,
-      traktanden: {
-        ...prev.traktanden,
-        [traktandum]: prev.traktanden[traktandum].filter(p => p.id !== pointId)
-      }
+      traktanden: { ...prev.traktanden, [traktandum]: prev.traktanden[traktandum].filter(p => p.id !== pointId) }
     }));
-  };
 
-  const updatePoint = (traktandum, pointId, field, value) => {
+  const updatePoint = (traktandum, pointId, field, value) =>
     setForm(prev => ({
       ...prev,
-      traktanden: {
-        ...prev.traktanden,
-        [traktandum]: prev.traktanden[traktandum].map(p => p.id === pointId ? { ...p, [field]: value } : p)
-      }
+      traktanden: { ...prev.traktanden, [traktandum]: prev.traktanden[traktandum].map(p => p.id === pointId ? { ...p, [field]: value } : p) }
     }));
-  };
 
-  const updatePointFields = (traktandum, pointId, fieldsObj) => {
+  const updatePointFields = (traktandum, pointId, fieldsObj) =>
     setForm(prev => ({
       ...prev,
-      traktanden: {
-        ...prev.traktanden,
-        [traktandum]: prev.traktanden[traktandum].map(p => p.id === pointId ? { ...p, ...fieldsObj } : p)
-      }
+      traktanden: { ...prev.traktanden, [traktandum]: prev.traktanden[traktandum].map(p => p.id === pointId ? { ...p, ...fieldsObj } : p) }
     }));
-  };
 
-  const movePointUp = (traktandum, index) => {
-    if (index === 0) return;
+  const movePoint = (traktandum, index, dir) => {
+    const newIndex = index + dir;
     setForm(prev => {
       const list = [...prev.traktanden[traktandum]];
-      const temp = list[index - 1];
-      list[index - 1] = list[index];
-      list[index] = temp;
-      return { ...prev, traktanden: { ...prev.traktanden, [traktandum]: list } };
-    });
-  };
-
-  const movePointDown = (traktandum, index) => {
-    if (index === form.traktanden[traktandum].length - 1) return;
-    setForm(prev => {
-      const list = [...prev.traktanden[traktandum]];
-      const temp = list[index + 1];
-      list[index + 1] = list[index];
-      list[index] = temp;
+      if (newIndex < 0 || newIndex >= list.length) return prev;
+      [list[index], list[newIndex]] = [list[newIndex], list[index]];
       return { ...prev, traktanden: { ...prev.traktanden, [traktandum]: list } };
     });
   };
@@ -746,31 +713,26 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
   const handleFileUpload = (e, traktandum, pointId) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    e.target.value = ''; // Reset Input
-
+    e.target.value = '';
     const storageRef = ref(storage, `artifacts/${appId}/public/uploads/${Date.now()}_${file.name}`);
     const uploadTask = uploadBytesResumable(storageRef, file);
-
     setUploading(prev => ({ ...prev, [pointId]: 1 }));
-
-    uploadTask.on('state_changed', 
+    uploadTask.on('state_changed',
       (snapshot) => {
         const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
         setUploading(prev => ({ ...prev, [pointId]: progress || 1 }));
-      }, 
+      },
       (error) => {
         console.error("Upload Error:", error);
-        alert(`Fehler beim Datei-Upload: ${error.message}\n\nBitte stellen Sie sicher, dass Firebase Storage aktiviert ist und die Regeln Schreibzugriff erlauben.`);
+        alert(`Fehler beim Upload: ${error.message}`);
         setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
-      }, 
+      },
       async () => {
         try {
           const url = await getDownloadURL(uploadTask.snapshot.ref);
           updatePointFields(traktandum, pointId, { docUrl: url, docName: file.name });
         } catch (err) {
           console.error("Download URL Error:", err);
-          alert("Datei wurde hochgeladen, aber der Link konnte nicht generiert werden.");
         } finally {
           setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
         }
@@ -782,20 +744,10 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
     <div className="space-y-8 animate-in slide-in-from-bottom-8 duration-500">
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 bg-gray-900 p-5 sm:p-8 rounded-3xl border border-gray-800 shadow-2xl">
         <div className="flex-1 space-y-4 w-full">
-          <input 
-            className="w-full bg-transparent text-2xl sm:text-4xl font-black text-white border-b-2 border-gray-800 focus:border-orange-500 outline-none transition-all placeholder:text-gray-800" 
-            placeholder="Sitzungstitel..." 
-            value={form.title} 
-            onChange={e => setForm({...form, title: e.target.value})} 
-          />
+          <input className="w-full bg-transparent text-2xl sm:text-4xl font-black text-white border-b-2 border-gray-800 focus:border-orange-500 outline-none transition-all placeholder:text-gray-800" placeholder="Sitzungstitel..." value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
           <div className="flex items-center gap-4">
             <Calendar className="text-orange-500 shrink-0" size={20} />
-            <input 
-              type="date" 
-              className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 sm:py-2 text-white focus:border-orange-500 outline-none w-full sm:w-auto" 
-              value={form.date} 
-              onChange={e => setForm({...form, date: e.target.value})} 
-            />
+            <input type="date" className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 sm:py-2 text-white focus:border-orange-500 outline-none w-full sm:w-auto" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
           </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto mt-2 md:mt-0">
@@ -808,26 +760,18 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
 
       <div className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-1 bg-gray-900 border border-gray-800 p-5 sm:p-8 rounded-3xl h-fit lg:sticky top-24 shadow-xl">
-          <h3 className="text-xl font-black text-white mb-6 flex items-center gap-3">
-            <UserCheck className="text-orange-500" /> Anwesenheit
-          </h3>
+          <h3 className="text-xl font-black text-white mb-6 flex items-center gap-3"><UserCheck className="text-orange-500" /> Anwesenheit</h3>
           <div className="space-y-3 sm:space-y-4">
             {vorstand.map(m => (
               <div key={m.id} className="p-4 bg-gray-950 rounded-2xl border border-gray-800">
                 <p className="font-bold text-white mb-3 text-sm">{m.firstName} {m.lastName}</p>
                 <div className="grid grid-cols-3 gap-1.5 sm:gap-1">
                   {[
-                    { id: 'present', label: 'Anw.', color: 'bg-green-500/20 text-green-500 border-green-500/50' },
-                    { id: 'absent', label: 'Unen.', color: 'bg-red-500/20 text-red-500 border-red-500/50' },
+                    { id: 'present', label: 'Anw.',  color: 'bg-green-500/20 text-green-500 border-green-500/50' },
+                    { id: 'absent',  label: 'Unen.', color: 'bg-red-500/20 text-red-500 border-red-500/50' },
                     { id: 'excused', label: 'Ents.', color: 'bg-blue-500/20 text-blue-500 border-blue-500/50' }
                   ].map(status => (
-                    <button
-                      key={status.id}
-                      onClick={() => updateAttendance(m.id, status.id)}
-                      className={`text-[10px] sm:text-[9px] font-black uppercase py-2.5 sm:py-2 rounded-lg border transition-all ${
-                        form.attendance[m.id] === status.id ? status.color : 'bg-gray-900 text-gray-600 border-gray-800 hover:border-gray-600'
-                      }`}
-                    >
+                    <button key={status.id} onClick={() => updateAttendance(m.id, status.id)} className={`text-[10px] sm:text-[9px] font-black uppercase py-2.5 sm:py-2 rounded-lg border transition-all ${form.attendance[m.id] === status.id ? status.color : 'bg-gray-900 text-gray-600 border-gray-800 hover:border-gray-600'}`}>
                       {status.label}
                     </button>
                   ))}
@@ -841,23 +785,15 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
           {TRAKTANDEN.map(traktandum => (
             <div key={traktandum} className="bg-gray-900 border border-gray-800 p-5 sm:p-8 rounded-3xl shadow-xl">
               <div className="flex justify-between items-center mb-6 gap-2">
-                <h3 className="text-xl sm:text-2xl font-black text-white italic tracking-tight underline decoration-orange-500 decoration-4 underline-offset-8 break-words">
-                  {traktandum}
-                </h3>
-                <button 
-                  onClick={() => addPoint(traktandum)} 
-                  className="p-3 bg-gray-950 border border-gray-800 text-orange-500 hover:bg-orange-500 hover:text-gray-950 rounded-xl transition-all active:scale-90 shrink-0"
-                >
-                  <Plus size={20} />
-                </button>
+                <h3 className="text-xl sm:text-2xl font-black text-white italic tracking-tight underline decoration-orange-500 decoration-4 underline-offset-8 break-words">{traktandum}</h3>
+                <button onClick={() => addPoint(traktandum)} className="p-3 bg-gray-950 border border-gray-800 text-orange-500 hover:bg-orange-500 hover:text-gray-950 rounded-xl transition-all active:scale-90 shrink-0"><Plus size={20} /></button>
               </div>
-
               <div className="space-y-4">
                 {form.traktanden[traktandum]?.map((point, index) => (
                   <div key={point.id} className="p-4 sm:p-6 bg-gray-950 border border-gray-800 rounded-2xl space-y-4 group">
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-                      <textarea 
-                        className="w-full flex-1 bg-transparent text-gray-200 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-800 text-sm font-medium leading-relaxed overflow-hidden min-h-[44px]" 
+                      <textarea
+                        className="w-full flex-1 bg-transparent text-gray-200 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-800 text-sm font-medium leading-relaxed overflow-hidden min-h-[44px]"
                         placeholder="Beschluss oder Notiz schreiben..."
                         value={point.text}
                         onChange={e => {
@@ -865,67 +801,28 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                           e.target.style.height = `${e.target.scrollHeight}px`;
                           updatePoint(traktandum, point.id, 'text', e.target.value);
                         }}
-                        ref={el => {
-                          if (el) {
-                            requestAnimationFrame(() => {
-                              el.style.height = 'auto';
-                              el.style.height = `${el.scrollHeight}px`;
-                            });
-                          }
-                        }}
+                        ref={el => { if (el) { requestAnimationFrame(() => { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }); } }}
                       />
                       <div className="flex justify-end sm:self-start gap-2 shrink-0">
-                        <button 
-                          onClick={(e) => { e.preventDefault(); setEnlargedEditPoint({ traktandum, id: point.id, text: point.text }); }}
-                          className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 transition-colors bg-gray-900 rounded-lg border border-gray-800"
-                          title="Im Vollbild bearbeiten"
-                        >
-                          <Eye size={18} className="sm:w-4 sm:h-4" />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.preventDefault(); movePointUp(traktandum, index); }} 
-                          disabled={index === 0}
-                          className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"
-                          title="Nach oben"
-                        >
-                          <ArrowUp size={18} className="sm:w-4 sm:h-4" />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.preventDefault(); movePointDown(traktandum, index); }} 
-                          disabled={index === form.traktanden[traktandum].length - 1}
-                          className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"
-                          title="Nach unten"
-                        >
-                          <ArrowDown size={18} className="sm:w-4 sm:h-4" />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.preventDefault(); removePoint(traktandum, point.id); }} 
-                          className="p-2 sm:p-1.5 text-gray-600 hover:text-red-500 transition-colors bg-gray-900 rounded-lg border border-gray-800 ml-2"
-                          title="Punkt löschen"
-                        >
-                          <X size={18} className="sm:w-4 sm:h-4" />
-                        </button>
+                        <button onClick={(e) => { e.preventDefault(); setEnlargedEditPoint({ traktandum, id: point.id, text: point.text }); }} className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 transition-colors bg-gray-900 rounded-lg border border-gray-800"><Eye size={18} className="sm:w-4 sm:h-4" /></button>
+                        <button onClick={(e) => { e.preventDefault(); movePoint(traktandum, index, -1); }} disabled={index === 0} className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"><ArrowUp size={18} className="sm:w-4 sm:h-4" /></button>
+                        <button onClick={(e) => { e.preventDefault(); movePoint(traktandum, index, 1); }} disabled={index === form.traktanden[traktandum].length - 1} className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"><ArrowDown size={18} className="sm:w-4 sm:h-4" /></button>
+                        <button onClick={(e) => { e.preventDefault(); removePoint(traktandum, point.id); }} className="p-2 sm:p-1.5 text-gray-600 hover:text-red-500 transition-colors bg-gray-900 rounded-lg border border-gray-800 ml-2"><X size={18} className="sm:w-4 sm:h-4" /></button>
                       </div>
                     </div>
-
                     <div className="flex flex-col sm:flex-row items-center gap-4 pt-4 border-t border-gray-900">
                       <div className="w-full flex-1 flex items-center gap-3 bg-gray-900 px-4 py-3 rounded-xl border border-gray-800 relative overflow-hidden">
                         {uploading[point.id] !== undefined && (
                           <div className="absolute left-0 top-0 h-full bg-orange-500/20 transition-all" style={{ width: `${uploading[point.id]}%` }} />
                         )}
                         <Paperclip size={16} className="text-orange-500 shrink-0 z-10" />
-                        
                         <div className="flex-1 z-10 flex items-center overflow-hidden">
                           {uploading[point.id] !== undefined ? (
                             <span className="text-[11px] text-orange-500 font-bold">Wird hochgeladen... {Math.round(uploading[point.id])}%</span>
                           ) : point.docUrl ? (
                             <div className="flex items-center justify-between w-full">
-                              <a href={point.docUrl} download target="_blank" rel="noreferrer" className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">
-                                {point.docName || 'Dokument herunterladen'}
-                              </a>
-                              <button type="button" onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })} className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md shrink-0" title="Datei entfernen">
-                                <X size={14} />
-                              </button>
+                              <a href={point.docUrl} download target="_blank" rel="noreferrer" className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">{point.docName || 'Dokument herunterladen'}</a>
+                              <button type="button" onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })} className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md shrink-0"><X size={14} /></button>
                             </div>
                           ) : (
                             <label className="cursor-pointer text-[11px] text-gray-500 hover:text-white w-full block font-bold transition-colors truncate">
@@ -936,13 +833,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
                           )}
                         </div>
                       </div>
-                      
-                      <input 
-                        className="w-full sm:w-48 bg-gray-900 px-4 py-3 rounded-xl border border-gray-800 text-[11px] text-gray-500 focus:text-white outline-none" 
-                        placeholder="Anzeige-Name (optional)"
-                        value={point.docName}
-                        onChange={e => updatePoint(traktandum, point.id, 'docName', e.target.value)}
-                      />
+                      <input className="w-full sm:w-48 bg-gray-900 px-4 py-3 rounded-xl border border-gray-800 text-[11px] text-gray-500 focus:text-white outline-none" placeholder="Anzeige-Name (optional)" value={point.docName} onChange={e => updatePoint(traktandum, point.id, 'docName', e.target.value)} />
                     </div>
                   </div>
                 ))}
@@ -955,34 +846,18 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
         </div>
       </div>
 
-      {/* MODAL FÜR VERGRÖSSERTEN PUNKT (EDITOR-MODUS) */}
       {enlargedEditPoint && (
         <div className="fixed inset-0 z-[100] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-3xl flex flex-col shadow-2xl h-[80vh] max-h-[800px]">
             <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
               <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedEditPoint.traktandum} - Bearbeiten</h3>
-              <button onClick={() => setEnlargedEditPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90">
-                <X size={20} />
-              </button>
+              <button onClick={() => setEnlargedEditPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90"><X size={20} /></button>
             </div>
             <div className="p-6 flex-1 flex flex-col">
-              <textarea 
-                className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-2xl p-6 text-white focus:border-orange-500 outline-none resize-none leading-relaxed text-lg"
-                value={enlargedEditPoint.text}
-                onChange={e => setEnlargedEditPoint({...enlargedEditPoint, text: e.target.value})}
-                placeholder="Beschluss oder Notiz..."
-                autoFocus
-              />
+              <textarea className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-2xl p-6 text-white focus:border-orange-500 outline-none resize-none leading-relaxed text-lg" value={enlargedEditPoint.text} onChange={e => setEnlargedEditPoint({...enlargedEditPoint, text: e.target.value})} placeholder="Beschluss oder Notiz..." autoFocus />
             </div>
             <div className="p-5 border-t border-gray-800 bg-gray-950/50 rounded-b-3xl flex justify-end">
-              <button 
-                onClick={(e) => { 
-                  e.preventDefault(); 
-                  updatePoint(enlargedEditPoint.traktandum, enlargedEditPoint.id, 'text', enlargedEditPoint.text); 
-                  setEnlargedEditPoint(null); 
-                }} 
-                className="w-full sm:w-auto px-8 py-4 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg"
-              >
+              <button onClick={(e) => { e.preventDefault(); updatePoint(enlargedEditPoint.traktandum, enlargedEditPoint.id, 'text', enlargedEditPoint.text); setEnlargedEditPoint(null); }} className="w-full sm:w-auto px-8 py-4 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg">
                 Text übernehmen
               </button>
             </div>
@@ -993,32 +868,28 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
   );
 }
 
-// --- Hilfskomponenten ---
+// --- Tab Button ---
 function TabButton({ active, onClick, icon, label }) {
   return (
-    <button 
-      onClick={onClick} 
-      className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold transition-all whitespace-nowrap active:scale-95 ${
-        active ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/20' : 'bg-gray-900 text-gray-500 hover:text-gray-300 hover:bg-gray-800'
-      }`}
-    >
+    <button onClick={onClick} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold transition-all whitespace-nowrap active:scale-95 ${active ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/20' : 'bg-gray-900 text-gray-500 hover:text-gray-300 hover:bg-gray-800'}`}>
       {icon} {label}
     </button>
   );
 }
 
+// --- Events View ---
 function EventsView({ events, currentUser, isArchive = false, users }) {
-  const [showCreate, setShowCreate] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [showCreate,     setShowCreate]     = useState(false);
+  const [selectedEvent,  setSelectedEvent]  = useState(null);
 
   if (selectedEvent) {
     const current = events.find(e => e.id === selectedEvent.id);
     if (!current) { setSelectedEvent(null); return null; }
     return (
-      <EventDetail 
-        event={current} 
-        onBack={() => setSelectedEvent(null)} 
-        currentUser={currentUser} 
+      <EventDetail
+        event={current}
+        onBack={() => setSelectedEvent(null)}
+        currentUser={currentUser}
         onUpdate={data => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', current.id), data, { merge: true })}
         onDelete={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', current.id))}
         users={users}
@@ -1048,9 +919,9 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
             <span className="text-[9px] font-black text-orange-500 uppercase bg-orange-500/10 px-3 py-1 rounded-full mb-4 inline-block tracking-widest">{e.category}</span>
             <h3 className="text-xl font-bold text-white mb-2">{e.title}</h3>
             <div className="flex flex-col gap-2 text-xs text-gray-500">
-               <span className="flex items-center gap-1.5"><Calendar size={14} className="text-orange-500" /> Start: {new Date(e.date).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>
-               {e.autoArchive && e.endDate && <span className="flex items-center gap-1.5"><Archive size={14} className="text-orange-500" /> Auto-Archiv: {new Date(e.endDate).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>}
-               <div className="flex items-center gap-1 mt-2 border-t border-gray-800 pt-2"><BarChart3 size={14}/> {e.surveys?.length || 0} Umfragen</div>
+              <span className="flex items-center gap-1.5"><Calendar size={14} className="text-orange-500" /> Start: {new Date(e.date).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>
+              {e.autoArchive && e.endDate && <span className="flex items-center gap-1.5"><Archive size={14} className="text-orange-500" /> Auto-Archiv: {new Date(e.endDate).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>}
+              <div className="flex items-center gap-1 mt-2 border-t border-gray-800 pt-2"><BarChart3 size={14}/> {e.surveys?.length || 0} Umfragen</div>
             </div>
           </div>
         ))}
@@ -1064,18 +935,17 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
   );
 }
 
+// --- Event Detail ---
 function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, isArchived }) {
   const [showSurveyForm, setShowSurveyForm] = useState(false);
-  const [editingSurvey, setEditingSurvey] = useState(null);
+  const [editingSurvey,  setEditingSurvey]  = useState(null);
 
   const saveSurvey = (s) => {
     if (editingSurvey) {
-      const newSurveys = event.surveys.map(x => x.id === editingSurvey.id ? { ...x, ...s } : x);
-      onUpdate({ surveys: newSurveys });
+      onUpdate({ surveys: event.surveys.map(x => x.id === editingSurvey.id ? { ...x, ...s } : x) });
       setEditingSurvey(null);
     } else {
-      const newSurveys = [...(event.surveys || []), { ...s, id: Date.now().toString(), status: 'draft', votedUsers: [] }];
-      onUpdate({ surveys: newSurveys });
+      onUpdate({ surveys: [...(event.surveys || []), { ...s, id: Date.now().toString(), status: 'draft', votedUsers: [] }] });
       setShowSurveyForm(false);
     }
   };
@@ -1087,24 +957,20 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
   };
 
   const exportToExcel = () => {
-    let csv = '\uFEFF'; // BOM für saubere UTF-8 Darstellung in Excel
+    let csv = '\uFEFF';
     csv += `Event:;${event.title}\n`;
     csv += `Datum:;${new Date(event.date).toLocaleDateString('de-CH')}\n`;
     csv += `Kategorie:;${event.category}\n\n`;
     csv += `Umfrage;Option;Stimmen;Prozent\n`;
-
     if (event.surveys) {
       event.surveys.forEach(survey => {
         const totalVotes = survey.options.reduce((sum, o) => sum + (o.votes || 0), 0);
         survey.options.forEach(opt => {
           const pct = totalVotes === 0 ? 0 : Math.round(((opt.votes || 0) / totalVotes) * 100);
-          const safeTitle = survey.title.replace(/"/g, '""');
-          const safeOpt = opt.text.replace(/"/g, '""');
-          csv += `"${safeTitle}";"${safeOpt}";${opt.votes || 0};${pct}%\n`;
+          csv += `"${survey.title.replace(/"/g, '""')}";"${opt.text.replace(/"/g, '""')}";${opt.votes || 0};${pct}%\n`;
         });
       });
     }
-
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -1130,7 +996,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
           <div className="flex gap-2">
             <button onClick={exportToExcel} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-green-500 transition-all" title="Als Excel (CSV) exportieren"><Download size={20}/></button>
             {!isArchived && <button onClick={() => onUpdate({ isArchived: !event.isArchived })} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-orange-500 transition-all" title="Manuell Archivieren"><Archive size={20}/></button>}
-            <button onClick={() => { if(confirm('Achtung: Soll dieser Event wirklich komplett und unwiderruflich gelöscht werden? Alle Daten gehen verloren!')) onDelete(); }} className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500/20" title="Event komplett löschen"><Trash2 size={20}/></button>
+            <button onClick={() => { if(confirm('Achtung: Soll dieser Event wirklich komplett und unwiderruflich gelöscht werden?')) onDelete(); }} className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500/20"><Trash2 size={20}/></button>
           </div>
         )}
       </div>
@@ -1142,34 +1008,45 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
       )}
 
       {(showSurveyForm || editingSurvey) && (
-        <CreateSurveyForm 
-          initialData={editingSurvey} 
-          onSubmit={saveSurvey} 
-          onCancel={() => { setShowSurveyForm(false); setEditingSurvey(null); }} 
-        />
+        <CreateSurveyForm initialData={editingSurvey} onSubmit={saveSurvey} onCancel={() => { setShowSurveyForm(false); setEditingSurvey(null); }} />
       )}
 
       <div className="space-y-6">
         {event.surveys?.map(s => (
-          <SurveyCard 
-            key={s.id} 
-            survey={s} 
-            currentUser={currentUser} 
-            isArchived={isArchived} 
+          <SurveyCard
+            key={s.id}
+            survey={s}
+            currentUser={currentUser}
+            isArchived={isArchived}
             onEdit={() => setEditingSurvey(s)}
             onDelete={() => deleteSurvey(s.id)}
-            onVote={opts => {
-              const newSurveys = event.surveys.map(x => {
-                if (x.id === s.id) {
-                  const optMap = x.options.map(o => opts.includes(o.id) ? { ...o, votes: (o.votes || 0) + 1 } : o);
-                  return { ...x, options: optMap, votedUsers: [...x.votedUsers, currentUser.id] };
-                }
-                return x;
-              });
-              onUpdate({ surveys: newSurveys });
-            }} 
-            onStatusChange={st => onUpdate({ surveys: event.surveys.map(x => x.id === s.id ? {...x, status: st} : x) })} 
-            users={users} 
+            onVote={async (opts) => {
+              const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
+              try {
+                await runTransaction(db, async (transaction) => {
+                  const snap = await transaction.get(eventRef);
+                  if (!snap.exists()) throw new Error("Event nicht gefunden.");
+                  const data = snap.data();
+                  const srv = data.surveys?.find(x => x.id === s.id);
+                  if (!srv) throw new Error("Umfrage nicht gefunden.");
+                  if (srv.votedUsers?.includes(currentUser.id)) throw new Error("Bereits abgestimmt.");
+                  const updatedSurveys = data.surveys.map(x => {
+                    if (x.id !== s.id) return x;
+                    return {
+                      ...x,
+                      options: x.options.map(o => opts.includes(o.id) ? { ...o, votes: (o.votes || 0) + 1 } : o),
+                      votedUsers: [...(x.votedUsers || []), currentUser.id]
+                    };
+                  });
+                  transaction.update(eventRef, { surveys: updatedSurveys });
+                });
+              } catch (err) {
+                console.error("Vote Error:", err);
+                if (err.message === "Bereits abgestimmt.") alert("Du hast bereits abgestimmt.");
+              }
+            }}
+            onStatusChange={st => onUpdate({ surveys: event.surveys.map(x => x.id === s.id ? {...x, status: st} : x) })}
+            users={users}
           />
         ))}
       </div>
@@ -1177,15 +1054,9 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
   );
 }
 
+// --- Create Event Form ---
 function CreateEventForm({ onSubmit }) {
-  const [form, setForm] = useState({ 
-    title: '', 
-    category: CATEGORIES[0], 
-    date: new Date().toISOString().slice(0,16), 
-    endDate: '',
-    autoArchive: false
-  });
-
+  const [form, setForm] = useState({ title: '', category: CATEGORIES[0], date: new Date().toISOString().slice(0,16), endDate: '', autoArchive: false });
   return (
     <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-5">
       <div className="grid gap-4 md:grid-cols-2">
@@ -1216,17 +1087,12 @@ function CreateEventForm({ onSubmit }) {
   );
 }
 
+// --- Create Survey Form ---
 function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
-  const [title, setTitle] = useState(initialData?.title || '');
-  const [maxAnswers, setMaxAnswers] = useState(initialData?.maxAnswers || 1);
-  const [options, setOptions] = useState(initialData?.options || [{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
-  const [allowedGroups, setAllowedGroups] = useState(initialData?.allowedGroups || GROUPS);
-
-  const removeOption = (id) => {
-    if (options.length > 2) {
-      setOptions(options.filter(o => o.id !== id));
-    }
-  };
+  const [title,          setTitle]          = useState(initialData?.title || '');
+  const [maxAnswers,     setMaxAnswers]     = useState(initialData?.maxAnswers || 1);
+  const [options,        setOptions]        = useState(initialData?.options || [{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
+  const [allowedGroups,  setAllowedGroups]  = useState(initialData?.allowedGroups || GROUPS);
 
   const toggleGroup = g => setAllowedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
 
@@ -1241,7 +1107,6 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
           <input type="number" min="1" max="10" className="w-16 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none text-center font-bold" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} />
         </div>
       </div>
-      
       {options.map((o, i) => (
         <div key={o.id} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-950 border border-gray-800 rounded-2xl relative group">
           <input required className="bg-transparent border-b border-gray-800 px-2 py-2 text-white outline-none focus:border-orange-500 font-bold" placeholder={`Option ${i+1}`} value={o.text} onChange={e => { const n = [...options]; n[i].text = e.target.value; setOptions(n); }} />
@@ -1249,15 +1114,12 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
             <Youtube size={18} className="text-red-500 shrink-0" />
             <input className="w-full bg-transparent border-b border-gray-800 px-2 py-2 text-gray-500 outline-none focus:border-orange-500 text-xs" placeholder="YouTube Link..." value={o.youtubeUrl} onChange={e => { const n = [...options]; n[i].youtubeUrl = e.target.value; setOptions(n); }} />
             {options.length > 2 && (
-              <button type="button" onClick={() => removeOption(o.id)} className="p-2 text-gray-700 hover:text-red-500 transition-colors bg-gray-900 rounded-lg ml-2 shrink-0" title="Option entfernen">
-                <Trash2 size={16} />
-              </button>
+              <button type="button" onClick={() => setOptions(options.filter(x => x.id !== o.id))} className="p-2 text-gray-700 hover:text-red-500 transition-colors bg-gray-900 rounded-lg ml-2 shrink-0"><Trash2 size={16} /></button>
             )}
           </div>
         </div>
       ))}
       <button type="button" onClick={() => setOptions([...options, { id: Date.now().toString(), text: '', youtubeUrl: '' }])} className="text-orange-500 text-xs font-bold hover:underline transition-all">+ Option hinzufügen</button>
-      
       <div className="space-y-3 pt-4 border-t border-gray-800">
         <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Wer darf an dieser Umfrage teilnehmen?</label>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -1272,7 +1134,6 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
           ))}
         </div>
       </div>
-
       <div className="flex gap-4 pt-4 border-t border-gray-800">
         <button type="button" onClick={onCancel} className="text-gray-500 font-bold px-4 py-2 hover:text-gray-300">Abbrechen</button>
         <button type="submit" className="flex-1 bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg active:scale-[0.99] transition-all">Umfrage speichern</button>
@@ -1281,11 +1142,12 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
   );
 }
 
+// --- Survey Card ---
 function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete, users }) {
   const [selected, setSelected] = useState([]);
+  const [voting,   setVoting]   = useState(false);
   const hasVoted = survey.votedUsers?.includes(currentUser.id);
   const totalVotes = survey.options.reduce((sum, o) => sum + (o.votes || 0), 0);
-
   const surveyAllowedGroups = survey.allowedGroups || GROUPS;
   const isEligible = currentUser.role === 'admin' || surveyAllowedGroups.some(g => currentUser.groups?.includes(g));
   const eligibleUsersCount = users.filter(u => surveyAllowedGroups.some(g => u.groups?.includes(g))).length;
@@ -1296,12 +1158,10 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
   const toggle = (id) => {
     if (selected.includes(id)) {
       setSelected(selected.filter(x => x !== id));
-    } else {
-      if ((survey.maxAnswers || 1) === 1) {
-        setSelected([id]);
-      } else if (selected.length < (survey.maxAnswers || 1)) {
-        setSelected([...selected, id]);
-      }
+    } else if ((survey.maxAnswers || 1) === 1) {
+      setSelected([id]);
+    } else if (selected.length < (survey.maxAnswers || 1)) {
+      setSelected([...selected, id]);
     }
   };
 
@@ -1321,11 +1181,10 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
           </div>
           {currentUser.role === 'admin' && !isArchived && (
             <div className="flex gap-2 items-center">
-              {survey.status === 'draft' && <button onClick={() => onStatusChange('active')} className="bg-green-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Starten</button>}
+              {survey.status === 'draft'  && <button onClick={() => onStatusChange('active')}    className="bg-green-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Starten</button>}
               {survey.status === 'active' && <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Publizieren</button>}
-              
-              <button onClick={onEdit} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors ml-2" title="Bearbeiten"><Edit2 size={16}/></button>
-              <button onClick={onDelete} className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg transition-colors" title="Löschen"><Trash2 size={16}/></button>
+              <button onClick={onEdit}   className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors ml-2"><Edit2 size={16}/></button>
+              <button onClick={onDelete} className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg transition-colors"><Trash2 size={16}/></button>
             </div>
           )}
         </div>
@@ -1353,15 +1212,25 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
             {survey.options.map(o => (
               <div key={o.id} onClick={() => toggle(o.id)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between ${selected.includes(o.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
                 <div className="flex items-center gap-3">
-                   <span className="font-bold">{o.text}</span>
-                   {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-red-500 p-1 hover:scale-110 transition-transform"><Youtube size={18}/></a>}
+                  <span className="font-bold">{o.text}</span>
+                  {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-red-500 p-1 hover:scale-110 transition-transform"><Youtube size={18}/></a>}
                 </div>
                 <div className={`w-6 h-6 rounded-lg border-2 ${selected.includes(o.id) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'} flex items-center justify-center transition-all`}>
                   {selected.includes(o.id) && <Check size={16} strokeWidth={4} className="text-gray-950" />}
                 </div>
               </div>
             ))}
-            <button disabled={selected.length === 0} onClick={() => onVote(selected)} className="w-full mt-2 bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30">Abstimmung senden</button>
+            <button
+              disabled={selected.length === 0 || voting}
+              onClick={async () => {
+                setVoting(true);
+                await onVote(selected);
+                setVoting(false);
+              }}
+              className="w-full mt-2 bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30"
+            >
+              {voting ? 'Wird gesendet...' : 'Abstimmung senden'}
+            </button>
           </div>
         )}
       </div>
@@ -1369,8 +1238,9 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
   );
 }
 
+// --- Members View ---
 function MembersView({ users }) {
-  const [showAdd, setShowAdd] = useState(false);
+  const [showAdd,     setShowAdd]     = useState(false);
   const [editingUser, setEditingUser] = useState(null);
 
   const saveMember = async (m) => {
@@ -1383,7 +1253,6 @@ function MembersView({ users }) {
   const handleImportCSV = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    
     const reader = new FileReader();
     reader.onload = async (event) => {
       const text = event.target.result;
@@ -1392,29 +1261,29 @@ function MembersView({ users }) {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        
-        // Trennzeichen-Erkennung für Komma oder Semikolon (Standard-CSV aus Excel ist oft Semikolon)
         const parts = line.split(/[,;]/);
         if (parts.length >= 2) {
-          const firstName = parts[0].trim();
-          const lastName = parts[1].trim();
-          
-          // Header-Zeile überspringen, falls "Vorname" drin steht
+          const firstName = sanitizeName(parts[0]);
+          const lastName  = sanitizeName(parts[1]);
+          // Header-Zeile überspringen
           if (firstName && lastName && firstName.toLowerCase() !== 'vorname') {
-            const id = Date.now().toString() + i; // Sicherstellen, dass die ID unique ist
-            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', id), {
-              id, 
-              firstName, 
-              lastName, 
-              role: 'member', 
-              groups: [] 
-            });
-            count++;
+            // Duplikat-Check
+            const alreadyExists = users.some(
+              u => u.firstName.toLowerCase() === firstName.toLowerCase() &&
+                   u.lastName.toLowerCase()  === lastName.toLowerCase()
+            );
+            if (!alreadyExists) {
+              const id = `${Date.now()}_${i}`;
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', id), {
+                id, firstName, lastName, role: 'member', groups: []
+              });
+              count++;
+            }
           }
         }
       }
       alert(`${count} Mitglieder wurden erfolgreich importiert.`);
-      e.target.value = ''; // Input zurücksetzen
+      e.target.value = '';
     };
     reader.readAsText(file);
   };
@@ -1436,8 +1305,8 @@ function MembersView({ users }) {
           </button>
         </div>
       </div>
-      
-      {showAdd && <MemberForm onSubmit={saveMember} onCancel={() => setShowAdd(false)} />}
+
+      {showAdd    && <MemberForm onSubmit={saveMember} onCancel={() => setShowAdd(false)} />}
       {editingUser && <MemberForm initialData={editingUser} onSubmit={saveMember} onCancel={() => setEditingUser(null)} />}
 
       <div className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-2xl">
@@ -1457,22 +1326,22 @@ function MembersView({ users }) {
                   <td className="px-6 py-5">
                     <p className="font-bold text-white text-lg">{u.firstName} {u.lastName}</p>
                     <div className="flex flex-wrap gap-1 mt-2">
-                       {u.groups?.map(g => <span key={g} className="text-[8px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-500 uppercase font-black">{g}</span>)}
+                      {u.groups?.map(g => <span key={g} className="text-[8px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-500 uppercase font-black">{g}</span>)}
                     </div>
                   </td>
                   <td className="px-6 py-5">
-                     <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-md ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500' : 'bg-gray-800 text-gray-400'}`}>
-                        {u.role === 'admin' ? 'Administrator' : 'Mitglied'}
-                     </span>
+                    <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-md ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500' : 'bg-gray-800 text-gray-400'}`}>
+                      {u.role === 'admin' ? 'Administrator' : 'Mitglied'}
+                    </span>
                   </td>
                   <td className="px-6 py-5">
                     {u.groups?.includes('Vorstand') ? (
-                       u.password ? <span className="text-green-500 flex items-center gap-1 text-[10px] font-black"><Lock size={12}/> PASSWORT AKTIV</span> : <span className="text-orange-500 flex items-center gap-1 text-[10px] font-black animate-pulse"><Unlock size={12}/> EINRICHTUNG NÖTIG</span>
+                      u.password ? <span className="text-green-500 flex items-center gap-1 text-[10px] font-black"><Lock size={12}/> PASSWORT AKTIV</span> : <span className="text-orange-500 flex items-center gap-1 text-[10px] font-black animate-pulse"><Unlock size={12}/> EINRICHTUNG NÖTIG</span>
                     ) : <span className="text-gray-700 text-[10px] font-black uppercase">Standard-Login</span>}
                   </td>
                   <td className="px-6 py-5 text-right whitespace-nowrap">
-                     <button onClick={() => setEditingUser(u)} className="text-gray-700 hover:text-orange-500 transition-colors p-2 hover:bg-orange-500/10 rounded-xl active:scale-90 mr-1" title="Bearbeiten"><Edit2 size={18}/></button>
-                     <button onClick={() => { if(confirm('Soll dieses Mitglied entfernt werden?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id)); }} className="text-gray-700 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-xl active:scale-90" title="Löschen"><Trash2 size={18}/></button>
+                    <button onClick={() => setEditingUser(u)} className="text-gray-700 hover:text-orange-500 transition-colors p-2 hover:bg-orange-500/10 rounded-xl active:scale-90 mr-1"><Edit2 size={18}/></button>
+                    <button onClick={() => { if(confirm('Soll dieses Mitglied entfernt werden?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id)); }} className="text-gray-700 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-xl active:scale-90"><Trash2 size={18}/></button>
                   </td>
                 </tr>
               ))}
@@ -1484,11 +1353,11 @@ function MembersView({ users }) {
   );
 }
 
+// --- Member Form ---
 function MemberForm({ onSubmit, onCancel, initialData }) {
   const [form, setForm] = useState(initialData || { firstName: '', lastName: '', role: 'member', groups: [] });
-  
   const toggleGroup = g => setForm(f => ({ ...f, groups: f.groups.includes(g) ? f.groups.filter(x => x !== g) : [...f.groups, g] }));
-  
+
   return (
     <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-6 animate-in slide-in-from-top-4 duration-300 shadow-2xl">
       <div className="grid gap-4 md:grid-cols-3">
