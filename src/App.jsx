@@ -1283,7 +1283,7 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
         </div>
       </div>
       <div className="p-6 space-y-3">
-        {hasVoted || survey.status === 'published' || isArchived ? (
+        {survey.status === 'published' || isArchived ? (
           survey.options.map(o => {
             const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
             return (
@@ -1325,7 +1325,12 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
               {voting ? 'Wird gesendet...' : 'Abstimmung senden'}
             </button>
           </div>
-        )}
+        ) : hasVoted ? (
+          <div className="text-center py-8 space-y-2">
+            <p className="text-green-500 font-black text-lg">✓ Stimme erfasst</p>
+            <p className="text-gray-500 text-sm">Die Resultate werden nach der Abstimmung publiziert.</p>
+          </div>
+        ) : null}
       </div>
     </div>
   );
