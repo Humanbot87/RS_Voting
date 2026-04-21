@@ -1283,24 +1283,23 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
         </div>
       </div>
       <div className="p-6 space-y-3">
-        {survey.status === 'published' || isArchived ? (
-          survey.options.map(o => {
-            const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
-            return (
-              <div key={o.id} className="relative h-14 bg-gray-950 border border-gray-800 rounded-xl overflow-hidden flex items-center px-4 group/opt">
-                <div className="absolute left-0 top-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
-                <div className="flex-1 font-bold text-white z-10 flex items-center gap-3">
-                  <span className="truncate">{o.text}</span>
-                  {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" className="text-red-500 hover:scale-110 transition-transform"><Youtube size={16}/></a>}
-                </div>
-                <div className="text-right z-10">
-                  <p className="text-sm font-black">{pct}%</p>
-                  <p className="text-[9px] text-gray-600 font-bold tracking-tighter uppercase">{o.votes || 0} Stimmen</p>
-                </div>
+        {(survey.status === 'published' || isArchived) && survey.options.map(o => {
+          const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
+          return (
+            <div key={o.id} className="relative h-14 bg-gray-950 border border-gray-800 rounded-xl overflow-hidden flex items-center px-4">
+              <div className="absolute left-0 top-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
+              <div className="flex-1 font-bold text-white z-10 flex items-center gap-3">
+                <span className="truncate">{o.text}</span>
+                {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" className="text-red-500 hover:scale-110 transition-transform"><Youtube size={16}/></a>}
               </div>
-            );
-          })
-        ) : (
+              <div className="text-right z-10">
+                <p className="text-sm font-black">{pct}%</p>
+                <p className="text-[9px] text-gray-600 font-bold tracking-tighter uppercase">{o.votes || 0} Stimmen</p>
+              </div>
+            </div>
+          );
+        })}
+        {!survey.status || (survey.status !== 'published' && !isArchived && !hasVoted) ? (
           <div className="space-y-3">
             {survey.options.map(o => (
               <div key={o.id} onClick={() => toggle(o.id)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between ${selected.includes(o.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
@@ -1315,22 +1314,19 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
             ))}
             <button
               disabled={selected.length === 0 || voting}
-              onClick={async () => {
-                setVoting(true);
-                await onVote(selected);
-                setVoting(false);
-              }}
+              onClick={async () => { setVoting(true); await onVote(selected); setVoting(false); }}
               className="w-full mt-2 bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30"
             >
               {voting ? 'Wird gesendet...' : 'Abstimmung senden'}
             </button>
           </div>
-        ) : hasVoted ? (
+        ) : null}
+        {hasVoted && survey.status !== 'published' && !isArchived && (
           <div className="text-center py-8 space-y-2">
             <p className="text-green-500 font-black text-lg">✓ Stimme erfasst</p>
             <p className="text-gray-500 text-sm">Die Resultate werden nach der Abstimmung publiziert.</p>
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   );
