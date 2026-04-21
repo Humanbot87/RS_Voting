@@ -3,7 +3,7 @@ import {
   Users, Calendar, Archive, LogOut, Plus, Trash2, 
   ChevronRight, BarChart3, UserPlus, Eye, Check, Database, ShieldAlert, Edit2,
   Youtube, Lock, Unlock, ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw,
-  UploadCloud, Search, Download, ArrowUp, ArrowDown
+  UploadCloud, Search, Download, ArrowUp, ArrowDown, Maximize2, Minimize2
 } from 'lucide-react';
 import {
   signInWithCustomToken,
@@ -937,8 +937,9 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
 
 // --- Event Detail ---
 function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, isArchived }) {
-  const [showSurveyForm, setShowSurveyForm] = useState(false);
-  const [editingSurvey,  setEditingSurvey]  = useState(null);
+  const [showSurveyForm,   setShowSurveyForm]   = useState(false);
+  const [editingSurvey,    setEditingSurvey]    = useState(null);
+  const [presentingSurvey, setPresentingSurvey] = useState(null);
 
   const saveSurvey = (s) => {
     if (editingSurvey) {
@@ -1020,6 +1021,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
             isArchived={isArchived}
             onEdit={() => setEditingSurvey(s)}
             onDelete={() => deleteSurvey(s.id)}
+            onPresent={setPresentingSurvey}
             onVote={async (opts) => {
               const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
               try {
@@ -1049,6 +1051,96 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
             users={users}
           />
         ))}
+      </div>
+
+      {presentingSurvey && (
+        <PresentationModal
+          survey={event.surveys.find(s => s.id === presentingSurvey.id) || presentingSurvey}
+          users={users}
+          onClose={() => setPresentingSurvey(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// --- Presentation Modal ---
+function PresentationModal({ survey, users, onClose }) {
+  const surveyAllowedGroups = survey.allowedGroups || GROUPS;
+  const eligibleUsersCount = users.filter(u => surveyAllowedGroups.some(g => u.groups?.includes(g))).length;
+  const totalVotes = survey.options.reduce((sum, o) => sum + (o.votes || 0), 0);
+  const votedCount = survey.votedUsers?.length || 0;
+  const pctVoted = eligibleUsersCount === 0 ? 0 : Math.round((votedCount / eligibleUsersCount) * 100);
+
+  return (
+    <div className="fixed inset-0 z-[200] bg-gray-950 flex flex-col animate-in fade-in duration-300">
+      {/* Header */}
+      <div className="flex items-center justify-between px-8 py-5 border-b border-gray-800">
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-black italic tracking-tighter">
+            <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span> <span className="text-gray-400">Ämme</span>
+          </h1>
+          <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1.5 rounded-lg border border-orange-500/20">
+            Live Abstimmung
+          </span>
+        </div>
+        <button onClick={onClose} className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90">
+          <Minimize2 size={20} />
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 flex flex-col items-center justify-center px-8 py-10 max-w-4xl mx-auto w-full">
+        {/* Frage */}
+        <h2 className="text-4xl sm:text-5xl font-black text-white text-center leading-tight mb-12">
+          {survey.title}
+        </h2>
+
+        {/* Resultate / Optionen */}
+        <div className="w-full space-y-4 mb-12">
+          {survey.status === 'published' || survey.status === undefined ? (
+            survey.options.map(o => {
+              const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
+              const isLeading = totalVotes > 0 && (o.votes || 0) === Math.max(...survey.options.map(x => x.votes || 0)) && (o.votes || 0) > 0;
+              return (
+                <div key={o.id} className={`relative h-20 rounded-2xl overflow-hidden flex items-center px-6 border-2 transition-all ${isLeading ? 'border-orange-500' : 'border-gray-800 bg-gray-900'}`}>
+                  <div
+                    className={`absolute left-0 top-0 h-full transition-all duration-1000 ease-out ${isLeading ? 'bg-orange-500/20' : 'bg-gray-800/60'}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                  <span className="flex-1 font-black text-white text-xl z-10 truncate">{o.text}</span>
+                  <div className="z-10 text-right ml-6">
+                    <p className="text-3xl font-black text-white">{pct}%</p>
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">{o.votes || 0} Stimmen</p>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            survey.options.map(o => (
+              <div key={o.id} className="h-20 rounded-2xl flex items-center px-6 border-2 border-gray-800 bg-gray-900">
+                <span className="flex-1 font-black text-white text-xl truncate">{o.text}</span>
+                <div className="w-8 h-8 rounded-full border-2 border-gray-700 flex items-center justify-center">
+                  <div className="w-3 h-3 rounded-full bg-gray-700" />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Fortschritt */}
+        <div className="w-full">
+          <div className="flex justify-between text-sm font-bold text-gray-500 mb-3">
+            <span>{votedCount} von {eligibleUsersCount} haben abgestimmt</span>
+            <span>{pctVoted}%</span>
+          </div>
+          <div className="w-full h-3 bg-gray-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-orange-500 rounded-full transition-all duration-700"
+              style={{ width: `${pctVoted}%` }}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1143,7 +1235,7 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
 }
 
 // --- Survey Card ---
-function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete, users }) {
+function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete, onPresent, users }) {
   const [selected, setSelected] = useState([]);
   const [voting,   setVoting]   = useState(false);
   const hasVoted = survey.votedUsers?.includes(currentUser.id);
@@ -1183,7 +1275,8 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
             <div className="flex gap-2 items-center">
               {survey.status === 'draft'  && <button onClick={() => onStatusChange('active')}    className="bg-green-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Starten</button>}
               {survey.status === 'active' && <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Publizieren</button>}
-              <button onClick={onEdit}   className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors ml-2"><Edit2 size={16}/></button>
+              <button onClick={() => onPresent(survey)} className="p-2 bg-gray-800 text-gray-400 hover:text-orange-500 rounded-lg transition-colors ml-2" title="Präsentationsmodus"><Maximize2 size={16}/></button>
+              <button onClick={onEdit}   className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors"><Edit2 size={16}/></button>
               <button onClick={onDelete} className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg transition-colors"><Trash2 size={16}/></button>
             </div>
           )}
