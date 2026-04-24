@@ -1334,8 +1334,25 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
 
 // --- Members View ---
 function MembersView({ users }) {
-  const [showAdd,     setShowAdd]     = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
+  const [showAdd,      setShowAdd]      = useState(false);
+  const [editingUser,  setEditingUser]  = useState(null);
+  const [filterGroup,  setFilterGroup]  = useState('Alle');
+  const [searchTerm,   setSearchTerm]   = useState('');
+
+  const filteredUsers = useMemo(() => {
+    let result = users;
+    if (filterGroup === 'Keine Gruppe') result = result.filter(u => !u.groups || u.groups.length === 0);
+    else if (filterGroup !== 'Alle') result = result.filter(u => u.groups?.includes(filterGroup));
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(u =>
+        u.firstName?.toLowerCase().includes(term) ||
+        u.lastName?.toLowerCase().includes(term) ||
+        `${u.firstName} ${u.lastName}`.toLowerCase().includes(term)
+      );
+    }
+    return result;
+  }, [users, filterGroup, searchTerm]);
 
   const saveMember = async (m) => {
     const id = m.id || Date.now().toString();
@@ -1401,7 +1418,40 @@ function MembersView({ users }) {
       </div>
 
       {showAdd    && <MemberForm onSubmit={saveMember} onCancel={() => setShowAdd(false)} />}
-      {editingUser && <MemberForm initialData={editingUser} onSubmit={saveMember} onCancel={() => setEditingUser(null)} />}
+
+      {/* Suche */}
+      <div className="relative">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+        <input
+          type="text"
+          placeholder="Mitglied suchen..."
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-3.5 pl-11 pr-10 text-white focus:border-orange-500 outline-none transition-all"
+        />
+        {searchTerm && (
+          <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">
+            <X size={16} />
+          </button>
+        )}
+      </div>
+
+      {/* Gruppen-Filter */}
+      <div className="flex flex-wrap gap-2">
+        {['Alle', ...GROUPS, 'Keine Gruppe'].map(g => (
+          <button
+            key={g}
+            onClick={() => setFilterGroup(g)}
+            className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 ${
+              filterGroup === g
+                ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/20'
+                : 'bg-gray-900 border border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'
+            }`}
+          >
+            {g} {g !== 'Alle' ? `(${g === 'Keine Gruppe' ? users.filter(u => !u.groups || u.groups.length === 0).length : users.filter(u => u.groups?.includes(g)).length})` : `(${users.length})`}
+          </button>
+        ))}
+      </div>
 
       <div className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-2xl">
         <div className="overflow-x-auto">
@@ -1415,29 +1465,43 @@ function MembersView({ users }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {users.map(u => (
-                <tr key={u.id} className="hover:bg-gray-800/30 transition-colors">
-                  <td className="px-6 py-5">
-                    <p className="font-bold text-white text-lg">{u.firstName} {u.lastName}</p>
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {u.groups?.map(g => <span key={g} className="text-[8px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-500 uppercase font-black">{g}</span>)}
-                    </div>
-                  </td>
-                  <td className="px-6 py-5">
-                    <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-md ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500' : 'bg-gray-800 text-gray-400'}`}>
-                      {u.role === 'admin' ? 'Administrator' : 'Mitglied'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-5">
-                    {u.groups?.includes('Vorstand') ? (
-                      u.password ? <span className="text-green-500 flex items-center gap-1 text-[10px] font-black"><Lock size={12}/> PASSWORT AKTIV</span> : <span className="text-orange-500 flex items-center gap-1 text-[10px] font-black animate-pulse"><Unlock size={12}/> EINRICHTUNG NÖTIG</span>
-                    ) : <span className="text-gray-700 text-[10px] font-black uppercase">Standard-Login</span>}
-                  </td>
-                  <td className="px-6 py-5 text-right whitespace-nowrap">
-                    <button onClick={() => setEditingUser(u)} className="text-gray-700 hover:text-orange-500 transition-colors p-2 hover:bg-orange-500/10 rounded-xl active:scale-90 mr-1"><Edit2 size={18}/></button>
-                    <button onClick={() => { if(confirm('Soll dieses Mitglied entfernt werden?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id)); }} className="text-gray-700 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-xl active:scale-90"><Trash2 size={18}/></button>
-                  </td>
-                </tr>
+              {filteredUsers.map(u => (
+                <React.Fragment key={u.id}>
+                  <tr className="hover:bg-gray-800/30 transition-colors">
+                    <td className="px-6 py-5">
+                      <p className="font-bold text-white text-lg">{u.firstName} {u.lastName}</p>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {u.groups?.map(g => <span key={g} className="text-[8px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-500 uppercase font-black">{g}</span>)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-md ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500' : 'bg-gray-800 text-gray-400'}`}>
+                        {u.role === 'admin' ? 'Administrator' : 'Mitglied'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-5">
+                      {u.groups?.includes('Vorstand') ? (
+                        u.password ? <span className="text-green-500 flex items-center gap-1 text-[10px] font-black"><Lock size={12}/> PASSWORT AKTIV</span> : <span className="text-orange-500 flex items-center gap-1 text-[10px] font-black animate-pulse"><Unlock size={12}/> EINRICHTUNG NÖTIG</span>
+                      ) : <span className="text-gray-700 text-[10px] font-black uppercase">Standard-Login</span>}
+                    </td>
+                    <td className="px-6 py-5 text-right whitespace-nowrap">
+                      <button onClick={() => setEditingUser(editingUser?.id === u.id ? null : u)} className={`transition-colors p-2 rounded-xl active:scale-90 mr-1 ${editingUser?.id === u.id ? 'text-orange-500 bg-orange-500/10' : 'text-gray-700 hover:text-orange-500 hover:bg-orange-500/10'}`}><Edit2 size={18}/></button>
+                      <button onClick={() => { if(confirm('Soll dieses Mitglied entfernt werden?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id)); }} className="text-gray-700 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-xl active:scale-90"><Trash2 size={18}/></button>
+                    </td>
+                  </tr>
+                  {editingUser?.id === u.id && (
+                    <tr>
+                      <td colSpan={4} className="px-4 pb-4 bg-gray-900">
+                        <MemberForm
+                          initialData={editingUser}
+                          onSubmit={async (m) => { await saveMember(m); }}
+                          onCancel={() => setEditingUser(null)}
+                          inline
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -1448,12 +1512,12 @@ function MembersView({ users }) {
 }
 
 // --- Member Form ---
-function MemberForm({ onSubmit, onCancel, initialData }) {
+function MemberForm({ onSubmit, onCancel, initialData, inline = false }) {
   const [form, setForm] = useState(initialData || { firstName: '', lastName: '', role: 'member', groups: [] });
   const toggleGroup = g => setForm(f => ({ ...f, groups: f.groups.includes(g) ? f.groups.filter(x => x !== g) : [...f.groups, g] }));
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-6 animate-in slide-in-from-top-4 duration-300 shadow-2xl">
+    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-4 pt-2" : "bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 shadow-2xl"}`}>
       <div className="grid gap-4 md:grid-cols-3">
         <div className="space-y-1">
           <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Vorname</label>
