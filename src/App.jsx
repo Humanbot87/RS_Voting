@@ -18,7 +18,7 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage, appId } from './firebase';
 
 // --- Konstanten ---
-const GROUPS = ['Vorstand', 'Aktive', 'Passiv', 'Wagenbau', 'Ehrenmitglieder', 'Neumitglieder'];
+const GROUPS = ['Vorstand', 'Aktiv Musig', 'Aktiv Wagenbau', 'Passiv', 'Ehrenmitglieder', 'Neumitglied Musig', 'Neumitglied Wagenbau'];
 const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitext'];
 const TRAKTANDEN = [
   'Präsident', 'Vizepräsident', 'Tambourmajor', 'Tourmanager', 'Sujetchef', 'Kassier', 'Aktuar'
@@ -30,7 +30,7 @@ const INITIAL_USERS = [
     firstName: 'Admin', 
     lastName: 'Suuger', 
     role: 'admin', 
-    groups: ['Vorstand', 'Aktive'],
+    groups: ['Vorstand', 'Aktiv Musig'],
     password: '' 
   }
 ];
