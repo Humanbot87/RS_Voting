@@ -1061,7 +1061,15 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
                 if (err.message === "Bereits abgestimmt.") alert("Du hast bereits abgestimmt.");
               }
             }}
-            onStatusChange={st => onUpdate({ surveys: event.surveys.map(x => x.id === s.id ? {...x, status: st} : x) })}
+            onStatusChange={st => {
+              let updated = event.surveys.map(x => x.id === s.id ? {...x, status: st} : x);
+              if (st === 'published') {
+                const idx = updated.findIndex(x => x.id === s.id);
+                const [moved] = updated.splice(idx, 1);
+                updated.push(moved);
+              }
+              onUpdate({ surveys: updated });
+            }}
             users={users}
           />
           </div>
