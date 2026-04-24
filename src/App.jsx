@@ -940,6 +940,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
   const [showSurveyForm,   setShowSurveyForm]   = useState(false);
   const [editingSurvey,    setEditingSurvey]    = useState(null);
   const [presentingSurvey, setPresentingSurvey] = useState(null);
+  const [dragIndex,        setDragIndex]        = useState(null);
 
   const saveSurvey = (s) => {
     if (editingSurvey) {
@@ -1002,26 +1003,44 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
         )}
       </div>
 
-      {currentUser.role === 'admin' && !isArchived && !editingSurvey && (
+      {currentUser.role === 'admin' && !isArchived && (
         <button onClick={() => setShowSurveyForm(!showSurveyForm)} className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all">
           {showSurveyForm ? 'Abbrechen' : 'Neue Umfrage hinzufügen'}
         </button>
       )}
 
-      {(showSurveyForm || editingSurvey) && (
-        <CreateSurveyForm initialData={editingSurvey} onSubmit={saveSurvey} onCancel={() => { setShowSurveyForm(false); setEditingSurvey(null); }} />
+      {showSurveyForm && (
+        <CreateSurveyForm onSubmit={saveSurvey} onCancel={() => setShowSurveyForm(false)} />
       )}
 
       <div className="space-y-6">
-        {event.surveys?.map(s => (
-          <SurveyCard
+        {event.surveys?.map((s, index) => (
+          <div
             key={s.id}
+            draggable={currentUser.role === 'admin' && !isArchived}
+            onDragStart={() => setDragIndex(index)}
+            onDragOver={e => e.preventDefault()}
+            onDrop={() => {
+              if (dragIndex === null || dragIndex === index) return;
+              const reordered = [...event.surveys];
+              const [moved] = reordered.splice(dragIndex, 1);
+              reordered.splice(index, 0, moved);
+              onUpdate({ surveys: reordered });
+              setDragIndex(null);
+            }}
+            onDragEnd={() => setDragIndex(null)}
+            className={`transition-all ${dragIndex === index ? 'opacity-40 scale-[0.98]' : ''} ${currentUser.role === 'admin' && !isArchived ? 'cursor-grab active:cursor-grabbing' : ''}`}
+          >
+          <SurveyCard
             survey={s}
             currentUser={currentUser}
             isArchived={isArchived}
-            onEdit={() => setEditingSurvey(s)}
+            onEdit={() => setEditingSurvey(editingSurvey?.id === s.id ? null : s)}
             onDelete={() => deleteSurvey(s.id)}
             onPresent={setPresentingSurvey}
+            isEditing={editingSurvey?.id === s.id}
+            onSaveEdit={saveSurvey}
+            onCancelEdit={() => setEditingSurvey(null)}
             onVote={async (opts) => {
               const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
               try {
@@ -1050,6 +1069,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
             onStatusChange={st => onUpdate({ surveys: event.surveys.map(x => x.id === s.id ? {...x, status: st} : x) })}
             users={users}
           />
+          </div>
         ))}
       </div>
 
@@ -1180,7 +1200,7 @@ function CreateEventForm({ onSubmit }) {
 }
 
 // --- Create Survey Form ---
-function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
+function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
   const [title,          setTitle]          = useState(initialData?.title || '');
   const [maxAnswers,     setMaxAnswers]     = useState(initialData?.maxAnswers || 1);
   const [options,        setOptions]        = useState(initialData?.options || [{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
@@ -1189,7 +1209,7 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
   const toggleGroup = g => setAllowedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit({ title, maxAnswers, allowedGroups, options: options.filter(o => o.text.trim()) }); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl space-y-6 animate-in slide-in-from-top-4 duration-300">
+    <form onSubmit={e => { e.preventDefault(); onSubmit({ title, maxAnswers, allowedGroups, options: options.filter(o => o.text.trim()) }); }} className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-2" : "bg-gray-900 border border-gray-800 p-8 rounded-3xl"}`}>
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
           <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-4 text-white focus:border-orange-500 outline-none" placeholder="Was ist die Frage?" value={title} onChange={e => setTitle(e.target.value)} />
@@ -1235,7 +1255,7 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel }) {
 }
 
 // --- Survey Card ---
-function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete, onPresent, users }) {
+function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete, onPresent, isEditing, onSaveEdit, onCancelEdit, users }) {
   const [selected, setSelected] = useState([]);
   const [voting,   setVoting]   = useState(false);
   const hasVoted = survey.votedUsers?.includes(currentUser.id);
@@ -1327,7 +1347,16 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
             <p className="text-gray-500 text-sm">Die Resultate werden nach der Abstimmung publiziert.</p>
           </div>
         )}
-      </div>
+      {isEditing && (
+        <div className="border-t border-gray-800 p-4 bg-gray-950/50">
+          <CreateSurveyForm
+            initialData={survey}
+            onSubmit={onSaveEdit}
+            onCancel={onCancelEdit}
+            inline
+          />
+        </div>
+      )}
     </div>
   );
 }
