@@ -1347,6 +1347,7 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
             <p className="text-gray-500 text-sm">Die Resultate werden nach der Abstimmung publiziert.</p>
           </div>
         )}
+      </div>
       {isEditing && (
         <div className="border-t border-gray-800 p-4 bg-gray-950/50">
           <CreateSurveyForm
