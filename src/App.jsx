@@ -940,7 +940,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
   const [showSurveyForm,   setShowSurveyForm]   = useState(false);
   const [editingSurvey,    setEditingSurvey]    = useState(null);
   const [presentingSurvey, setPresentingSurvey] = useState(null);
-  const [dragIndex,        setDragIndex]        = useState(null);
+
 
   const saveSurvey = (s) => {
     if (editingSurvey) {
@@ -950,6 +950,14 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
       onUpdate({ surveys: [...(event.surveys || []), { ...s, id: Date.now().toString(), status: 'draft', votedUsers: [] }] });
       setShowSurveyForm(false);
     }
+  };
+
+  const moveSurvey = (index, dir) => {
+    const newIndex = index + dir;
+    if (newIndex < 0 || newIndex >= event.surveys.length) return;
+    const reordered = [...event.surveys];
+    [reordered[index], reordered[newIndex]] = [reordered[newIndex], reordered[index]];
+    onUpdate({ surveys: reordered });
   };
 
   const deleteSurvey = (id) => {
@@ -1015,22 +1023,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
 
       <div className="space-y-6">
         {event.surveys?.map((s, index) => (
-          <div
-            key={s.id}
-            draggable={currentUser.role === 'admin' && !isArchived}
-            onDragStart={() => setDragIndex(index)}
-            onDragOver={e => e.preventDefault()}
-            onDrop={() => {
-              if (dragIndex === null || dragIndex === index) return;
-              const reordered = [...event.surveys];
-              const [moved] = reordered.splice(dragIndex, 1);
-              reordered.splice(index, 0, moved);
-              onUpdate({ surveys: reordered });
-              setDragIndex(null);
-            }}
-            onDragEnd={() => setDragIndex(null)}
-            className={`transition-all ${dragIndex === index ? 'opacity-40 scale-[0.98]' : ''} ${currentUser.role === 'admin' && !isArchived ? 'cursor-grab active:cursor-grabbing' : ''}`}
-          >
+          <div key={s.id} className="transition-all">
           <SurveyCard
             survey={s}
             currentUser={currentUser}
@@ -1038,6 +1031,8 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
             onEdit={() => setEditingSurvey(editingSurvey?.id === s.id ? null : s)}
             onDelete={() => deleteSurvey(s.id)}
             onPresent={setPresentingSurvey}
+            onMoveUp={index > 0 ? () => moveSurvey(index, -1) : null}
+            onMoveDown={index < event.surveys.length - 1 ? () => moveSurvey(index, 1) : null}
             isEditing={editingSurvey?.id === s.id}
             onSaveEdit={saveSurvey}
             onCancelEdit={() => setEditingSurvey(null)}
@@ -1255,7 +1250,7 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
 }
 
 // --- Survey Card ---
-function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete, onPresent, isEditing, onSaveEdit, onCancelEdit, users }) {
+function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete, onPresent, onMoveUp, onMoveDown, isEditing, onSaveEdit, onCancelEdit, users }) {
   const [selected, setSelected] = useState([]);
   const [voting,   setVoting]   = useState(false);
   const hasVoted = survey.votedUsers?.includes(currentUser.id);
@@ -1296,6 +1291,8 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
               {survey.status === 'draft'  && <button onClick={() => onStatusChange('active')}    className="bg-green-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Starten</button>}
               {survey.status === 'active' && <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Publizieren</button>}
               <button onClick={() => onPresent(survey)} className="p-2 bg-gray-800 text-gray-400 hover:text-orange-500 rounded-lg transition-colors ml-2" title="Präsentationsmodus"><Maximize2 size={16}/></button>
+              <button onClick={onMoveUp} disabled={!onMoveUp} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors disabled:opacity-30" title="Nach oben"><ArrowUp size={16}/></button>
+              <button onClick={onMoveDown} disabled={!onMoveDown} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors disabled:opacity-30" title="Nach unten"><ArrowDown size={16}/></button>
               <button onClick={onEdit}   className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors"><Edit2 size={16}/></button>
               <button onClick={onDelete} className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg transition-colors"><Trash2 size={16}/></button>
             </div>
