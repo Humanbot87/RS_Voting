@@ -3,7 +3,8 @@ import {
   Users, Calendar, Archive, LogOut, Plus, Trash2, 
   ChevronRight, BarChart3, UserPlus, Eye, Check, Database, ShieldAlert, Edit2,
   Youtube, Lock, Unlock, ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw,
-  UploadCloud, Search, Download, ArrowUp, ArrowDown, Maximize2, Minimize2
+  UploadCloud, Search, Download, ArrowUp, ArrowDown, Maximize2, Minimize2,
+  Folder, FolderPlus, FileText, File, CalendarDays, MapPin, Clock
 } from 'lucide-react';
 import {
   signInWithCustomToken,
@@ -14,7 +15,7 @@ import {
   updatePassword,
 } from 'firebase/auth';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { auth, db, storage, appId } from './firebase';
 
 // --- Konstanten ---
@@ -53,7 +54,10 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [users, setUsers] = useState([]);
   const [events, setEvents] = useState([]);
-  const [minutes, setMinutes] = useState([]);
+  const [minutes,  setMinutes]  = useState([]);
+  const [files,    setFiles]    = useState([]);
+  const [folders,  setFolders]  = useState([]);
+  const [calItems, setCalItems] = useState([]);
   const [activeTab, setActiveTab] = useState('events');
   const [dbReady, setDbReady] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
@@ -109,12 +113,28 @@ export default function App() {
       (err) => console.error("Events Error:", err)
     );
 
+    const foldersRef  = collection(db, 'artifacts', appId, 'public', 'data', 'folders');
+    const filesRef    = collection(db, 'artifacts', appId, 'public', 'data', 'files');
+    const calRef      = collection(db, 'artifacts', appId, 'public', 'data', 'calendar');
+
     const unsubMinutes = onSnapshot(minutesRef,
       (s) => setMinutes(s.docs.map(d => ({ ...d.data(), id: d.id }))),
       (err) => console.error("Minutes Error:", err)
     );
+    const unsubFolders = onSnapshot(foldersRef,
+      (s) => setFolders(s.docs.map(d => ({ ...d.data(), id: d.id }))),
+      (err) => console.error("Folders Error:", err)
+    );
+    const unsubFiles = onSnapshot(filesRef,
+      (s) => setFiles(s.docs.map(d => ({ ...d.data(), id: d.id }))),
+      (err) => console.error("Files Error:", err)
+    );
+    const unsubCal = onSnapshot(calRef,
+      (s) => setCalItems(s.docs.map(d => ({ ...d.data(), id: d.id }))),
+      (err) => console.error("Calendar Error:", err)
+    );
 
-    return () => { unsubUsers(); unsubEvents(); unsubMinutes(); };
+    return () => { unsubUsers(); unsubEvents(); unsubMinutes(); unsubFolders(); unsubFiles(); unsubCal(); };
   }, [user]);
 
   // --- Auto-Login prüfen ---
@@ -263,7 +283,13 @@ export default function App() {
         <nav className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
           <TabButton active={activeTab === 'events'}  onClick={() => setActiveTab('events')}  icon={<Calendar size={18} />}     label="Events" />
           {isVorstand && (
-            <TabButton active={activeTab === 'minutes'} onClick={() => setActiveTab('minutes')} icon={<ClipboardList size={18} />} label="Protokolle" />
+            <TabButton active={activeTab === 'minutes'}  onClick={() => setActiveTab('minutes')}  icon={<ClipboardList size={18} />} label="Protokolle" />
+          )}
+          {isVorstand && (
+            <TabButton active={activeTab === 'files'}    onClick={() => setActiveTab('files')}    icon={<Folder size={18} />}       label="Dateien" />
+          )}
+          {isVorstand && (
+            <TabButton active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')} icon={<CalendarDays size={18} />}  label="Kalender" />
           )}
           {currentUser.role === 'admin' && (
             <>
@@ -274,10 +300,12 @@ export default function App() {
         </nav>
 
         <div className="animate-in fade-in duration-500">
-          {activeTab === 'events'  && <EventsView events={events.filter(e => !e.isArchived)} currentUser={currentUser} users={users} />}
-          {activeTab === 'minutes' && isVorstand && <ProtocolView minutes={minutes} users={users} currentUser={currentUser} />}
-          {activeTab === 'archive' && <EventsView events={events.filter(e => e.isArchived)} currentUser={currentUser} isArchive users={users} />}
-          {activeTab === 'members' && currentUser.role === 'admin' && <MembersView users={users} />}
+          {activeTab === 'events'   && <EventsView events={events.filter(e => !e.isArchived)} currentUser={currentUser} users={users} />}
+          {activeTab === 'minutes'  && isVorstand && <ProtocolView minutes={minutes} users={users} currentUser={currentUser} />}
+          {activeTab === 'files'    && isVorstand && <FilesView folders={folders} files={files} currentUser={currentUser} />}
+          {activeTab === 'calendar' && isVorstand && <CalendarView calItems={calItems} currentUser={currentUser} />}
+          {activeTab === 'archive'  && <EventsView events={events.filter(e => e.isArchived)} currentUser={currentUser} isArchive users={users} />}
+          {activeTab === 'members'  && currentUser.role === 'admin' && <MembersView users={users} />}
         </div>
       </main>
     </div>
@@ -1614,6 +1642,379 @@ function MemberForm({ onSubmit, onCancel, initialData, inline = false }) {
       <div className="flex justify-end gap-4 pt-6 border-t border-gray-800">
         <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold transition-colors">Abbrechen</button>
         <button type="submit" className="bg-orange-500 text-gray-950 font-black px-10 py-4 rounded-2xl shadow-lg active:scale-95 transition-all">Mitglied speichern</button>
+      </div>
+    </form>
+  );
+}
+
+// --- Files View ---
+function FilesView({ folders, files, currentUser }) {
+  const [selectedFolder, setSelectedFolder] = useState(null);
+  const [showNewFolder,  setShowNewFolder]  = useState(false);
+  const [folderName,     setFolderName]     = useState('');
+  const [uploading,      setUploading]      = useState({});
+  const [dragOver,       setDragOver]       = useState(false);
+
+  const folderFiles = useMemo(() =>
+    selectedFolder ? files.filter(f => f.folderId === selectedFolder.id) : [],
+    [files, selectedFolder]
+  );
+
+  const createFolder = async (e) => {
+    e.preventDefault();
+    if (!folderName.trim()) return;
+    const id = Date.now().toString();
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'folders', id), {
+      id, name: folderName.trim(), createdAt: new Date().toISOString(), createdBy: currentUser.id
+    });
+    setFolderName('');
+    setShowNewFolder(false);
+  };
+
+  const deleteFolder = async (folder) => {
+    if (!confirm(`Ordner "${folder.name}" und alle Dateien darin löschen?`)) return;
+    // Delete all files in folder
+    const folderFilesList = files.filter(f => f.folderId === folder.id);
+    for (const f of folderFilesList) {
+      try { await deleteObject(ref(storage, f.storagePath)); } catch(e) {}
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', f.id));
+    }
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'folders', folder.id));
+    if (selectedFolder?.id === folder.id) setSelectedFolder(null);
+  };
+
+  const handleUpload = (fileList) => {
+    if (!selectedFolder) return;
+    Array.from(fileList).forEach(file => {
+      const uploadId = Date.now().toString() + Math.random().toString(36).substr(2, 4);
+      const storagePath = `artifacts/${appId}/public/files/${selectedFolder.id}/${Date.now()}_${file.name}`;
+      const storageRef = ref(storage, storagePath);
+      const task = uploadBytesResumable(storageRef, file);
+      setUploading(prev => ({ ...prev, [uploadId]: { name: file.name, progress: 0 } }));
+      task.on('state_changed',
+        snap => setUploading(prev => ({ ...prev, [uploadId]: { name: file.name, progress: Math.round((snap.bytesTransferred / snap.totalBytes) * 100) } })),
+        err => { console.error(err); setUploading(prev => { const n = {...prev}; delete n[uploadId]; return n; }); },
+        async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
+          const fileId = Date.now().toString();
+          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', fileId), {
+            id: fileId, name: file.name, url, storagePath, folderId: selectedFolder.id,
+            size: file.size, type: file.type, uploadedAt: new Date().toISOString(), uploadedBy: currentUser.id
+          });
+          setUploading(prev => { const n = {...prev}; delete n[uploadId]; return n; });
+        }
+      );
+    });
+  };
+
+  const deleteFile = async (f) => {
+    if (!confirm(`Datei "${f.name}" löschen?`)) return;
+    try { await deleteObject(ref(storage, f.storagePath)); } catch(e) {}
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', f.id));
+  };
+
+  const formatSize = (bytes) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const getFileIcon = (type) => {
+    if (type?.includes('pdf')) return '📄';
+    if (type?.includes('image')) return '🖼️';
+    if (type?.includes('word') || type?.includes('document')) return '📝';
+    if (type?.includes('excel') || type?.includes('sheet')) return '📊';
+    return '📁';
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-black text-white">Dateien</h2>
+          <p className="text-gray-500 text-sm mt-1">Dokumente und Dateien verwalten</p>
+        </div>
+        <button onClick={() => setShowNewFolder(!showNewFolder)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 w-full md:w-auto">
+          <FolderPlus size={20} /> Neuer Ordner
+        </button>
+      </div>
+
+      {showNewFolder && (
+        <form onSubmit={createFolder} className="flex gap-3 bg-gray-900 border border-gray-800 p-4 rounded-2xl animate-in slide-in-from-top-2">
+          <input
+            autoFocus required value={folderName} onChange={e => setFolderName(e.target.value)}
+            placeholder="Ordnername..."
+            className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"
+          />
+          <button type="submit" className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all"><Save size={18}/></button>
+          <button type="button" onClick={() => setShowNewFolder(false)} className="px-4 py-3 bg-gray-800 text-gray-400 rounded-xl hover:text-white transition-all"><X size={18}/></button>
+        </form>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        {folders.map(folder => (
+          <div
+            key={folder.id}
+            onClick={() => setSelectedFolder(selectedFolder?.id === folder.id ? null : folder)}
+            className={`bg-gray-900 border rounded-2xl p-4 cursor-pointer transition-all active:scale-95 group relative ${selectedFolder?.id === folder.id ? 'border-orange-500 bg-orange-500/5' : 'border-gray-800 hover:border-gray-700'}`}
+          >
+            <Folder size={32} className={`mb-2 ${selectedFolder?.id === folder.id ? 'text-orange-500' : 'text-gray-600 group-hover:text-gray-400'}`} />
+            <p className="font-bold text-white text-sm truncate">{folder.name}</p>
+            <p className="text-[10px] text-gray-600 mt-1">{files.filter(f => f.folderId === folder.id).length} Dateien</p>
+            <button
+              onClick={e => { e.stopPropagation(); deleteFolder(folder); }}
+              className="absolute top-2 right-2 p-1.5 text-gray-700 hover:text-red-500 opacity-0 group-hover:opacity-100 bg-gray-950 rounded-lg transition-all"
+            ><Trash2 size={14}/></button>
+          </div>
+        ))}
+        {folders.length === 0 && (
+          <div className="col-span-full text-center py-12 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
+            <Folder className="mx-auto text-gray-800 mb-3" size={40}/>
+            <p className="text-gray-600 font-bold uppercase tracking-widest text-xs">Noch keine Ordner</p>
+          </div>
+        )}
+      </div>
+
+      {selectedFolder && (
+        <div className="bg-gray-900 border border-orange-500/30 rounded-3xl overflow-hidden animate-in slide-in-from-top-2 duration-300">
+          <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-orange-500/5">
+            <div className="flex items-center gap-3">
+              <Folder size={20} className="text-orange-500"/>
+              <h3 className="font-black text-white text-lg">{selectedFolder.name}</h3>
+              <span className="text-[10px] text-gray-500 font-bold">{folderFiles.length} Dateien</span>
+            </div>
+          </div>
+
+          {/* Upload Area */}
+          <div
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={e => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files); }}
+            className={`mx-4 mt-4 border-2 border-dashed rounded-2xl p-6 text-center transition-all ${dragOver ? 'border-orange-500 bg-orange-500/10' : 'border-gray-800 hover:border-gray-700'}`}
+          >
+            <UploadCloud size={24} className="mx-auto text-gray-600 mb-2"/>
+            <p className="text-gray-500 text-sm font-bold">Dateien hierher ziehen oder</p>
+            <label className="mt-2 inline-block cursor-pointer text-orange-500 font-black text-sm hover:underline">
+              Datei auswählen
+              <input type="file" multiple className="hidden" onChange={e => handleUpload(e.target.files)} />
+            </label>
+          </div>
+
+          {/* Upload progress */}
+          {Object.entries(uploading).map(([id, u]) => (
+            <div key={id} className="mx-4 mt-2 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 flex items-center gap-3">
+              <div className="flex-1">
+                <p className="text-xs font-bold text-white truncate">{u.name}</p>
+                <div className="w-full h-1.5 bg-gray-800 rounded-full mt-1 overflow-hidden">
+                  <div className="h-full bg-orange-500 rounded-full transition-all" style={{ width: `${u.progress}%` }}/>
+                </div>
+              </div>
+              <span className="text-[11px] text-orange-500 font-bold shrink-0">{u.progress}%</span>
+            </div>
+          ))}
+
+          {/* File list */}
+          <div className="p-4 space-y-2">
+            {folderFiles.length === 0 && Object.keys(uploading).length === 0 && (
+              <p className="text-center text-gray-700 text-xs py-4 font-bold uppercase tracking-widest">Keine Dateien</p>
+            )}
+            {folderFiles.map(f => (
+              <div key={f.id} className="flex items-center gap-3 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 group">
+                <span className="text-xl shrink-0">{getFileIcon(f.type)}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-white text-sm truncate">{f.name}</p>
+                  <p className="text-[10px] text-gray-600">{formatSize(f.size)} • {new Date(f.uploadedAt).toLocaleDateString('de-CH')}</p>
+                </div>
+                <a href={f.url} download target="_blank" rel="noreferrer" className="p-2 text-gray-600 hover:text-orange-500 bg-gray-900 rounded-lg transition-all shrink-0" title="Herunterladen">
+                  <Download size={16}/>
+                </a>
+                <button onClick={() => deleteFile(f)} className="p-2 text-gray-600 hover:text-red-500 bg-gray-900 rounded-lg transition-all shrink-0 opacity-0 group-hover:opacity-100" title="Löschen">
+                  <Trash2 size={16}/>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Calendar View ---
+function CalendarView({ calItems, currentUser }) {
+  const [showAdd,   setShowAdd]   = useState(false);
+  const [editing,   setEditing]   = useState(null);
+  const [viewMonth, setViewMonth] = useState(new Date());
+
+  const saveItem = async (item) => {
+    const id = item.id || Date.now().toString();
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'calendar', id), { ...item, id });
+    setShowAdd(false);
+    setEditing(null);
+  };
+
+  const deleteItem = async (id) => {
+    if (!confirm('Termin löschen?')) return;
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'calendar', id));
+  };
+
+  const year  = viewMonth.getFullYear();
+  const month = viewMonth.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startOffset = firstDay === 0 ? 6 : firstDay - 1; // Monday first
+
+  const itemsByDate = useMemo(() => {
+    const map = {};
+    calItems.forEach(item => {
+      const key = item.date?.slice(0, 10);
+      if (key) { if (!map[key]) map[key] = []; map[key].push(item); }
+    });
+    return map;
+  }, [calItems]);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const monthNames = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  const dayNames = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+
+  const upcomingItems = useMemo(() =>
+    [...calItems]
+      .filter(i => i.date >= todayStr)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 5),
+    [calItems, todayStr]
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-black text-white">Kalender</h2>
+          <p className="text-gray-500 text-sm mt-1">Termine und Anlässe</p>
+        </div>
+        <button onClick={() => { setEditing(null); setShowAdd(!showAdd); }} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 w-full md:w-auto">
+          <Plus size={20} /> Neuer Termin
+        </button>
+      </div>
+
+      {(showAdd || editing) && (
+        <CalendarItemForm
+          initialData={editing}
+          onSave={saveItem}
+          onCancel={() => { setShowAdd(false); setEditing(null); }}
+        />
+      )}
+
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Calendar Grid */}
+        <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+            <button onClick={() => setViewMonth(new Date(year, month - 1, 1))} className="p-2 bg-gray-800 rounded-xl hover:text-orange-500 transition-all active:scale-90">
+              <ChevronRight className="rotate-180" size={18}/>
+            </button>
+            <h3 className="font-black text-white text-lg">{monthNames[month]} {year}</h3>
+            <button onClick={() => setViewMonth(new Date(year, month + 1, 1))} className="p-2 bg-gray-800 rounded-xl hover:text-orange-500 transition-all active:scale-90">
+              <ChevronRight size={18}/>
+            </button>
+          </div>
+          <div className="p-4">
+            <div className="grid grid-cols-7 mb-2">
+              {dayNames.map(d => (
+                <div key={d} className="text-center text-[10px] font-black text-gray-600 uppercase py-1">{d}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {Array.from({ length: startOffset }).map((_, i) => <div key={`e${i}`}/>)}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const day = i + 1;
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const dayItems = itemsByDate[dateStr] || [];
+                const isToday = dateStr === todayStr;
+                return (
+                  <div key={day} className={`min-h-[52px] rounded-xl p-1 border transition-all ${isToday ? 'border-orange-500 bg-orange-500/10' : 'border-transparent hover:border-gray-800'}`}>
+                    <p className={`text-xs font-black text-center mb-1 ${isToday ? 'text-orange-500' : 'text-gray-500'}`}>{day}</p>
+                    {dayItems.slice(0, 2).map(item => (
+                      <div
+                        key={item.id}
+                        onClick={() => setEditing(item)}
+                        className="text-[9px] font-bold truncate px-1 py-0.5 rounded bg-orange-500/20 text-orange-400 cursor-pointer hover:bg-orange-500/30 mb-0.5"
+                      >
+                        {item.title}
+                      </div>
+                    ))}
+                    {dayItems.length > 2 && <p className="text-[9px] text-gray-600 text-center">+{dayItems.length - 2}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Upcoming */}
+        <div className="space-y-4">
+          <h3 className="font-black text-white text-lg flex items-center gap-2"><Clock size={18} className="text-orange-500"/> Nächste Termine</h3>
+          {upcomingItems.length === 0 ? (
+            <div className="bg-gray-900 border border-gray-800 border-dashed rounded-2xl p-6 text-center">
+              <p className="text-gray-600 text-xs font-bold uppercase tracking-widest">Keine Termine</p>
+            </div>
+          ) : upcomingItems.map(item => (
+            <div key={item.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 hover:border-gray-700 transition-all group">
+              <div className="flex justify-between items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-white truncate">{item.title}</p>
+                  <p className="text-[11px] text-orange-500 font-bold mt-1 flex items-center gap-1">
+                    <CalendarDays size={11}/> {new Date(item.date).toLocaleDateString('de-CH', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    {item.time && <><Clock size={11} className="ml-2"/>{item.time}</>}
+                  </p>
+                  {item.location && <p className="text-[11px] text-gray-500 mt-1 flex items-center gap-1"><MapPin size={11}/>{item.location}</p>}
+                  {item.description && <p className="text-xs text-gray-600 mt-2 line-clamp-2">{item.description}</p>}
+                </div>
+                <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-all">
+                  <button onClick={() => setEditing(item)} className="p-1.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg"><Edit2 size={14}/></button>
+                  <button onClick={() => deleteItem(item.id)} className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg"><Trash2 size={14}/></button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CalendarItemForm({ initialData, onSave, onCancel }) {
+  const [form, setForm] = useState(initialData || {
+    title: '', date: new Date().toISOString().slice(0, 10), time: '', location: '', description: ''
+  });
+
+  return (
+    <form onSubmit={e => { e.preventDefault(); onSave(form); }} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl space-y-4 animate-in slide-in-from-top-2 duration-200 shadow-2xl">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="md:col-span-2 space-y-1">
+          <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Titel</label>
+          <input required value={form.title} onChange={e => setForm({...form, title: e.target.value})} placeholder="z.B. Vorstandssitzung" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"/>
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Datum</label>
+          <input required type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"/>
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Uhrzeit (optional)</label>
+          <input type="time" value={form.time} onChange={e => setForm({...form, time: e.target.value})} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"/>
+        </div>
+        <div className="md:col-span-2 space-y-1">
+          <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Ort (optional)</label>
+          <input value={form.location} onChange={e => setForm({...form, location: e.target.value})} placeholder="z.B. Vereinslokal" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"/>
+        </div>
+        <div className="md:col-span-2 space-y-1">
+          <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Beschreibung (optional)</label>
+          <textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Weitere Details..." rows={3} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none resize-none"/>
+        </div>
+      </div>
+      <div className="flex justify-end gap-3 pt-2 border-t border-gray-800">
+        <button type="button" onClick={onCancel} className="px-6 py-3 text-gray-500 hover:text-white font-bold transition-colors">Abbrechen</button>
+        <button type="submit" className="px-8 py-3 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg flex items-center gap-2"><Save size={18}/> Speichern</button>
       </div>
     </form>
   );
