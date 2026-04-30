@@ -143,7 +143,7 @@ export default function App() {
       } catch(e) { console.error("Presence Error", e); }
     };
     updatePresence();
-    const interval = setInterval(updatePresence, 5000);
+    const interval = setInterval(updatePresence, 30000);
     return () => clearInterval(interval);
   }, [currentUser]);
 
@@ -1081,6 +1081,15 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
           survey={event.surveys.find(s => s.id === presentingSurvey.id) || presentingSurvey}
           users={users}
           onClose={() => setPresentingSurvey(null)}
+          onPublish={() => {
+            const s = event.surveys.find(x => x.id === presentingSurvey.id);
+            if (!s) return;
+            let updated = event.surveys.map(x => x.id === s.id ? {...x, status: 'published'} : x);
+            const idx = updated.findIndex(x => x.id === s.id);
+            const [moved] = updated.splice(idx, 1);
+            updated.push(moved);
+            onUpdate({ surveys: updated });
+          }}
         />
       )}
     </div>
@@ -1088,7 +1097,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
 }
 
 // --- Presentation Modal ---
-function PresentationModal({ survey, users, onClose }) {
+function PresentationModal({ survey, users, onClose, onPublish }) {
   const surveyAllowedGroups = survey.allowedGroups || GROUPS;
   const eligibleUsersCount = users.filter(u => surveyAllowedGroups.some(g => u.groups?.includes(g))).length;
   const totalVotes = survey.options.reduce((sum, o) => sum + (o.votes || 0), 0);
@@ -1107,17 +1116,27 @@ function PresentationModal({ survey, users, onClose }) {
             Live Abstimmung
           </span>
         </div>
-        <button onClick={onClose} className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90">
-          <Minimize2 size={20} />
-        </button>
+        <div className="flex items-center gap-3">
+          {survey.status === 'active' && onPublish && (
+            <button onClick={onPublish} className="px-5 py-2.5 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20">
+              Publizieren
+            </button>
+          )}
+          <button onClick={onClose} className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90">
+            <Minimize2 size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 flex flex-col items-center justify-center px-8 py-10 max-w-4xl mx-auto w-full">
         {/* Frage */}
-        <h2 className="text-4xl sm:text-5xl font-black text-white text-center leading-tight mb-12">
+        <h2 className="text-4xl sm:text-5xl font-black text-white text-center leading-tight mb-4">
           {survey.title}
         </h2>
+        <p className="text-gray-500 font-bold uppercase tracking-widest text-sm mb-10">
+          {survey.majorityType === 'two_thirds' ? '⅔ Zwei-Drittel-Mehrheit erforderlich' : 'Einfache Mehrheit (50%+1)'}
+        </p>
 
         {/* Resultate / Optionen */}
         <div className="w-full space-y-4 mb-12">
@@ -1133,8 +1152,8 @@ function PresentationModal({ survey, users, onClose }) {
                   />
                   <span className="flex-1 font-black text-white text-xl z-10 truncate">{o.text}</span>
                   <div className="z-10 text-right ml-6">
-                    <p className="text-3xl font-black text-white">{pct}%</p>
-                    <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">{o.votes || 0} Stimmen</p>
+                    <p className="text-3xl font-black text-white">{o.votes || 0}</p>
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">Stimmen</p>
                   </div>
                 </div>
               );
@@ -1206,13 +1225,14 @@ function CreateEventForm({ onSubmit }) {
 function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
   const [title,          setTitle]          = useState(initialData?.title || '');
   const [maxAnswers,     setMaxAnswers]     = useState(initialData?.maxAnswers || 1);
+  const [majorityType,   setMajorityType]   = useState(initialData?.majorityType || 'simple');
   const [options,        setOptions]        = useState(initialData?.options || [{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
   const [allowedGroups,  setAllowedGroups]  = useState(initialData?.allowedGroups || GROUPS);
 
   const toggleGroup = g => setAllowedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit({ title, maxAnswers, allowedGroups, options: options.filter(o => o.text.trim()) }); }} className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-2" : "bg-gray-900 border border-gray-800 p-8 rounded-3xl"}`}>
+    <form onSubmit={e => { e.preventDefault(); onSubmit({ title, maxAnswers, majorityType, allowedGroups, options: options.filter(o => o.text.trim()) }); }} className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-2" : "bg-gray-900 border border-gray-800 p-8 rounded-3xl"}`}>
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
           <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-4 text-white focus:border-orange-500 outline-none" placeholder="Was ist die Frage?" value={title} onChange={e => setTitle(e.target.value)} />
@@ -1220,6 +1240,13 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
         <div className="flex items-center gap-3 bg-gray-950 border border-gray-800 px-4 py-2 rounded-xl shrink-0">
           <label className="text-xs font-bold text-gray-500 uppercase">Max. Stimmen:</label>
           <input type="number" min="1" max="10" className="w-16 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none text-center font-bold" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} />
+        </div>
+        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-4 py-2 rounded-xl shrink-0">
+          <label className="text-xs font-bold text-gray-500 uppercase">Mehrheit:</label>
+          <select className="bg-transparent text-white text-xs font-bold outline-none" value={majorityType} onChange={e => setMajorityType(e.target.value)}>
+            <option value="simple">Einfach (50%+1)</option>
+            <option value="two_thirds">Zwei Drittel (⅔)</option>
+          </select>
         </div>
       </div>
       {options.map((o, i) => (
@@ -1285,7 +1312,7 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
       <div className="p-6 border-b border-gray-800 bg-gray-950/20 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <span className="text-[10px] font-black uppercase text-orange-500 block mb-1">
-            {isArchived ? 'Abstimmung Beendet' : survey.status} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'}
+            {isArchived ? 'Abstimmung Beendet' : survey.status} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'} • {survey.majorityType === 'two_thirds' ? '⅔ Mehrheit' : 'Einfache Mehrheit'}
           </span>
           <h4 className="text-xl font-bold text-white leading-tight">{survey.title}</h4>
         </div>
@@ -1318,8 +1345,8 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
                 {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" className="text-red-500 hover:scale-110 transition-transform"><Youtube size={16}/></a>}
               </div>
               <div className="text-right z-10">
-                <p className="text-sm font-black">{pct}%</p>
-                <p className="text-[9px] text-gray-600 font-bold tracking-tighter uppercase">{o.votes || 0} Stimmen</p>
+                <p className="text-sm font-black">{o.votes || 0}</p>
+                <p className="text-[9px] text-gray-600 font-bold tracking-tighter uppercase">Stimmen</p>
               </div>
             </div>
           );
