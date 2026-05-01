@@ -171,7 +171,8 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     const u = users.find(x => x.id === currentUser.id);
-    if (u && u.sessionId && u.sessionId !== currentUser.sessionId && u.isOnline) {
+    const isMultiLoginAllowed = currentUser?.role === 'admin' || currentUser?.groups?.includes('Vorstand');
+    if (!isMultiLoginAllowed && u && u.sessionId && u.sessionId !== currentUser.sessionId && u.isOnline) {
       const timeSinceLastSeen = Date.now() - (u.lastSeen || 0);
       if (timeSinceLastSeen < 15000) {
         localStorage.removeItem('ruesssuuger_userId');
@@ -339,7 +340,8 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
 
     const timeSinceLastSeen = Date.now() - (u.lastSeen || 0);
     const savedSession = localStorage.getItem('ruesssuuger_sessionId');
-    if (u.isOnline && timeSinceLastSeen < 15000 && u.sessionId !== savedSession) {
+    const isMultiLoginAllowed = u.role === 'admin' || u.groups?.includes('Vorstand');
+    if (!isMultiLoginAllowed && u.isOnline && timeSinceLastSeen < 15000 && u.sessionId !== savedSession) {
       setError("Dieses Mitglied ist bereits aktiv angemeldet. Bei Verbindungsabbruch bitte ca. 15 Sekunden warten.");
       return;
     }
