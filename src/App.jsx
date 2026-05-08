@@ -1165,7 +1165,7 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
           {survey.title}
         </h2>
         <p className="text-gray-500 font-bold uppercase tracking-widest text-sm mb-10">
-          {survey.majorityType === 'two_thirds' ? '⅔ Zwei-Drittel-Mehrheit erforderlich' : 'Einfache Mehrheit (50%+1)'}
+          {survey.majorityType === 'two_thirds' ? '⅔ Zwei-Drittel-Mehrheit erforderlich' : survey.majorityType === 'simple' ? 'Einfache Mehrheit (50%+1)' : ''}
         </p>
 
         {/* Resultate / Optionen */}
@@ -1255,7 +1255,7 @@ function CreateEventForm({ onSubmit }) {
 function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
   const [title,          setTitle]          = useState(initialData?.title || '');
   const [maxAnswers,     setMaxAnswers]     = useState(initialData?.maxAnswers || 1);
-  const [majorityType,   setMajorityType]   = useState(initialData?.majorityType || 'simple');
+  const [majorityType,   setMajorityType]   = useState(initialData?.majorityType || 'none');
   const [options,        setOptions]        = useState(initialData?.options || [{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
   const [allowedGroups,  setAllowedGroups]  = useState(initialData?.allowedGroups || GROUPS);
 
@@ -1274,6 +1274,7 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
         <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-4 py-2 rounded-xl shrink-0">
           <label className="text-xs font-bold text-gray-500 uppercase">Mehrheit:</label>
           <select className="bg-transparent text-white text-xs font-bold outline-none" value={majorityType} onChange={e => setMajorityType(e.target.value)}>
+            <option value="none">Keine Angabe</option>
             <option value="simple">Einfach (50%+1)</option>
             <option value="two_thirds">Zwei Drittel (⅔)</option>
           </select>
@@ -1342,7 +1343,7 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
       <div className="p-6 border-b border-gray-800 bg-gray-950/20 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <span className="text-[10px] font-black uppercase text-orange-500 block mb-1">
-            {isArchived ? 'Abstimmung Beendet' : survey.status} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'} • {survey.majorityType === 'two_thirds' ? '⅔ Mehrheit' : 'Einfache Mehrheit'}
+            {isArchived ? 'Abstimmung Beendet' : survey.status} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'} • {survey.majorityType === 'two_thirds' ? '⅔ Mehrheit' : survey.majorityType === 'simple' ? 'Einfache Mehrheit' : ''}
           </span>
           <h4 className="text-xl font-bold text-white leading-tight">{survey.title}</h4>
         </div>
