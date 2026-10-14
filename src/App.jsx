@@ -745,6 +745,8 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
 function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
   const [editing,        setEditing]        = useState(null);
   const [showAdd,        setShowAdd]        = useState(false);
+  const [liveDraft,      setLiveDraft]      = useState(null);
+  const [watchingLive,   setWatchingLive]   = useState(false);
   const [searchTerm,     setSearchTerm]     = useState('');
   const [roleFilter,     setRoleFilter]     = useState('Alle');
   const [yearFilter,     setYearFilter]     = useState('Alle');
@@ -754,6 +756,29 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
   const [readingMinute,  setReadingMinute]  = useState(null);
 
   const vorstandMembers = useMemo(() => users.filter(u => u.groups?.includes('Vorstand')), [users]);
+
+  // Echtzeit-Listener für aktives Live-Protokoll (Live-Tippen)
+  useEffect(() => {
+    const liveRef = doc(db, 'artifacts', appId, 'public', 'data', 'minutes', '__live_session__');
+    const unsub = onSnapshot(
+      liveRef,
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          // Nur anzeigen, wenn die Live-Session aktiv ist und in den letzten 15 Minuten aktualisiert wurde
+          if (data.isActive && Date.now() - (data.updatedAt || 0) < 15 * 60 * 1000) {
+            setLiveDraft(data);
+          } else {
+            setLiveDraft(null);
+          }
+        } else {
+          setLiveDraft(null);
+        }
+      },
+      (err) => console.error("Live Session Error:", err)
+    );
+    return () => unsub();
+  }, []);
 
   // Farb-Akzente pro Traktandum für schnelle visuelle Orientierung
   const traktandumMeta = {
@@ -819,7 +844,9 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
   }, [minutes]);
 
   const filteredMinutes = useMemo(() => {
-    let sorted = [...minutes].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    let sorted = [...minutes]
+      .filter(m => m.id !== '__live_session__')
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     if (yearFilter !== 'Alle') {
       sorted = sorted.filter(m => (m.date || '').startsWith(yearFilter));
     }
@@ -851,6 +878,9 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
   const saveProtocol = async (p) => {
     const id = p.id || Date.now().toString();
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', id), { ...p, id });
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', '__live_session__'));
+    } catch (e) {}
     localStorage.removeItem('ruesssuuger_protocol_draft');
     setShowAdd(false);
     setEditing(null);
@@ -944,6 +974,8 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
     return (
       <ProtocolEditor
         vorstand={vorstandMembers}
+        currentUser={currentUser}
+        liveDraft={liveDraft}
         onSave={saveProtocol}
         onCancel={() => { setShowAdd(false); setEditing(null); }}
         initialData={editing}
@@ -954,6 +986,53 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
 
   return (
     <div className="space-y-6">
+      {/* Live-Ticker Banner, wenn jemand gerade ein Protokoll tippt */}
+      {liveDraft && (
+        <div className="bg-gradient-to-r from-orange-500/20 via-orange-500/10 to-gray-900 border-2 border-orange-500/60 rounded-3xl p-5 sm:p-6 shadow-2xl animate-in fade-in duration-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-4">
+            <div className="relative flex h-4 w-4 shrink-0 mt-1 sm:mt-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-4 w-4 bg-orange-500"></span>
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest bg-orange-500 text-gray-950 px-2.5 py-0.5 rounded-full">
+                  LIVE-PROTOKOLL AKTIV
+                </span>
+                <span className="text-xs font-bold text-orange-300">
+                  {liveDraft.activeEditorName || 'Ein Vorstandsmitglied'} tippt gerade
+                  {liveDraft.activeTraktandum ? ` in «${liveDraft.activeTraktandum}»...` : '...'}
+                </span>
+              </div>
+              <h3 className="text-lg sm:text-xl font-black text-white mt-1">
+                {liveDraft.form?.title || 'Unbenannte Vorstandssitzung'}
+              </h3>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <button
+              onClick={() => setWatchingLive(true)}
+              className="px-5 py-3 bg-gray-950 hover:bg-gray-900 text-white border border-orange-500/40 font-black rounded-2xl text-xs flex items-center gap-2 transition-all active:scale-95"
+            >
+              <Eye size={16} className="text-orange-500" /> Live mitlesen
+            </button>
+            <button
+              onClick={() => {
+                setWatchingLive(false);
+                if (liveDraft.form?.id) {
+                  setEditing(liveDraft.form);
+                } else {
+                  setShowAdd(true);
+                }
+              }}
+              className="px-5 py-3 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl text-xs flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-orange-500/20"
+            >
+              <Edit2 size={16} /> Gemeinsam tippen
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Header & KPI Cards */}
       <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1525,14 +1604,126 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
           </div>
         </div>
       )}
+
+      {/* Live-Mitlese-Ansicht (Echtzeit-Stream des aktuellen Tippens) */}
+      {watchingLive && liveDraft && (
+        <div className="fixed inset-0 z-[160] bg-gray-950/95 backdrop-blur-md overflow-y-auto p-4 sm:p-8 animate-in fade-in duration-200">
+          <div className="max-w-4xl mx-auto bg-gray-900 border-2 border-orange-500/50 rounded-3xl shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 bg-gray-950 border-b border-gray-800 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10">
+              <div className="flex items-center gap-3">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
+                </span>
+                <span className="text-orange-500 text-xs font-black uppercase tracking-widest">
+                  Live-Übertragung • {liveDraft.activeEditorName} schreibt gerade
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setWatchingLive(false);
+                    if (liveDraft.form?.id) setEditing(liveDraft.form);
+                    else setShowAdd(true);
+                  }}
+                  className="px-4 py-2 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95"
+                >
+                  <Edit2 size={14} /> Mitschreiben
+                </button>
+                <button
+                  onClick={() => setWatchingLive(false)}
+                  className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 sm:p-10 space-y-8">
+              <div className="border-b border-gray-800 pb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-orange-500 mb-1">Live Sitzungsprotokoll</p>
+                  <h1 className="text-2xl sm:text-4xl font-black text-white">
+                    {liveDraft.form?.title || 'Titel wird gerade eingegeben...'}
+                  </h1>
+                </div>
+                <div className="text-left sm:text-right">
+                  <p className="text-xs text-gray-500 uppercase font-bold">Letzte Eingabe</p>
+                  <p className="text-sm font-black text-emerald-400">
+                    {liveDraft.updatedAt ? new Date(liveDraft.updatedAt).toLocaleTimeString('de-CH') : 'Jetzt'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                {TRAKTANDEN.map(t => {
+                  const pts = liveDraft.form?.traktanden?.[t];
+                  if (!pts || pts.length === 0) return null;
+                  const isCurrentlyTypingHere = liveDraft.activeTraktandum === t;
+                  return (
+                    <div
+                      key={t}
+                      className={`p-5 rounded-2xl border transition-all ${
+                        isCurrentlyTypingHere
+                          ? 'bg-orange-500/5 border-orange-500/50'
+                          : 'bg-gray-950 border-gray-800'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-lg font-black text-orange-500">{t}</h3>
+                        {isCurrentlyTypingHere && (
+                          <span className="text-[10px] font-black uppercase tracking-widest text-orange-400 bg-orange-500/10 px-2.5 py-1 rounded-full animate-pulse">
+                            ✍️ {liveDraft.activeEditorName} tippt hier...
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-3">
+                        {pts.map((p, idx) => {
+                          const isActivePoint = liveDraft.activePointId === p.id;
+                          return (
+                            <div
+                              key={p.id}
+                              className={`p-4 rounded-xl border text-sm leading-relaxed transition-all ${
+                                isActivePoint
+                                  ? 'bg-gray-900 border-orange-500 text-white shadow-lg shadow-orange-500/10'
+                                  : 'bg-gray-900/60 border-gray-800/80 text-gray-200'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[10px] font-black text-gray-500">#{idx + 1}</span>
+                                {isActivePoint && (
+                                  <span className="text-[10px] font-bold text-orange-400 animate-pulse">
+                                    wird gerade geschrieben...
+                                  </span>
+                                )}
+                              </div>
+                              <p className="whitespace-pre-wrap">
+                                {p.text || <span className="italic text-gray-600">Tippt...</span>}
+                                {isActivePoint && (
+                                  <span className="inline-block w-2 h-4 bg-orange-500 ml-1 animate-pulse align-middle" />
+                                )}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// --- Protocol Editor (Redesigned & Aufgewertet mit Auto-Save & Pendenzen-Zuweisung) ---
-function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
+// --- Protocol Editor (Mit Echtzeit-Live-Sync für gemeinsames Tippen & Mitlesen) ---
+function ProtocolEditor({ vorstand, currentUser, liveDraft, onSave, onCancel, initialData, notify }) {
   const [form, setForm] = useState(() => {
     if (initialData) return initialData;
+    if (liveDraft?.form) return liveDraft.form;
     const savedDraft = localStorage.getItem('ruesssuuger_protocol_draft');
     if (savedDraft) {
       try {
@@ -1553,23 +1744,81 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
   const [enlargedEditPoint, setEnlargedEditPoint] = useState(null);
   const [activeTraktandum,  setActiveTraktandum]  = useState('Alle');
   const [draftSavedAt,      setDraftSavedAt]      = useState(null);
+  const [liveSyncEnabled,   setLiveSyncEnabled]   = useState(true);
+  const [focusedField,      setFocusedField]      = useState({ traktandum: null, pointId: null });
+  const isRemoteUpdateRef = React.useRef(false);
+  const lastLocalEditRef  = React.useRef(0);
 
-  // Automatische Entwurf-Zwischenspeicherung im Browser (Schutz vor Datenverlust während der Sitzung)
+  // Empfange Live-Änderungen von anderen Vorstandsmitgliedern in Echtzeit
   useEffect(() => {
-    if (initialData) return;
-    const timer = setTimeout(() => {
-      try {
-        localStorage.setItem('ruesssuuger_protocol_draft', JSON.stringify(form));
-        setDraftSavedAt(new Date().toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }));
-      } catch (e) {}
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [form, initialData]);
+    if (!liveSyncEnabled || !liveDraft?.form) return;
+    const isFromOtherSession = liveDraft.sessionId && liveDraft.sessionId !== currentUser?.sessionId;
+    const timeSinceMyLastKeystroke = Date.now() - lastLocalEditRef.current;
 
-  const updateAttendance = (userId, status) =>
+    // Wenn ein anderes Gerät tippt und wir nicht in den letzten 400ms selbst getippt haben, übernehmen wir den Live-Stand
+    if (isFromOtherSession && timeSinceMyLastKeystroke > 400) {
+      isRemoteUpdateRef.current = true;
+      setForm(liveDraft.form);
+    }
+  }, [liveDraft, liveSyncEnabled, currentUser?.sessionId]);
+
+  // Sende eigene Tipp-Eingaben live (mit 250ms Taktung) an Firestore + lokales Backup
+  useEffect(() => {
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        if (!initialData) {
+          localStorage.setItem('ruesssuuger_protocol_draft', JSON.stringify(form));
+        }
+        setDraftSavedAt(new Date().toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+
+        if (liveSyncEnabled) {
+          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', '__live_session__'), {
+            isActive: true,
+            form,
+            activeEditorId: currentUser?.id || 'unknown',
+            activeEditorName: `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim(),
+            sessionId: currentUser?.sessionId || 'local',
+            activeTraktandum: focusedField.traktandum || null,
+            activePointId: focusedField.pointId || null,
+            updatedAt: Date.now()
+          });
+        }
+      } catch (e) {
+        console.error("Live Sync Write Error:", e);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [form, initialData, liveSyncEnabled, currentUser, focusedField]);
+
+  const markLocalEdit = (traktandum = null, pointId = null) => {
+    lastLocalEditRef.current = Date.now();
+    if (traktandum || pointId) {
+      setFocusedField({ traktandum, pointId });
+    }
+  };
+
+  const handleCancelEditor = async () => {
+    if (liveDraft?.sessionId === currentUser?.sessionId) {
+      try {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', '__live_session__'));
+      } catch (e) {}
+    }
+    onCancel();
+  };
+
+  const updateAttendance = (userId, status) => {
+    markLocalEdit('Anwesenheit', null);
     setForm(prev => ({ ...prev, attendance: { ...prev.attendance, [userId]: status } }));
+  };
 
   const markAllPresent = () => {
+    markLocalEdit('Anwesenheit', null);
     const next = {};
     vorstand.forEach(m => { next[m.id] = 'present'; });
     setForm(prev => ({ ...prev, attendance: next }));
@@ -1577,6 +1826,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
 
   const addPoint = (traktandum, defaultType = 'info') => {
     const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+    markLocalEdit(traktandum, id);
     setForm(prev => ({
       ...prev,
       traktanden: {
@@ -1589,25 +1839,32 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
     }));
   };
 
-  const removePoint = (traktandum, pointId) =>
+  const removePoint = (traktandum, pointId) => {
+    markLocalEdit(traktandum, null);
     setForm(prev => ({
       ...prev,
       traktanden: { ...prev.traktanden, [traktandum]: prev.traktanden[traktandum].filter(p => p.id !== pointId) }
     }));
+  };
 
-  const updatePoint = (traktandum, pointId, field, value) =>
+  const updatePoint = (traktandum, pointId, field, value) => {
+    markLocalEdit(traktandum, pointId);
     setForm(prev => ({
       ...prev,
       traktanden: { ...prev.traktanden, [traktandum]: prev.traktanden[traktandum].map(p => p.id === pointId ? { ...p, [field]: value } : p) }
     }));
+  };
 
-  const updatePointFields = (traktandum, pointId, fieldsObj) =>
+  const updatePointFields = (traktandum, pointId, fieldsObj) => {
+    markLocalEdit(traktandum, pointId);
     setForm(prev => ({
       ...prev,
       traktanden: { ...prev.traktanden, [traktandum]: prev.traktanden[traktandum].map(p => p.id === pointId ? { ...p, ...fieldsObj } : p) }
     }));
+  };
 
   const movePoint = (traktandum, index, dir) => {
+    markLocalEdit(traktandum, null);
     const newIndex = index + dir;
     setForm(prev => {
       const list = [...prev.traktanden[traktandum]];
@@ -1686,9 +1943,27 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
             <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 inline-block">
               {initialData ? 'Protokoll bearbeiten' : 'Neues Sitzungsprotokoll'}
             </span>
-            {!initialData && draftSavedAt && (
+            <button
+              type="button"
+              onClick={() => setLiveSyncEnabled(!liveSyncEnabled)}
+              className={`text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border flex items-center gap-1.5 transition-all ${
+                liveSyncEnabled
+                  ? 'bg-orange-500/15 text-orange-400 border-orange-500/40'
+                  : 'bg-gray-950 text-gray-500 border-gray-800'
+              }`}
+              title="Wenn aktiv, sehen andere Vorstandsmitglieder deine Eingaben live beim Tippen"
+            >
+              <span className={`w-2 h-2 rounded-full ${liveSyncEnabled ? 'bg-orange-500 animate-ping' : 'bg-gray-600'}`} />
+              {liveSyncEnabled ? 'Live-Übertragung aktiv' : 'Live-Übertragung pausiert'}
+            </button>
+            {draftSavedAt && (
               <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                ✓ Entwurf lokal gesichert ({draftSavedAt})
+                ✓ Live synchronisiert ({draftSavedAt})
+              </span>
+            )}
+            {liveDraft && liveDraft.sessionId !== currentUser?.sessionId && (
+              <span className="text-[10px] font-black text-amber-300 bg-amber-500/15 px-3 py-1 rounded-full border border-amber-500/30 animate-pulse">
+                ✍️ {liveDraft.activeEditorName} tippt gerade{liveDraft.activeTraktandum ? ` (${liveDraft.activeTraktandum})` : ''}...
               </span>
             )}
           </div>
@@ -1696,7 +1971,10 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
             className="w-full bg-transparent text-2xl sm:text-4xl font-black text-white border-b-2 border-gray-800 focus:border-orange-500 outline-none pb-2 transition-all placeholder:text-gray-700"
             placeholder="z.B. 4. Vorstandssitzung 2026..."
             value={form.title}
-            onChange={e => setForm({...form, title: e.target.value})}
+            onChange={e => {
+              markLocalEdit('Titel', null);
+              setForm({...form, title: e.target.value});
+            }}
           />
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[10px] font-black uppercase text-gray-600 mr-1">Schnell-Titel:</span>
@@ -1704,7 +1982,10 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
               <button
                 key={preset}
                 type="button"
-                onClick={() => setForm(prev => ({ ...prev, title: `${preset} vom ${new Date(prev.date || Date.now()).toLocaleDateString('de-CH')}` }))}
+                onClick={() => {
+                  markLocalEdit('Titel', null);
+                  setForm(prev => ({ ...prev, title: `${preset} vom ${new Date(prev.date || Date.now()).toLocaleDateString('de-CH')}` }));
+                }}
                 className="text-[10px] font-bold bg-gray-950 hover:bg-gray-800 text-gray-400 hover:text-white border border-gray-800 px-2.5 py-1 rounded-lg transition-all"
               >
                 + {preset}
@@ -1718,13 +1999,16 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
               type="date"
               className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-2 text-white text-sm font-bold focus:border-orange-500 outline-none"
               value={form.date}
-              onChange={e => setForm({...form, date: e.target.value})}
+              onChange={e => {
+                markLocalEdit('Datum', null);
+                setForm({...form, date: e.target.value});
+              }}
             />
           </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
           <button
-            onClick={onCancel}
+            onClick={handleCancelEditor}
             className="w-full sm:w-auto px-6 py-3.5 text-gray-400 font-bold hover:text-white transition-colors bg-gray-950 border border-gray-800 rounded-2xl"
           >
             Abbrechen
@@ -1867,14 +2151,32 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
                 </div>
 
                 <div className="p-5 sm:p-7 space-y-4">
-                  {points.map((point, index) => (
-                    <div key={point.id} className="p-4 sm:p-5 bg-gray-950 border border-gray-800 rounded-2xl space-y-4 group focus-within:border-orange-500/50 transition-colors">
+                  {points.map((point, index) => {
+                    const otherTypingThisPoint =
+                      liveDraft &&
+                      liveDraft.sessionId !== currentUser?.sessionId &&
+                      liveDraft.activePointId === point.id;
+
+                    return (
+                    <div
+                      key={point.id}
+                      className={`p-4 sm:p-5 bg-gray-950 border rounded-2xl space-y-4 group transition-colors ${
+                        otherTypingThisPoint
+                          ? 'border-amber-500/70 ring-1 ring-amber-500/20'
+                          : 'border-gray-800 focus-within:border-orange-500/50'
+                      }`}
+                    >
                       {/* Typ-Auswahl (Info / Beschluss / Pendenz) & Verantwortliche Person */}
                       <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-900">
                         <div className="flex items-center gap-1.5">
                           <span className="w-6 h-6 rounded-lg bg-gray-900 border border-gray-800 text-orange-500 font-black text-[11px] flex items-center justify-center shrink-0 mr-1">
                             #{index + 1}
                           </span>
+                          {otherTypingThisPoint && (
+                            <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-md animate-pulse mr-1">
+                              ✍️ {liveDraft.activeEditorName} tippt hier...
+                            </span>
+                          )}
                           {[
                             { id: 'info',     label: 'Info',      activeClass: 'bg-gray-800 text-white border-gray-600' },
                             { id: 'decision', label: 'Beschluss', activeClass: 'bg-green-500/20 text-green-400 border-green-500/50' },
@@ -1950,6 +2252,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
                           className="w-full flex-1 bg-transparent text-gray-100 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-700 text-sm sm:text-base font-medium leading-relaxed overflow-hidden min-h-[56px]"
                           placeholder={`Notiz, Beschluss oder Pendenz für ${traktandum} eingeben...`}
                           value={point.text}
+                          onFocus={() => setFocusedField({ traktandum, pointId: point.id })}
                           onChange={e => {
                             e.target.style.height = 'auto';
                             e.target.style.height = `${e.target.scrollHeight}px`;
@@ -2003,7 +2306,8 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
                         />
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
 
                   {points.length === 0 && (
                     <button
