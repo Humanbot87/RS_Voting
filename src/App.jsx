@@ -2715,7 +2715,6 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
   const eligibleUsers = users.filter(u => surveyAllowedGroups.some(g => u.groups?.includes(g)));
   const eligibleUsersCount = eligibleUsers.length;
   
-  // Mitglieder, die aktuell online / eingeloggt sind (letzte 45 Sek aktiv)
   const onlineCount = eligibleUsers.filter(u => u.isOnline && Date.now() - (u.lastSeen || 0) < 45000).length;
   const pctOnline = eligibleUsersCount === 0 ? 0 : Math.round((onlineCount / eligibleUsersCount) * 100);
 
@@ -2724,6 +2723,14 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
   const pctVoted = eligibleUsersCount === 0 ? 0 : Math.round((votedCount / eligibleUsersCount) * 100);
 
   const currentUrl = typeof window !== 'undefined' ? window.location.href : 'https://ruesssuuger-aemme.ch';
+
+  const leadingOption = totalVotes > 0 ? survey.options.reduce((max, o) => (o.votes || 0) > (max.votes || 0) ? o : max, survey.options[0]) : null;
+  const leadingVotes = leadingOption?.votes || 0;
+  const quorumReached = survey.majorityType === 'two_thirds' 
+    ? (leadingVotes / (totalVotes || 1)) >= (2 / 3) 
+    : survey.majorityType === 'simple' 
+    ? (leadingVotes / (totalVotes || 1)) > 0.5 
+    : true;
 
   return (
     <div className="fixed inset-0 z-[200] bg-gray-950 flex flex-col animate-in fade-in duration-300">
@@ -2809,23 +2816,30 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
 
             <div className="w-full space-y-4">
               {survey.status === 'published' ? (
-                survey.options.map(o => {
-                  const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
-                  const isLeading = totalVotes > 0 && (o.votes || 0) === Math.max(...survey.options.map(x => x.votes || 0)) && (o.votes || 0) > 0;
-                  return (
-                    <div key={o.id} className={`relative h-20 rounded-2xl overflow-hidden flex items-center px-6 border-2 transition-all ${isLeading ? 'border-orange-500' : 'border-gray-800 bg-gray-900'}`}>
-                      <div
-                        className={`absolute left-0 top-0 h-full transition-all duration-1000 ease-out ${isLeading ? 'bg-orange-500/20' : 'bg-gray-800/60'}`}
-                        style={{ width: `${pct}%` }}
-                      />
-                      <span className="flex-1 font-black text-white text-lg sm:text-xl z-10 truncate">{o.text}</span>
-                      <div className="z-10 text-right ml-4">
-                        <p className="text-2xl sm:text-3xl font-black text-white">{o.votes || 0}</p>
-                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Stimmen</p>
+                <>
+                  {survey.options.map(o => {
+                    const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
+                    const isLeading = totalVotes > 0 && (o.votes || 0) === Math.max(...survey.options.map(x => x.votes || 0)) && (o.votes || 0) > 0;
+                    return (
+                      <div key={o.id} className={`relative h-20 rounded-2xl overflow-hidden flex items-center px-6 border-2 transition-all ${isLeading ? 'border-orange-500' : 'border-gray-800 bg-gray-900'}`}>
+                        <div
+                          className={`absolute left-0 top-0 h-full transition-all duration-1000 ease-out ${isLeading ? 'bg-orange-500/20' : 'bg-gray-800/60'}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                        <span className="flex-1 font-black text-white text-lg sm:text-xl z-10 truncate">{o.text}</span>
+                        <div className="z-10 text-right ml-4">
+                          <p className="text-2xl sm:text-3xl font-black text-white">{o.votes || 0}</p>
+                          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Stimmen ({pct}%)</p>
+                        </div>
                       </div>
+                    );
+                  })}
+                  {survey.majorityType && survey.majorityType !== 'none' && (
+                    <div className={`p-4 rounded-2xl border text-center font-bold text-sm ${quorumReached ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
+                      {quorumReached ? '✓ Quorum / Mehrheit erfolgreich erreicht!' : '⚠ Erforderliche Mehrheit noch nicht erreicht'}
                     </div>
-                  );
-                })
+                  )}
+                </>
               ) : (
                 <div className="text-center py-12 bg-gray-900 border border-gray-800 rounded-3xl w-full">
                   <p className="text-orange-400 font-bold uppercase tracking-widest text-sm mb-2">Abstimmung läuft noch</p>
