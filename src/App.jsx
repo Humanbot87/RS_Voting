@@ -2719,6 +2719,12 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
           survey={event.surveys.find(s => s.id === presentingSurvey.id) || presentingSurvey}
           users={users}
           onClose={() => setPresentingSurvey(null)}
+          onStart={() => {
+            const s = event.surveys.find(x => x.id === presentingSurvey.id);
+            if (!s) return;
+            const updated = event.surveys.map(x => x.id === s.id ? { ...x, status: 'active' } : x);
+            onUpdate({ surveys: updated });
+          }}
           onPublish={() => {
             const s = event.surveys.find(x => x.id === presentingSurvey.id);
             if (!s) return;
@@ -2734,7 +2740,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
   );
 }
 
-function PresentationModal({ survey, users, onClose, onPublish }) {
+function PresentationModal({ survey, users, onClose, onStart, onPublish }) {
   const [step, setStep] = useState('welcome'); // 'welcome' | 'voting'
 
   const surveyAllowedGroups = survey.allowedGroups || GROUPS;
@@ -2772,8 +2778,8 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
         <div className="flex items-center gap-3">
           {step === 'welcome' ? (
             <button onClick={() => {
-              if (survey.status === 'draft' && onPublish) {
-                onPublish();
+              if (survey.status === 'draft' && onStart) {
+                onStart();
               }
               setStep('voting');
             }} className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[44px]">
@@ -2828,8 +2834,8 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
             <div className="pt-4">
               <button
                 onClick={() => {
-                  if (survey.status === 'draft' && onPublish) {
-                    onPublish();
+                  if (survey.status === 'draft' && onStart) {
+                    onStart();
                   }
                   setStep('voting');
                 }}
