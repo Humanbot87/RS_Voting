@@ -19,7 +19,6 @@ import { collection, doc, setDoc, deleteDoc, onSnapshot, updateDoc, runTransacti
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { auth, db, storage, appId } from './firebase';
 
-// --- Konstanten ---
 const GROUPS = ['Vorstand', 'Aktiv Musig', 'Aktiv Wagenbau', 'Passiv', 'Ehrenmitglieder', 'Neumitglied Musig', 'Neumitglied Wagenbau'];
 const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitext'];
 const TRAKTANDEN = [
@@ -37,11 +36,9 @@ const INITIAL_USERS = [
   }
 ];
 
-// Hilfsfunktion: Generiert eine Firebase Auth Email aus Vor-/Nachname
 const toAuthEmail = (firstName, lastName) =>
   `${firstName.toLowerCase().replace(/\s+/g, '')}.${lastName.toLowerCase().replace(/\s+/g, '')}@ruesssuuger.internal`;
 
-// Sichere Session-ID
 const generateSessionId = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -49,7 +46,6 @@ const generateSessionId = () => {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 };
 
-// SHA-256 Passwort-Hash Fallback
 const hashPassword = async (password, userId) => {
   const encoder = new TextEncoder();
   const data = encoder.encode(`${password}::ruesssuuger::${userId}`);
@@ -58,13 +54,11 @@ const hashPassword = async (password, userId) => {
   return 'sha256:' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
-// Sanitize-Funktion für Texteingaben (CSV etc.)
 const sanitizeName = (str) => {
   if (typeof str !== 'string') return '';
   return str.trim().replace(/[<>"'`]/g, '').slice(0, 100);
 };
 
-// Hilfsfunktion: Datei als Data-URL lesen (Fallback für Storage)
 const readFileAsDataURL = (file) => new Promise((resolve, reject) => {
   const reader = new FileReader();
   reader.onload = () => resolve(reader.result);
@@ -72,7 +66,6 @@ const readFileAsDataURL = (file) => new Promise((resolve, reject) => {
   reader.readAsDataURL(file);
 });
 
-// Hilfsfunktion: Sicheres Datei-Herunterladen
 const triggerFileDownload = (url, fileName = 'Dokument') => {
   if (!url) return;
   const link = document.createElement('a');
@@ -85,7 +78,6 @@ const triggerFileDownload = (url, fileName = 'Dokument') => {
   document.body.removeChild(link);
 };
 
-// Hilfsfunktion: Text in die Zwischenablage kopieren
 const copyTextToClipboard = (text) => {
   const textarea = document.createElement('textarea');
   textarea.value = text;
@@ -103,7 +95,6 @@ const copyTextToClipboard = (text) => {
   return success;
 };
 
-// --- ICS Kalender Export Funktionen ---
 const escapeICS = (str = '') =>
   String(str)
     .replace(/\\/g, '\\\\')
@@ -185,7 +176,6 @@ export default function App() {
   const [connError, setConnError] = useState(null);
   const [hasCheckedAutoLogin, setHasCheckedAutoLogin] = useState(false);
 
-  // Globales UX Toast- und Bestätigungs-System
   const [toasts, setToasts] = useState([]);
   const [confirmDialog, setConfirmDialog] = useState(null);
 
@@ -211,7 +201,6 @@ export default function App() {
     });
   };
 
-  // --- Authentifizierung ---
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -240,7 +229,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // --- Daten-Subscription ---
   useEffect(() => {
     if (!user) return;
     
@@ -293,7 +281,6 @@ export default function App() {
     return () => { unsubUsers(); unsubEvents(); unsubMinutes(); unsubFolders(); unsubFiles(); unsubCal(); };
   }, [user]);
 
-  // --- Auto-Login prüfen ---
   useEffect(() => {
     if (dbReady && !hasCheckedAutoLogin) {
       const savedUserId  = localStorage.getItem('ruesssuuger_userId');
@@ -306,7 +293,6 @@ export default function App() {
     }
   }, [dbReady, hasCheckedAutoLogin, users]);
 
-  // --- Sitzungs-Heartbeat ---
   useEffect(() => {
     if (!currentUser) return;
     const updatePresence = async () => {
@@ -323,7 +309,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, [currentUser]);
 
-  // --- Konflikt-Check ---
   useEffect(() => {
     if (!currentUser) return;
     const u = users.find(x => x.id === currentUser.id);
@@ -339,7 +324,6 @@ export default function App() {
     }
   }, [users, currentUser]);
 
-  // --- Auto-Archivierung ---
   useEffect(() => {
     if (!user || currentUser?.role !== 'admin') return;
     const now = new Date();
@@ -414,7 +398,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-200 selection:bg-orange-500 selection:text-white">
-      {/* Toast Notifications */}
       <div className="fixed bottom-5 right-5 z-[300] flex flex-col gap-2.5 max-w-sm w-full px-4 sm:px-0 pointer-events-none">
         {toasts.map(t => (
           <div
@@ -441,7 +424,6 @@ export default function App() {
         ))}
       </div>
 
-      {/* Confirmation Modal */}
       {confirmDialog && (
         <div className="fixed inset-0 z-[250] bg-gray-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-gray-900 border border-gray-800 rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl space-y-5">
@@ -544,7 +526,6 @@ export default function App() {
   );
 }
 
-// --- Login Screen ---
 function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   const [firstName, setFirstName] = useState('');
   const [lastName,  setLastName]  = useState('');
@@ -613,7 +594,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
             createErr.code === 'auth/operation-not-allowed' ||
             createErr.code === 'auth/admin-restricted-operation'
           ) {
-            // Firebase Auth Provider deaktiviert -> Firestore Hash reicht
+            // Firebase Auth Provider deactivated -> Firestore Hash sufficient
           } else {
             throw createErr;
           }
@@ -741,7 +722,6 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   );
 }
 
-// --- Protokoll View ---
 function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askConfirm }) {
   const [editing,        setEditing]        = useState(null);
   const [showAdd,        setShowAdd]        = useState(false);
@@ -1545,7 +1525,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
   );
 }
 
-// --- Protocol Editor ---
 function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], calItems = [], onSave, onCancel, initialData, notify }) {
   const [form, setForm] = useState(() => {
     if (initialData) return initialData;
@@ -1952,9 +1931,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
         })}
       </div>
 
-      {/* Hauptbereich mit getrennt scrollbaren Spalten (auf Mobile untereinander, auf Desktop nebeneinander) */}
       <div className="grid gap-6 lg:grid-cols-3 items-start">
-        {/* Linke Spalte: Anwesenheit & Nächster Termin */}
         <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
           <div className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl shadow-xl">
             <div className="flex items-center justify-between mb-5">
@@ -2034,7 +2011,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
           </div>
         </div>
 
-        {/* Rechte Spalte: Traktanden-Karten */}
         <div className="lg:col-span-2 space-y-6 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
           {visibleTraktanden.map(traktandum => {
             const points = form.traktanden[traktandum] || [];
@@ -2292,7 +2268,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
   );
 }
 
-// --- Lesbare & Druckbare Ansicht ---
 function ReadingViewModal({ minute, users, onClose }) {
   const presentCount = Object.values(minute.attendance || {}).filter(s => s === 'present').length;
 
@@ -2389,7 +2364,6 @@ function ReadingViewModal({ minute, users, onClose }) {
   );
 }
 
-// --- File Preview Modal ---
 function FilePreviewModal({ docItem, onClose }) {
   if (!docItem?.url) return null;
   const lowerName = (docItem.name || '').toLowerCase();
@@ -2465,7 +2439,6 @@ function FilePreviewModal({ docItem, onClose }) {
   );
 }
 
-// --- Tab Button ---
 function TabButton({ active, onClick, icon, label }) {
   return (
     <button onClick={onClick} className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold transition-all whitespace-nowrap active:scale-95 min-h-[44px] ${active ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/20' : 'bg-gray-900 text-gray-500 hover:text-gray-300 hover:bg-gray-800'}`}>
@@ -2474,7 +2447,6 @@ function TabButton({ active, onClick, icon, label }) {
   );
 }
 
-// --- Events View ---
 function EventsView({ events, currentUser, isArchive = false, users, notify, askConfirm }) {
   const [showCreate,    setShowCreate]    = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -2539,7 +2511,6 @@ function EventsView({ events, currentUser, isArchive = false, users, notify, ask
   );
 }
 
-// --- Event Detail ---
 function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, isArchived, notify, askConfirm }) {
   const [showSurveyForm,   setShowSurveyForm]   = useState(false);
   const [editingSurvey,    setEditingSurvey]    = useState(null);
@@ -2719,7 +2690,6 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
   );
 }
 
-// --- Presentation Modal ---
 function PresentationModal({ survey, users, onClose, onPublish }) {
   const surveyAllowedGroups = survey.allowedGroups || GROUPS;
   const eligibleUsersCount = users.filter(u => surveyAllowedGroups.some(g => u.groups?.includes(g))).length;
@@ -2806,7 +2776,6 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
   );
 }
 
-// --- Create Event Form ---
 function CreateEventForm({ onSubmit }) {
   const [form, setForm] = useState({ title: '', category: CATEGORIES[0], date: new Date().toISOString().slice(0,16), endDate: '', autoArchive: false });
   return (
@@ -2839,7 +2808,6 @@ function CreateEventForm({ onSubmit }) {
   );
 }
 
-// --- Create Survey Form ---
 function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
   const [title,         setTitle]         = useState(initialData?.title || '');
   const [maxAnswers,    setMaxAnswers]    = useState(initialData?.maxAnswers || 1);
@@ -2903,7 +2871,6 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
   );
 }
 
-// --- Survey Card ---
 function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete, onPresent, onMoveUp, onMoveDown, isEditing, onSaveEdit, onCancelEdit, users }) {
   const [selected, setSelected] = useState([]);
   const [voting,   setVoting]   = useState(false);
@@ -3013,7 +2980,6 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
   );
 }
 
-// --- Members View ---
 function MembersView({ users, notify, askConfirm }) {
   const [showAdd,     setShowAdd]     = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -3204,7 +3170,6 @@ function MembersView({ users, notify, askConfirm }) {
   );
 }
 
-// --- Member Form ---
 function MemberForm({ onSubmit, onCancel, initialData, inline = false }) {
   const [form, setForm] = useState(initialData || { firstName: '', lastName: '', role: 'member', groups: [] });
   const toggleGroup = g => setForm(f => ({ ...f, groups: f.groups.includes(g) ? f.groups.filter(x => x !== g) : [...f.groups, g] }));
@@ -3250,7 +3215,6 @@ function MemberForm({ onSubmit, onCancel, initialData, inline = false }) {
   );
 }
 
-// --- Files View ---
 function FilesView({ folders, files, currentUser, notify, askConfirm }) {
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [showNewFolder,  setShowNewFolder]  = useState(false);
@@ -3597,7 +3561,6 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
   );
 }
 
-// --- Calendar View ---
 function CalendarView({ calItems, currentUser, notify, askConfirm }) {
   const [showAdd,      setShowAdd]      = useState(false);
   const [editing,      setEditing]      = useState(null);
