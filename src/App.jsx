@@ -531,7 +531,7 @@ export default function App() {
 
             <div className="animate-in fade-in duration-500">
               {activeTab === 'events'   && <EventsView events={events.filter(e => !e.isArchived)} currentUser={currentUser} users={users} notify={notify} askConfirm={askConfirm} />}
-              {activeTab === 'minutes'  && isVorstand && <ProtocolView minutes={minutes} users={users} currentUser={currentUser} notify={notify} askConfirm={askConfirm} />}
+              {activeTab === 'minutes'  && isVorstand && <ProtocolView minutes={minutes} users={users} currentUser={currentUser} calItems={calItems} notify={notify} askConfirm={askConfirm} />}
               {activeTab === 'files'    && isVorstand && <FilesView folders={folders} files={files} currentUser={currentUser} notify={notify} askConfirm={askConfirm} />}
               {activeTab === 'calendar' && isVorstand && <CalendarView calItems={calItems} currentUser={currentUser} notify={notify} askConfirm={askConfirm} />}
               {activeTab === 'archive'  && <EventsView events={events.filter(e => e.isArchived)} currentUser={currentUser} isArchive users={users} notify={notify} askConfirm={askConfirm} />}
@@ -742,7 +742,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
 }
 
 // --- Protokoll View (Redesigned & Aufgewertet) ---
-function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
+function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askConfirm }) {
   const [editing,        setEditing]        = useState(null);
   const [showAdd,        setShowAdd]        = useState(false);
   const [liveDraft,      setLiveDraft]      = useState(null);
@@ -751,11 +751,14 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
   const [roleFilter,     setRoleFilter]     = useState('Alle');
   const [yearFilter,     setYearFilter]     = useState('Alle');
   const [onlyOpenTasks,  setOnlyOpenTasks]  = useState(false);
+  const [onlyMyTasks,    setOnlyMyTasks]    = useState(false);
   const [expandedId,     setExpandedId]     = useState(null);
   const [enlargedPoint,  setEnlargedPoint]  = useState(null);
   const [readingMinute,  setReadingMinute]  = useState(null);
+  const [previewDoc,     setPreviewDoc]     = useState(null);
 
   const vorstandMembers = useMemo(() => users.filter(u => u.groups?.includes('Vorstand')), [users]);
+  const myFullName = `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim();
 
   // Echtzeit-Listener für aktives Live-Protokoll (Live-Tippen)
   useEffect(() => {
@@ -765,7 +768,6 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
       (snap) => {
         if (snap.exists()) {
           const data = snap.data();
-          // Nur anzeigen, wenn die Live-Session aktiv ist und in den letzten 15 Minuten aktualisiert wurde
           if (data.isActive && Date.now() - (data.updatedAt || 0) < 15 * 60 * 1000) {
             setLiveDraft(data);
           } else {
@@ -803,7 +805,7 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
   const availableYears = useMemo(() => {
     const years = new Set();
     minutes.forEach(m => {
-      if (m.date) years.add(m.date.slice(0, 4));
+      if (m.date && m.id !== '__live_session__') years.add(m.date.slice(0, 4));
     });
     return ['Alle', ...Array.from(years).sort((a, b) => b.localeCompare(a))];
   }, [minutes]);
@@ -813,9 +815,11 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
     let totalPoints = 0;
     let totalAttachments = 0;
     let openTodos = 0;
+    let myOpenTodos = 0;
     const tasks = [];
 
-    const sortedMins = [...minutes].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const validMinutes = minutes.filter(m => m.id !== '__live_session__');
+    const sortedMins = [...validMinutes].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     sortedMins.forEach(m => {
       if (m.traktanden) {
         TRAKTANDEN.forEach(tName => {
@@ -825,11 +829,14 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
             if (p.docUrl) totalAttachments++;
             if (p.type === 'todo' && !p.done) {
               openTodos++;
+              const isMine = p.assignee === myFullName || p.assignee === 'Gesamtvorstand';
+              if (isMine) myOpenTodos++;
               tasks.push({
                 minuteId: m.id,
                 minuteTitle: m.title,
                 minuteDate: m.date,
                 traktandum: tName,
+                isMine,
                 point: p
               });
             }
@@ -838,10 +845,15 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
       }
     });
     return {
-      stats: { totalMinutes: minutes.length, totalPoints, totalAttachments, openTodos },
+      stats: { totalMinutes: validMinutes.length, totalPoints, totalAttachments, openTodos, myOpenTodos },
       openTasksList: tasks
     };
-  }, [minutes]);
+  }, [minutes, myFullName]);
+
+  const displayedTasks = useMemo(() => {
+    if (onlyMyTasks) return openTasksList.filter(t => t.isMine);
+    return openTasksList;
+  }, [openTasksList, onlyMyTasks]);
 
   const filteredMinutes = useMemo(() => {
     let sorted = [...minutes]
@@ -856,6 +868,13 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
     if (onlyOpenTasks) {
       sorted = sorted.filter(m =>
         m.traktanden && Object.values(m.traktanden).some(pts => pts?.some(p => p.type === 'todo' && !p.done))
+      );
+    }
+    if (onlyMyTasks) {
+      sorted = sorted.filter(m =>
+        m.traktanden && Object.values(m.traktanden).some(pts =>
+          pts?.some(p => p.type === 'todo' && !p.done && (p.assignee === myFullName || p.assignee === 'Gesamtvorstand'))
+        )
       );
     }
     if (!searchTerm.trim()) return sorted;
@@ -873,7 +892,7 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
       }
       return false;
     });
-  }, [minutes, searchTerm, roleFilter, yearFilter, onlyOpenTasks]);
+  }, [minutes, searchTerm, roleFilter, yearFilter, onlyOpenTasks, onlyMyTasks, myFullName]);
 
   const saveProtocol = async (p) => {
     const id = p.id || Date.now().toString();
@@ -917,10 +936,11 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
       const pts = m.traktanden?.[t] || [];
       if (pts.length > 0) {
         lines.push(`*${t}:*`);
-        pts.forEach((p, idx) => {
+        pts.forEach((p) => {
           const prefix = p.type === 'decision' ? '✅ [Beschluss] ' : p.type === 'todo' ? (p.done ? '☑️ [Erledigt] ' : '⏳ [Pendenz] ') : '• ';
           const who = p.assignee ? ` (@${p.assignee})` : '';
-          lines.push(`${prefix}${p.text}${who}`);
+          const due = p.dueDate ? ` [bis ${new Date(p.dueDate).toLocaleDateString('de-CH')}]` : '';
+          lines.push(`${prefix}${p.text}${who}${due}`);
         });
         lines.push('');
       }
@@ -970,12 +990,16 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
     return snippets.slice(0, 3);
   };
 
+  const todayIso = new Date().toISOString().slice(0, 10);
+
   if (editing || showAdd) {
     return (
       <ProtocolEditor
         vorstand={vorstandMembers}
         currentUser={currentUser}
         liveDraft={liveDraft}
+        openTasksList={openTasksList}
+        calItems={calItems}
         onSave={saveProtocol}
         onCancel={() => { setShowAdd(false); setEditing(null); }}
         initialData={editing}
@@ -1052,30 +1076,41 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
         </div>
 
         {/* Statistik-Leiste */}
-        {minutes.length > 0 && (
+        {stats.totalMinutes > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
             <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Sitzungen</p>
               <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalMinutes}</p>
             </div>
-            <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Traktanden-Punkte</p>
-              <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalPoints}</p>
-            </div>
             <div
-              onClick={() => setOnlyOpenTasks(!onlyOpenTasks)}
+              onClick={() => { setOnlyOpenTasks(!onlyOpenTasks); setOnlyMyTasks(false); }}
               className={`rounded-2xl p-3.5 sm:p-4 border cursor-pointer transition-all ${
-                onlyOpenTasks
+                onlyOpenTasks && !onlyMyTasks
                   ? 'bg-orange-500/15 border-orange-500'
                   : 'bg-gray-950/70 border-gray-800/80 hover:border-orange-500/40'
               }`}
-              title="Klicken, um nach offenen Pendenzen zu filtern"
+              title="Klicken, um alle offenen Pendenzen anzuzeigen"
             >
               <p className="text-[10px] font-black uppercase tracking-widest text-orange-400 flex items-center justify-between">
-                <span>Offene Pendenzen</span>
-                {onlyOpenTasks && <span className="text-[9px] bg-orange-500 text-gray-950 px-1.5 py-0.5 rounded font-black">Filter aktiv</span>}
+                <span>Alle Pendenzen</span>
+                {onlyOpenTasks && !onlyMyTasks && <span className="text-[9px] bg-orange-500 text-gray-950 px-1.5 py-0.5 rounded font-black">Aktiv</span>}
               </p>
               <p className="text-xl sm:text-2xl font-black text-orange-500 mt-1">{stats.openTodos}</p>
+            </div>
+            <div
+              onClick={() => { setOnlyMyTasks(!onlyMyTasks); setOnlyOpenTasks(false); }}
+              className={`rounded-2xl p-3.5 sm:p-4 border cursor-pointer transition-all ${
+                onlyMyTasks
+                  ? 'bg-amber-500/15 border-amber-500'
+                  : 'bg-gray-950/70 border-gray-800/80 hover:border-amber-500/40'
+              }`}
+              title="Nur Pendenzen anzeigen, die mir oder dem Gesamtvorstand zugewiesen sind"
+            >
+              <p className="text-[10px] font-black uppercase tracking-widest text-amber-400 flex items-center justify-between">
+                <span>Meine Pendenzen</span>
+                {onlyMyTasks && <span className="text-[9px] bg-amber-500 text-gray-950 px-1.5 py-0.5 rounded font-black">Aktiv</span>}
+              </p>
+              <p className="text-xl sm:text-2xl font-black text-amber-400 mt-1">{stats.myOpenTodos}</p>
             </div>
             <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Beilagen / Dateien</p>
@@ -1086,22 +1121,23 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
       </div>
 
       {/* Offene Pendenzen Schnell-Übersicht (wenn vorhanden & aktiviert) */}
-      {onlyOpenTasks && openTasksList.length > 0 && (
+      {(onlyOpenTasks || onlyMyTasks) && displayedTasks.length > 0 && (
         <div className="bg-orange-500/5 border border-orange-500/30 rounded-3xl p-5 sm:p-6 space-y-3 animate-in fade-in">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-black uppercase tracking-widest text-orange-400 flex items-center gap-2">
-              <Sparkles size={16} /> Alle offenen Vorstands-Pendenzen ({openTasksList.length})
+              <Sparkles size={16} /> {onlyMyTasks ? `Meine offenen Pendenzen (${displayedTasks.length})` : `Alle offenen Vorstands-Pendenzen (${displayedTasks.length})`}
             </h3>
             <button
-              onClick={() => setOnlyOpenTasks(false)}
+              onClick={() => { setOnlyOpenTasks(false); setOnlyMyTasks(false); }}
               className="text-xs text-gray-400 hover:text-white font-bold"
             >
               Filter zurücksetzen
             </button>
           </div>
           <div className="grid gap-2.5">
-            {openTasksList.map(item => {
+            {displayedTasks.map(item => {
               const targetMinute = minutes.find(x => x.id === item.minuteId);
+              const isOverdue = item.point.dueDate && item.point.dueDate < todayIso;
               return (
                 <div
                   key={item.point.id}
@@ -1122,6 +1158,15 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
                             Verantwortlich: {item.point.assignee}
                           </span>
                         )}
+                        {item.point.dueDate && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                            isOverdue
+                              ? 'bg-red-500/15 text-red-400 border-red-500/30'
+                              : 'bg-gray-950 text-gray-400 border-gray-800'
+                          }`}>
+                            Frist: {new Date(item.point.dueDate).toLocaleDateString('de-CH')} {isOverdue ? '(Überfällig)' : ''}
+                          </span>
+                        )}
                         <span className="text-[10px] text-gray-500">
                           aus «{item.minuteTitle}» ({new Date(item.minuteDate).toLocaleDateString('de-CH')})
                         </span>
@@ -1132,6 +1177,7 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
                     onClick={() => {
                       setExpandedId(item.minuteId);
                       setOnlyOpenTasks(false);
+                      setOnlyMyTasks(false);
                     }}
                     className="text-xs font-bold text-orange-500 hover:underline self-end sm:self-center shrink-0"
                   >
@@ -1145,7 +1191,7 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
       )}
 
       {/* Suchfeld, Jahres- & Ressort-Filter */}
-      {minutes.length > 0 && (
+      {stats.totalMinutes > 0 && (
         <div className="space-y-3 animate-in fade-in">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
@@ -1202,7 +1248,6 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
         </div>
       )}
 
-      {}
       {/* Protokoll-Karten */}
       <div className="grid gap-4">
         {filteredMinutes.map(m => {
@@ -1396,12 +1441,15 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
                             {points.map((p, idx) => {
                               const pType = p.type === 'todo' && p.done ? 'done' : (p.type || 'info');
                               const typeBadge = pointTypeMeta[pType] || pointTypeMeta.info;
+                              const isOverdue = p.type === 'todo' && !p.done && p.dueDate && p.dueDate < todayIso;
 
                               return (
                                 <div
                                   key={p.id}
                                   className={`bg-gray-950 p-4 sm:p-5 rounded-2xl border transition-all relative group flex gap-3.5 ${
-                                    p.type === 'todo' && !p.done
+                                    isOverdue
+                                      ? 'border-red-500/50'
+                                      : p.type === 'todo' && !p.done
                                       ? 'border-orange-500/40'
                                       : p.type === 'decision'
                                       ? 'border-green-500/30'
@@ -1428,7 +1476,7 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
                                   )}
 
                                   <div className="flex-1 min-w-0 pr-8">
-                                    {(p.type && p.type !== 'info') || p.assignee ? (
+                                    {(p.type && p.type !== 'info') || p.assignee || p.dueDate ? (
                                       <div className="flex flex-wrap items-center gap-2 mb-2">
                                         {p.type && p.type !== 'info' && (
                                           <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border ${typeBadge.style}`}>
@@ -1440,6 +1488,15 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
                                             <Users size={10} className="text-orange-500" /> {highlightText(p.assignee, searchTerm)}
                                           </span>
                                         )}
+                                        {p.dueDate && (
+                                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
+                                            isOverdue
+                                              ? 'bg-red-500/15 text-red-400 border-red-500/30'
+                                              : 'bg-gray-900 border-gray-800 text-gray-400'
+                                          }`}>
+                                            <Clock size={10} /> Bis {new Date(p.dueDate).toLocaleDateString('de-CH')}
+                                          </span>
+                                        )}
                                       </div>
                                     ) : null}
 
@@ -1448,13 +1505,22 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
                                     </p>
 
                                     {p.docUrl && (
-                                      <button
-                                        type="button"
-                                        onClick={() => triggerFileDownload(p.docUrl, p.docName || 'Protokoll-Anhang')}
-                                        className="mt-3.5 inline-flex items-center gap-2 text-xs font-bold text-orange-400 hover:text-orange-300 bg-orange-500/10 px-3.5 py-2 rounded-xl border border-orange-500/20 transition-all hover:scale-[1.02] active:scale-95"
-                                      >
-                                        <Paperclip size={14} /> {p.docName || 'Dokument herunterladen'}
-                                      </button>
+                                      <div className="mt-3.5 flex flex-wrap items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => setPreviewDoc({ url: p.docUrl, name: p.docName || 'Protokoll-Anhang' })}
+                                          className="inline-flex items-center gap-1.5 text-xs font-bold text-white hover:text-orange-300 bg-gray-900 px-3.5 py-2 rounded-xl border border-gray-800 transition-all active:scale-95"
+                                        >
+                                          <Eye size={14} className="text-orange-500" /> Vorschau
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => triggerFileDownload(p.docUrl, p.docName || 'Protokoll-Anhang')}
+                                          className="inline-flex items-center gap-2 text-xs font-bold text-orange-400 hover:text-orange-300 bg-orange-500/10 px-3.5 py-2 rounded-xl border border-orange-500/20 transition-all hover:scale-[1.02] active:scale-95"
+                                        >
+                                          <Paperclip size={14} /> {p.docName || 'Dokument herunterladen'}
+                                        </button>
+                                      </div>
                                     )}
                                   </div>
                                   <button
@@ -1478,12 +1544,12 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
           );
         })}
 
-        {filteredMinutes.length === 0 && (searchTerm || roleFilter !== 'Alle' || yearFilter !== 'Alle' || onlyOpenTasks) && (
+        {filteredMinutes.length === 0 && (searchTerm || roleFilter !== 'Alle' || yearFilter !== 'Alle' || onlyOpenTasks || onlyMyTasks) && (
           <div className="text-center py-12 text-gray-500 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
             Keine passenden Protokolle für deine aktuelle Filterauswahl gefunden.
           </div>
         )}
-        {minutes.length === 0 && !searchTerm && (
+        {stats.totalMinutes === 0 && !searchTerm && (
           <div className="text-center py-20 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
             <ClipboardList className="mx-auto text-gray-800 mb-4" size={48} />
             <p className="text-gray-600 font-bold uppercase tracking-widest text-sm">Noch keine Protokolle vorhanden</p>
@@ -1491,236 +1557,124 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
         )}
       </div>
 
-      {/* Einzelpunkt-Fokus-Modal */}
-      {enlargedPoint && (
-        <div className="fixed inset-0 z-[100] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
-            <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
-              <div className="flex items-center gap-2.5">
-                <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-orange-500 text-gray-950">#{enlargedPoint.index || 1}</span>
-                <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedPoint.traktandum}</h3>
-              </div>
-              <button onClick={() => setEnlargedPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90"><X size={20} /></button>
-            </div>
-            <div className="p-6 sm:p-8 overflow-y-auto flex-1">
-              <p className="text-white text-base sm:text-lg whitespace-pre-wrap leading-relaxed">{enlargedPoint.text}</p>
-            </div>
-            {enlargedPoint.docUrl && (
-              <div className="p-5 border-t border-gray-800 bg-gray-950/50 rounded-b-3xl">
-                <button
-                  type="button"
-                  onClick={() => triggerFileDownload(enlargedPoint.docUrl, enlargedPoint.docName || 'Dokument')}
-                  className="flex items-center justify-center gap-2 text-sm font-black text-gray-950 bg-orange-500 hover:bg-orange-400 w-full py-4 rounded-xl transition-all active:scale-95 shadow-lg"
-                >
-                  <Paperclip size={18} /> {enlargedPoint.docName || 'Dokument herunterladen'}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+      {/* Dokument-Vorschau Modal (Bilder & PDFs) */}
+      {previewDoc && (
+        <FilePreviewModal docItem={previewDoc} onClose={() => setPreviewDoc(null)} />
       )}
 
-      {/* Lese- & Druckansicht (PDF-Export) */}
-      {readingMinute && (
-        <div className="fixed inset-0 z-[150] bg-gray-950/95 backdrop-blur-md overflow-y-auto p-4 sm:p-8 animate-in fade-in duration-200">
-          <div className="max-w-4xl mx-auto bg-gray-900 border border-gray-800 rounded-3xl shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 bg-gray-950 border-b border-gray-800 flex items-center justify-between sticky top-0 z-10">
-              <div className="flex items-center gap-2 text-orange-500 text-xs font-black uppercase tracking-widest">
-                <FileText size={16} /> Protokoll-Dokumentenansicht
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="px-4 py-2 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95"
-                >
-                  <Printer size={15} /> Drucken / Als PDF speichern
-                </button>
-                <button
-                  onClick={() => setReadingMinute(null)}
-                  className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all"
-                >
-                  <X size={18} />
-                </button>
-              </div>
+      {/* Top Header & KPI Cards */}
+      <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 mb-3">
+              <ClipboardList size={12} /> Vorstands-Dokumentation
             </div>
+            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Vorstands-Protokolle</h2>
+            <p className="text-gray-400 text-sm mt-1">Strukturierte Sitzungsprotokolle, Beschlüsse & Pendenzen-Tracking</p>
+          </div>
+          <button
+            onClick={() => setShowAdd(true)}
+            className="bg-orange-500 hover:bg-orange-400 text-gray-950 font-black px-6 py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 whitespace-nowrap w-full md:w-auto"
+          >
+            <Plus size={20} strokeWidth={2.5} /> Neues Protokoll erfassen
+          </button>
+        </div>
 
-            <div className="p-6 sm:p-10 space-y-8">
-              <div className="border-b border-gray-800 pb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-widest text-orange-500 mb-1">RüssSuuger Ämme • Vorstandsprotokoll</p>
-                  <h1 className="text-2xl sm:text-4xl font-black text-white">{readingMinute.title}</h1>
-                </div>
-                <div className="text-left sm:text-right">
-                  <p className="text-xs text-gray-500 uppercase font-bold">Sitzungsdatum</p>
-                  <p className="text-lg font-black text-white">{new Date(readingMinute.date).toLocaleDateString('de-CH', { dateStyle: 'long' })}</p>
-                </div>
-              </div>
-
-              {readingMinute.attendance && Object.keys(readingMinute.attendance).length > 0 && (
-                <div className="bg-gray-950 border border-gray-800 rounded-2xl p-5">
-                  <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Anwesenheit</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-                    {users.filter(u => u.groups?.includes('Vorstand')).map(u => {
-                      const st = readingMinute.attendance?.[u.id];
-                      if (!st) return null;
-                      const lbl = st === 'present' ? '✓ Anwesend' : st === 'excused' ? '○ Entschuldigt' : '✗ Unentschuldigt';
-                      const clr = st === 'present' ? 'text-green-400' : st === 'excused' ? 'text-blue-400' : 'text-red-400';
-                      return (
-                        <div key={u.id} className="flex items-center justify-between bg-gray-900 px-3 py-2 rounded-xl border border-gray-800">
-                          <span className="font-bold text-white">{u.firstName} {u.lastName}</span>
-                          <span className={`font-black text-[10px] ${clr}`}>{lbl}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-6">
-                {TRAKTANDEN.map(t => {
-                  const pts = readingMinute.traktanden?.[t];
-                  if (!pts || pts.length === 0) return null;
-                  return (
-                    <div key={t} className="space-y-3">
-                      <h3 className="text-lg font-black text-orange-500 border-b border-gray-800 pb-2">{t}</h3>
-                      <ol className="space-y-3 list-decimal list-inside">
-                        {pts.map((p, idx) => (
-                          <li key={p.id} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 text-sm text-gray-200 leading-relaxed">
-                            <span className="font-black text-gray-500 mr-2">{idx + 1}.</span>
-                            <span className="whitespace-pre-wrap">{p.text}</span>
-                            {p.docName && (
-                              <div className="mt-2 text-xs text-orange-400 font-bold flex items-center gap-1.5">
-                                <Paperclip size={13} /> Beilage: {p.docName}
-                              </div>
-                            )}
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
-                  );
-                })}
-              </div>
+        {/* Statistik-Leiste */}
+        {minutes.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
+            <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Sitzungen</p>
+              <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalMinutes}</p>
+            </div>
+            <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Traktanden-Punkte</p>
+              <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalPoints}</p>
+            </div>
+            <div
+              onClick={() => setOnlyOpenTasks(!onlyOpenTasks)}
+              className={`rounded-2xl p-3.5 sm:p-4 border cursor-pointer transition-all ${
+                onlyOpenTasks
+                  ? 'bg-orange-500/15 border-orange-500'
+                  : 'bg-gray-950/70 border-gray-800/80 hover:border-orange-500/40'
+              }`}
+              title="Klicken, um nach offenen Pendenzen zu filtern"
+            >
+              <p className="text-[10px] font-black uppercase tracking-widest text-orange-400 flex items-center justify-between">
+                <span>Offene Pendenzen</span>
+                {onlyOpenTasks && <span className="text-[9px] bg-orange-500 text-gray-950 px-1.5 py-0.5 rounded font-black">Filter aktiv</span>}
+              </p>
+              <p className="text-xl sm:text-2xl font-black text-orange-500 mt-1">{stats.openTodos}</p>
+            </div>
+            <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Beilagen / Dateien</p>
+              <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalAttachments}</p>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Live-Mitlese-Ansicht (Echtzeit-Stream des aktuellen Tippens) */}
-      {watchingLive && liveDraft && (
-        <div className="fixed inset-0 z-[160] bg-gray-950/95 backdrop-blur-md overflow-y-auto p-4 sm:p-8 animate-in fade-in duration-200">
-          <div className="max-w-4xl mx-auto bg-gray-900 border-2 border-orange-500/50 rounded-3xl shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 bg-gray-950 border-b border-gray-800 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10">
-              <div className="flex items-center gap-3">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
-                </span>
-                <span className="text-orange-500 text-xs font-black uppercase tracking-widest">
-                  Live-Übertragung • {liveDraft.activeEditorName} schreibt gerade
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setWatchingLive(false);
-                    if (liveDraft.form?.id) setEditing(liveDraft.form);
-                    else setShowAdd(true);
-                  }}
-                  className="px-4 py-2 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95"
+      {/* Offene Pendenzen Schnell-Übersicht (wenn vorhanden & aktiviert) */}
+      {onlyOpenTasks && openTasksList.length > 0 && (
+        <div className="bg-orange-500/5 border border-orange-500/30 rounded-3xl p-5 sm:p-6 space-y-3 animate-in fade-in">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black uppercase tracking-widest text-orange-400 flex items-center gap-2">
+              <Sparkles size={16} /> Alle offenen Vorstands-Pendenzen ({openTasksList.length})
+            </h3>
+            <button
+              onClick={() => setOnlyOpenTasks(false)}
+              className="text-xs text-gray-400 hover:text-white font-bold"
+            >
+              Filter zurücksetzen
+            </button>
+          </div>
+          <div className="grid gap-2.5">
+            {openTasksList.map(item => {
+              const targetMinute = minutes.find(x => x.id === item.minuteId);
+              return (
+                <div
+                  key={item.point.id}
+                  className="bg-gray-900 border border-gray-800 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                 >
-                  <Edit2 size={14} /> Mitschreiben
-                </button>
-                <button
-                  onClick={() => setWatchingLive(false)}
-                  className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-6 sm:p-10 space-y-8">
-              <div className="border-b border-gray-800 pb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-widest text-orange-500 mb-1">Live Sitzungsprotokoll</p>
-                  <h1 className="text-2xl sm:text-4xl font-black text-white">
-                    {liveDraft.form?.title || 'Titel wird gerade eingegeben...'}
-                  </h1>
-                </div>
-                <div className="text-left sm:text-right">
-                  <p className="text-xs text-gray-500 uppercase font-bold">Letzte Eingabe</p>
-                  <p className="text-sm font-black text-emerald-400">
-                    {liveDraft.updatedAt ? new Date(liveDraft.updatedAt).toLocaleTimeString('de-CH') : 'Jetzt'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                {TRAKTANDEN.map(t => {
-                  const pts = liveDraft.form?.traktanden?.[t];
-                  if (!pts || pts.length === 0) return null;
-                  const isCurrentlyTypingHere = liveDraft.activeTraktandum === t;
-                  return (
-                    <div
-                      key={t}
-                      className={`p-5 rounded-2xl border transition-all ${
-                        isCurrentlyTypingHere
-                          ? 'bg-orange-500/5 border-orange-500/50'
-                          : 'bg-gray-950 border-gray-800'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-lg font-black text-orange-500">{t}</h3>
-                        {isCurrentlyTypingHere && (
-                          <span className="text-[10px] font-black uppercase tracking-widest text-orange-400 bg-orange-500/10 px-2.5 py-1 rounded-full animate-pulse">
-                            ✍️ {liveDraft.activeEditorName} tippt hier...
+                  <div className="flex items-start gap-3">
+                    <button
+                      onClick={() => targetMinute && toggleTaskDone(targetMinute, item.traktandum, item.point.id)}
+                      title="Als erledigt markieren"
+                      className="mt-0.5 w-5 h-5 rounded-lg border-2 border-orange-500 flex items-center justify-center hover:bg-orange-500/20 shrink-0 transition-all"
+                    />
+                    <div>
+                      <p className="text-sm font-bold text-white leading-snug">{item.point.text}</p>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <span className="text-[10px] font-black uppercase text-orange-400">{item.traktandum}</span>
+                        {item.point.assignee && (
+                          <span className="text-[10px] font-bold bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-300">
+                            Verantwortlich: {item.point.assignee}
                           </span>
                         )}
-                      </div>
-                      <div className="space-y-3">
-                        {pts.map((p, idx) => {
-                          const isActivePoint = liveDraft.activePointId === p.id;
-                          return (
-                            <div
-                              key={p.id}
-                              className={`p-4 rounded-xl border text-sm leading-relaxed transition-all ${
-                                isActivePoint
-                                  ? 'bg-gray-900 border-orange-500 text-white shadow-lg shadow-orange-500/10'
-                                  : 'bg-gray-900/60 border-gray-800/80 text-gray-200'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-[10px] font-black text-gray-500">#{idx + 1}</span>
-                                {isActivePoint && (
-                                  <span className="text-[10px] font-bold text-orange-400 animate-pulse">
-                                    wird gerade geschrieben...
-                                  </span>
-                                )}
-                              </div>
-                              <p className="whitespace-pre-wrap">
-                                {p.text || <span className="italic text-gray-600">Tippt...</span>}
-                                {isActivePoint && (
-                                  <span className="inline-block w-2 h-4 bg-orange-500 ml-1 animate-pulse align-middle" />
-                                )}
-                              </p>
-                            </div>
-                          );
-                        })}
+                        <span className="text-[10px] text-gray-500">
+                          aus «{item.minuteTitle}» ({new Date(item.minuteDate).toLocaleDateString('de-CH')})
+                        </span>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setExpandedId(item.minuteId);
+                      setOnlyOpenTasks(false);
+                    }}
+                    className="text-xs font-bold text-orange-500 hover:underline self-end sm:self-center shrink-0"
+                  >
+                    Zum Protokoll →
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
-    </div>
-  );
-}
 
-// --- Protocol Editor (Mit Echtzeit-Live-Sync für gemeinsames Tippen & Mitlesen) ---
-function ProtocolEditor({ vorstand, currentUser, liveDraft, onSave, onCancel, initialData, notify }) {
+// --- Protocol Editor (Mit Echtzeit-Live-Sync, Pendenzen-Übernahme & Kalender-Verknüpfung) ---
+function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], calItems = [], onSave, onCancel, initialData, notify }) {
   const [form, setForm] = useState(() => {
     if (initialData) return initialData;
     if (liveDraft?.form) return liveDraft.form;
@@ -1746,6 +1700,8 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, onSave, onCancel, in
   const [draftSavedAt,      setDraftSavedAt]      = useState(null);
   const [liveSyncEnabled,   setLiveSyncEnabled]   = useState(true);
   const [focusedField,      setFocusedField]      = useState({ traktandum: null, pointId: null });
+  const [nextMeetingDate,   setNextMeetingDate]   = useState('');
+  const [nextMeetingTime,   setNextMeetingTime]   = useState('19:30');
   const isRemoteUpdateRef = React.useRef(false);
   const lastLocalEditRef  = React.useRef(0);
 
@@ -1755,7 +1711,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, onSave, onCancel, in
     const isFromOtherSession = liveDraft.sessionId && liveDraft.sessionId !== currentUser?.sessionId;
     const timeSinceMyLastKeystroke = Date.now() - lastLocalEditRef.current;
 
-    // Wenn ein anderes Gerät tippt und wir nicht in den letzten 400ms selbst getippt haben, übernehmen wir den Live-Stand
     if (isFromOtherSession && timeSinceMyLastKeystroke > 400) {
       isRemoteUpdateRef.current = true;
       setForm(liveDraft.form);
@@ -1803,6 +1758,62 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, onSave, onCancel, in
     }
   };
 
+  // Offene Pendenzen aus früheren Sitzungen mit 1 Klick übernehmen
+  const importOpenTasks = () => {
+    if (!openTasksList || openTasksList.length === 0) {
+      notify("Keine offenen Pendenzen aus früheren Protokollen vorhanden.", "info");
+      return;
+    }
+    markLocalEdit('Pendenzen-Import', null);
+    let importedCount = 0;
+    setForm(prev => {
+      const nextTraktanden = { ...prev.traktanden };
+      openTasksList.forEach(item => {
+        const list = [...(nextTraktanden[item.traktandum] || [])];
+        const alreadyExists = list.some(p => p.text.trim() === item.point.text.trim());
+        if (!alreadyExists) {
+          list.push({
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            text: `[Pendenz aus ${item.minuteTitle}] ${item.point.text}`,
+            type: 'todo',
+            assignee: item.point.assignee || '',
+            dueDate: item.point.dueDate || '',
+            done: false,
+            docUrl: item.point.docUrl || '',
+            docName: item.point.docName || ''
+          });
+          nextTraktanden[item.traktandum] = list;
+          importedCount++;
+        }
+      });
+      return { ...prev, traktanden: nextTraktanden };
+    });
+    if (importedCount > 0) {
+      notify(`${importedCount} offene Pendenz(en) ins aktuelle Protokoll übernommen!`, "success");
+    } else {
+      notify("Alle offenen Pendenzen sind bereits im aktuellen Protokoll enthalten.", "info");
+    }
+  };
+
+  // Nächste Vorstandssitzung direkt im Kalender eintragen
+  const scheduleNextMeeting = async () => {
+    if (!nextMeetingDate) {
+      notify("Bitte zuerst ein Datum für die nächste Sitzung wählen.", "error");
+      return;
+    }
+    const id = Date.now().toString();
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'calendar', id), {
+      id,
+      title: 'Vorstandssitzung',
+      date: nextMeetingDate,
+      time: nextMeetingTime || '19:30',
+      location: 'Vereinslokal Ämme',
+      description: `Geplant in Sitzung «${form.title || 'Vorstandssitzung'}»`
+    });
+    notify(`Nächste Vorstandssitzung (${new Date(nextMeetingDate).toLocaleDateString('de-CH')}) im Kalender eingetragen!`, "success");
+    setNextMeetingDate('');
+  };
+
   const handleCancelEditor = async () => {
     if (liveDraft?.sessionId === currentUser?.sessionId) {
       try {
@@ -1833,7 +1844,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, onSave, onCancel, in
         ...prev.traktanden,
         [traktandum]: [
           ...(prev.traktanden[traktandum] || []),
-          { id, text: '', type: defaultType, assignee: '', done: false, docUrl: '', docName: '' }
+          { id, text: '', type: defaultType, assignee: '', dueDate: '', done: false, docUrl: '', docName: '' }
         ]
       }
     }));
@@ -1992,18 +2003,31 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, onSave, onCancel, in
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-3 pt-1">
-            <Calendar className="text-orange-500 shrink-0" size={18} />
-            <span className="text-xs font-bold text-gray-500 uppercase">Sitzungsdatum:</span>
-            <input
-              type="date"
-              className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-2 text-white text-sm font-bold focus:border-orange-500 outline-none"
-              value={form.date}
-              onChange={e => {
-                markLocalEdit('Datum', null);
-                setForm({...form, date: e.target.value});
-              }}
-            />
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <div className="flex items-center gap-2">
+              <Calendar className="text-orange-500 shrink-0" size={18} />
+              <span className="text-xs font-bold text-gray-500 uppercase">Sitzungsdatum:</span>
+              <input
+                type="date"
+                className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-2 text-white text-sm font-bold focus:border-orange-500 outline-none"
+                value={form.date}
+                onChange={e => {
+                  markLocalEdit('Datum', null);
+                  setForm({...form, date: e.target.value});
+                }}
+              />
+            </div>
+
+            {openTasksList.length > 0 && (
+              <button
+                type="button"
+                onClick={importOpenTasks}
+                className="text-xs font-black bg-orange-500/10 hover:bg-orange-500 hover:text-gray-950 text-orange-400 border border-orange-500/30 px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 active:scale-95"
+                title="Alle noch offenen Pendenzen aus früheren Sitzungen in dieses Protokoll übernehmen"
+              >
+                <Sparkles size={14} /> Offene Pendenzen übernehmen ({openTasksList.length})
+              </button>
+            )}
           </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
@@ -2066,46 +2090,77 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, onSave, onCancel, in
       </div>
 
       <div className="grid gap-8 lg:grid-cols-3">
-        {/* Linke Spalte: Anwesenheit */}
-        <div className="lg:col-span-1 bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl h-fit lg:sticky top-24 shadow-xl">
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="text-lg font-black text-white flex items-center gap-2.5">
-              <UserCheck className="text-orange-500" size={20} /> Anwesenheit
+        {/* Linke Spalte: Anwesenheit & Nächster Termin */}
+        <div className="lg:col-span-1 space-y-6 h-fit lg:sticky top-24">
+          <div className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl shadow-xl">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-black text-white flex items-center gap-2.5">
+                <UserCheck className="text-orange-500" size={20} /> Anwesenheit
+              </h3>
+              <button
+                type="button"
+                onClick={markAllPresent}
+                className="text-[10px] font-black uppercase tracking-wider text-orange-500 hover:underline"
+              >
+                Alle anwesend
+              </button>
+            </div>
+            <div className="space-y-3">
+              {vorstand.map(m => (
+                <div key={m.id} className="p-3.5 bg-gray-950 rounded-2xl border border-gray-800">
+                  <p className="font-bold text-white mb-2.5 text-sm">{m.firstName} {m.lastName}</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { id: 'present', label: 'Anw.',  color: 'bg-green-500/20 text-green-400 border-green-500/50' },
+                      { id: 'excused', label: 'Ents.', color: 'bg-blue-500/20 text-blue-400 border-blue-500/50' },
+                      { id: 'absent',  label: 'Unen.', color: 'bg-red-500/20 text-red-400 border-red-500/50' }
+                    ].map(status => (
+                      <button
+                        type="button"
+                        key={status.id}
+                        onClick={() => updateAttendance(m.id, status.id)}
+                        className={`text-[10px] font-black uppercase py-2 rounded-xl border transition-all ${
+                          form.attendance[m.id] === status.id
+                            ? status.color
+                            : 'bg-gray-900 text-gray-600 border-gray-800 hover:border-gray-700 hover:text-gray-400'
+                        }`}
+                      >
+                        {status.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Nächste Sitzung direkt in Vereinskalender eintragen */}
+          <div className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl shadow-xl space-y-3">
+            <h3 className="text-sm font-black uppercase tracking-widest text-orange-500 flex items-center gap-2">
+              <CalendarDays size={16} /> Nächste Sitzung planen
             </h3>
+            <p className="text-xs text-gray-500">Trage den nächsten Sitzungstermin direkt in den Vereinskalender ein:</p>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="date"
+                value={nextMeetingDate}
+                onChange={e => setNextMeetingDate(e.target.value)}
+                className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white font-bold focus:border-orange-500 outline-none"
+              />
+              <input
+                type="time"
+                value={nextMeetingTime}
+                onChange={e => setNextMeetingTime(e.target.value)}
+                className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white font-bold focus:border-orange-500 outline-none"
+              />
+            </div>
             <button
               type="button"
-              onClick={markAllPresent}
-              className="text-[10px] font-black uppercase tracking-wider text-orange-500 hover:underline"
+              onClick={scheduleNextMeeting}
+              className="w-full py-2.5 bg-gray-950 hover:bg-orange-500 text-orange-400 hover:text-gray-950 border border-orange-500/30 font-black text-xs rounded-xl transition-all active:scale-95"
             >
-              Alle anwesend
+              + In Kalender eintragen
             </button>
-          </div>
-          <div className="space-y-3">
-            {vorstand.map(m => (
-              <div key={m.id} className="p-3.5 bg-gray-950 rounded-2xl border border-gray-800">
-                <p className="font-bold text-white mb-2.5 text-sm">{m.firstName} {m.lastName}</p>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {[
-                    { id: 'present', label: 'Anw.',  color: 'bg-green-500/20 text-green-400 border-green-500/50' },
-                    { id: 'excused', label: 'Ents.', color: 'bg-blue-500/20 text-blue-400 border-blue-500/50' },
-                    { id: 'absent',  label: 'Unen.', color: 'bg-red-500/20 text-red-400 border-red-500/50' }
-                  ].map(status => (
-                    <button
-                      type="button"
-                      key={status.id}
-                      onClick={() => updateAttendance(m.id, status.id)}
-                      className={`text-[10px] font-black uppercase py-2 rounded-xl border transition-all ${
-                        form.attendance[m.id] === status.id
-                          ? status.color
-                          : 'bg-gray-900 text-gray-600 border-gray-800 hover:border-gray-700 hover:text-gray-400'
-                      }`}
-                    >
-                      {status.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
           </div>
         </div>
 
@@ -2213,6 +2268,16 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, onSave, onCancel, in
                             <option value="Gesamtvorstand">Gesamtvorstand</option>
                           </select>
 
+                          {point.type === 'todo' && (
+                            <input
+                              type="date"
+                              value={point.dueDate || ''}
+                              onChange={e => updatePoint(traktandum, point.id, 'dueDate', e.target.value)}
+                              title="Fälligkeitsdatum (Bis wann?)"
+                              className="bg-gray-900 border border-gray-800 rounded-lg px-2 py-1 text-[11px] font-bold text-orange-400 focus:border-orange-500 outline-none"
+                            />
+                          )}
+
                           <button
                             type="button"
                             onClick={() => setEnlargedEditPoint({ traktandum, id: point.id, text: point.text })}
@@ -2309,7 +2374,103 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, onSave, onCancel, in
                     );
                   })}
 
-                  {points.length === 0 && (
+// --- Dokument- & Bild-Vorschau Modal (Lightbox) ---
+function FilePreviewModal({ docItem, onClose }) {
+  if (!docItem?.url) return null;
+  const lowerName = (docItem.name || '').toLowerCase();
+  const isImage =
+    docItem.type?.startsWith('image/') ||
+    /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(lowerName) ||
+    docItem.url.startsWith('data:image/');
+  const isPdf =
+    docItem.type?.includes('pdf') ||
+    /\.pdf$/i.test(lowerName) ||
+    docItem.url.startsWith('data:application/pdf');
+
+  return (
+    <div
+      className="fixed inset-0 z-[220] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        className="bg-gray-900 border border-gray-800 rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-6 py-4 bg-gray-950 border-b border-gray-800 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <FileText size={18} className="text-orange-500 shrink-0" />
+            <h3 className="font-black text-white text-sm sm:text-base truncate">{docItem.name || 'Dokument-Vorschau'}</h3>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => triggerFileDownload(docItem.url, docItem.name || 'Dokument')}
+              className="px-4 py-2 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95"
+            >
+              <Download size={14} /> Herunterladen
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 flex-1 overflow-auto flex items-center justify-center bg-gray-950/50 min-h-[320px]">
+          {isImage ? (
+            <img
+              src={docItem.url}
+              alt={docItem.name}
+              className="max-h-[72vh] max-w-full object-contain rounded-2xl shadow-lg"
+            />
+          ) : isPdf ? (
+            <iframe
+              src={docItem.url}
+              title={docItem.name}
+              className="w-full h-[72vh] rounded-2xl border border-gray-800 bg-white"
+            />
+          ) : (
+            <div className="text-center py-12 space-y-4">
+              <File size={48} className="mx-auto text-orange-500/60" />
+              <p className="text-gray-300 font-bold text-sm">
+                Für diesen Dateityp ist keine direkte Browser-Vorschau verfügbar.
+              </p>
+              <button
+                onClick={() => triggerFileDownload(docItem.url, docItem.name || 'Dokument')}
+                className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-2xl text-xs inline-flex items-center gap-2 shadow-lg"
+              >
+                <Download size={16} /> Datei jetzt herunterladen
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Files View (Zuverlässige Dateiablage mit globaler Suche & Direkt-Vorschau) ---
+function FilesView({ folders, files, currentUser, notify, askConfirm }) {
+  const [selectedFolder, setSelectedFolder] = useState(null);
+  const [showNewFolder,  setShowNewFolder]  = useState(false);
+  const [folderName,     setFolderName]     = useState('');
+  const [uploading,      setUploading]      = useState({});
+  const [dragOver,       setDragOver]       = useState(false);
+  const [fileSearch,     setFileSearch]     = useState('');
+  const [previewDoc,     setPreviewDoc]     = useState(null);
+
+  const folderFiles = useMemo(() =>
+    selectedFolder ? files.filter(f => f.folderId === selectedFolder.id) : [],
+    [files, selectedFolder]
+  );
+
+  const globalMatchedFiles = useMemo(() => {
+    if (!fileSearch.trim()) return [];
+    const term = fileSearch.toLowerCase();
+    return files.filter(f => f.name?.toLowerCase().includes(term));
+  }, [files, fileSearch]);
+
                     <button
                       type="button"
                       onClick={() => addPoint(traktandum)}
@@ -3314,6 +3475,67 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
         </form>
       )}
 
+      {/* Globale Dateisuche über alle Ordner hinweg */}
+      {files.length > 0 && (
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+          <input
+            type="text"
+            value={fileSearch}
+            onChange={e => setFileSearch(e.target.value)}
+            placeholder="In allen Ordnern nach Dateinamen suchen..."
+            className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-3.5 pl-11 pr-10 text-white focus:border-orange-500 outline-none transition-all text-sm"
+          />
+          {fileSearch && (
+            <button onClick={() => setFileSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">
+              <X size={16} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {fileSearch.trim() && (
+        <div className="bg-gray-900 border border-orange-500/30 rounded-3xl p-4 space-y-2 animate-in fade-in">
+          <p className="text-xs font-black uppercase tracking-widest text-orange-500 px-2 mb-2">
+            Suchergebnisse ({globalMatchedFiles.length})
+          </p>
+          {globalMatchedFiles.length === 0 ? (
+            <p className="text-xs text-gray-500 px-2 py-4">Keine Datei mit «{fileSearch}» gefunden.</p>
+          ) : (
+            globalMatchedFiles.map(f => {
+              const parentFolder = folders.find(fl => fl.id === f.folderId);
+              return (
+                <div key={f.id} className="flex items-center gap-3 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3">
+                  <span className="text-xl shrink-0">{getFileIcon(f.type)}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-white text-sm truncate">{f.name}</p>
+                    <p className="text-[10px] text-gray-500">
+                      Ordner: <span className="text-orange-400 font-bold">{parentFolder?.name || 'Unbekannt'}</span> • {formatSize(f.size)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewDoc(f)}
+                    className="p-2.5 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all border border-gray-800"
+                    title="Vorschau"
+                  >
+                    <Eye size={16}/>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => triggerFileDownload(f.url, f.name)}
+                    className="p-2.5 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all border border-gray-800"
+                    title="Herunterladen"
+                  >
+                    <Download size={16}/>
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {folders.map(folder => (
           <div
@@ -3387,6 +3609,14 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
                 </div>
                 <button
                   type="button"
+                  onClick={() => setPreviewDoc(f)}
+                  className="p-2.5 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all shrink-0 border border-gray-800"
+                  title="Vorschau öffnen"
+                >
+                  <Eye size={16}/>
+                </button>
+                <button
+                  type="button"
                   onClick={() => triggerFileDownload(f.url, f.name)}
                   className="p-2.5 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all shrink-0 border border-gray-800"
                   title="Herunterladen"
@@ -3405,6 +3635,10 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
             ))}
           </div>
         </div>
+      )}
+
+      {previewDoc && (
+        <FilePreviewModal docItem={previewDoc} onClose={() => setPreviewDoc(null)} />
       )}
     </div>
   );
