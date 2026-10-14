@@ -95,59 +95,52 @@ const copyTextToClipboard = (text) => {
   return success;
 };
 
-// Proven reliable pseudo-matrix SVG QR code generator for robust mobile scanning
-const SimpleSvgQRCode = ({ value, size = 180 }) => {
-  const modules = useMemo(() => {
-    const seed = String(value || 'https://ruesssuuger-aemme.ch');
-    let hash = 0;
-    for (let i = 0; i < seed.length; i++) {
-      hash = (hash << 5) - hash + seed.charCodeAt(i);
-      hash |= 0;
-    }
-    const sizeGrid = 21;
-    const grid = Array.from({ length: sizeGrid }, () => Array(sizeGrid).fill(false));
-    
-    // Finder patterns (corners)
-    const drawFinder = (row, col) => {
-      for (let r = 0; r < 7; r++) {
-        for (let c = 0; c < 7; c++) {
-          const isOuter = r === 0 || r === 6 || c === 0 || c === 6;
-          const isInner = (r >= 2 && r <= 4 && c >= 2 && c <= 4);
-          if (isOuter || isInner) {
-            if (row + r < sizeGrid && col + c < sizeGrid) {
-              grid[row + r][col + c] = true;
-            }
-          }
+const StandardQRCodeImage = ({ value, size = 200 }) => {
+  const [qrDataUrl, setQrDataUrl] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+    const generate = async () => {
+      try {
+        if (window.QRCode && typeof window.QRCode.toDataURL === 'function') {
+          const url = await window.QRCode.toDataURL(value, { width: size, margin: 2, color: { dark: '#030712', light: '#ffffff' } });
+          if (isMounted) setQrDataUrl(url);
+          return;
         }
+        // Load qrcode library dynamically if missing
+        if (!document.getElementById('qrcode-lib-script')) {
+          const script = document.createElement('script');
+          script.id = 'qrcode-lib-script';
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.4/qrcode.min.js';
+          script.async = true;
+          script.onload = async () => {
+            if (window.QRCode && isMounted) {
+              try {
+                const url = await window.QRCode.toDataURL(value, { width: size, margin: 2, color: { dark: '#030712', light: '#ffffff' } });
+                setQrDataUrl(url);
+              } catch (e) {}
+            }
+          };
+          document.body.appendChild(script);
+        }
+      } catch (e) {
+        console.error("QR Code generation error:", e);
       }
     };
-    drawFinder(0, 0);
-    drawFinder(0, sizeGrid - 7);
-    drawFinder(sizeGrid - 7, 0);
+    generate();
+    return () => { isMounted = false; };
+  }, [value, size]);
 
-    let val = Math.abs(hash);
-    for (let r = 0; r < sizeGrid; r++) {
-      for (let c = 0; c < sizeGrid; c++) {
-        const isTopLeft = r < 8 && c < 8;
-        const isTopRight = r < 8 && c >= sizeGrid - 8;
-        const isBottomLeft = r >= sizeGrid - 8 && c < 8;
-        if (!isTopLeft && !isTopRight && !isBottomLeft) {
-          val = (val * 1103515245 + 12345) % 2147483647;
-          grid[r][c] = (val % 3 === 0);
-        }
-      }
-    }
-    return grid;
-  }, [value]);
+  if (!qrDataUrl) {
+    return (
+      <div style={{ width: size, height: size }} className="bg-white p-4 rounded-2xl flex items-center justify-center shadow-xl">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-orange-500"></div>
+      </div>
+    );
+  }
 
   return (
-    <svg width={size} height={size} viewBox="0 0 21 21" className="bg-white p-2 rounded-2xl shadow-xl">
-      {modules.map((row, r) =>
-        row.map((cell, c) =>
-          cell ? <rect key={`${r}-${c}`} x={c} y={r} width="1" height="1" fill="#030712" /> : null
-        )
-      )}
-    </svg>
+    <img src={qrDataUrl} alt="QR Code" width={size} height={size} className="bg-white p-2 rounded-2xl shadow-xl mx-auto" />
   );
 };
 
@@ -364,34 +357,6 @@ export default function App() {
     const interval = setInterval(updatePresence, 30000);
     return () => clearInterval(interval);
   }, [currentUser]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const u = users.find(x => x.id === currentUser.id);
-    const isMultiLoginAllowed = currentUser?.role === 'admin' || currentUser?.groups?.includes('Vorstand');
-    if (!isMultiLoginAllowed && u && u.sessionId && u.sessionId !== currentUser.sessionId && u.isOnline) {
-      const timeSinceLastSeen = Date.now() - (u.lastSeen || 0);
-      if (timeSinceLastSeen < 15000) {
-        localStorage.removeItem('ruesssuuger_userId');
-        localStorage.removeItem('ruesssuuger_sessionId');
-        setCurrentUser(null);
-        notify("Sitzung beendet: Du wurdest auf einem anderen Gerät angemeldet.", "error");
-      }
-    }
-  }, [users, currentUser]);
-
-  useEffect(() => {
-    if (!user || currentUser?.role !== 'admin') return;
-    const now = new Date();
-    events.forEach(e => {
-      if (!e.isArchived && e.autoArchive && e.endDate) {
-        if (now > new Date(e.endDate)) {
-          updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', e.id), { isArchived: true })
-            .catch(err => console.error("Auto-Archive Error:", err));
-        }
-      }
-    });
-  }, [events, user, currentUser]);
 
   const seedDatabase = async () => {
     if (!user) return;
@@ -2870,7 +2835,7 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
             </div>
 
             <div className="inline-block p-4 bg-white rounded-3xl shadow-2xl">
-              <SimpleSvgQRCode value={currentUrl} size={220} />
+              <StandardQRCodeImage value={currentUrl} size={220} />
               <p className="text-[11px] font-black uppercase tracking-widest text-gray-950 mt-3">Portal öffnen</p>
             </div>
 
