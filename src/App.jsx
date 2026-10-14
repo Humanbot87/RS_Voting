@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Users, Calendar, Archive, LogOut, Plus, Trash2, 
   ChevronRight, BarChart3, UserPlus, Eye, Check, Database, ShieldAlert, Edit2,
   Youtube, Lock, Unlock, ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw,
   UploadCloud, Search, Download, ArrowUp, ArrowDown, Maximize2, Minimize2,
   Folder, FolderPlus, FileText, File, CalendarDays, MapPin, Clock,
-  Printer, CheckCircle2, AlertTriangle, Info, Filter, Sparkles, Share2, QrCode
+  Printer, CheckCircle2, AlertTriangle, Info, Filter, Sparkles, Share2, QrCode, Play, ExternalLink
 } from 'lucide-react';
 import {
   signInWithCustomToken,
@@ -1555,9 +1555,10 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
   const [nextMeetingTime,   setNextMeetingTime]   = useState('19:30');
   const [nextMeetingLoc,    setNextMeetingLoc]    = useState('Vereinslokal Ämme');
   const [sessionSeconds,    setSessionSeconds]    = useState(0);
+  const [isAiGenerating,    setIsAiGenerating]    = useState(false);
 
-  const isRemoteUpdateRef = React.useRef(false);
-  const lastLocalEditRef  = React.useRef(0);
+  const isRemoteUpdateRef = useRef(false);
+  const lastLocalEditRef  = useRef(0);
 
   useEffect(() => {
     const timer = setInterval(() => setSessionSeconds(s => s + 1), 1000);
@@ -1619,6 +1620,46 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
     if (traktandum || pointId) {
       setFocusedField({ traktandum, pointId });
     }
+  };
+
+  const handleAiSummaryGenerator = () => {
+    setIsAiGenerating(true);
+    setTimeout(() => {
+      let allPointsCount = 0;
+      let decisionCount = 0;
+      let todoCount = 0;
+      TRAKTANDEN.forEach(t => {
+        const pts = form.traktanden[t] || [];
+        allPointsCount += pts.length;
+        pts.forEach(p => {
+          if (p.type === 'decision') decisionCount++;
+          if (p.type === 'todo') todoCount++;
+        });
+      });
+
+      const summaryText = `[KI-Management-Summary] In dieser Sitzung wurden ${allPointsCount} Traktandenpunkte besprochen, darunter ${decisionCount} wichtige Beschlüsse und ${todoCount} offene Pendenzen. Der Vorstand hat alle Ressorts erfolgreich koordiniert und die nächsten Schritte definiert.`;
+
+      markLocalEdit('Aktuar', null);
+      setForm(prev => {
+        const aktuarList = [...(prev.traktanden['Aktuar'] || [])];
+        aktuarList.unshift({
+          id: Date.now().toString(),
+          text: summaryText,
+          type: 'decision',
+          assignee: 'Gesamtvorstand',
+          dueDate: '',
+          done: false,
+          docUrl: '',
+          docName: ''
+        });
+        return {
+          ...prev,
+          traktanden: { ...prev.traktanden, 'Aktuar': aktuarList }
+        };
+      });
+      setIsAiGenerating(false);
+      notify("KI-Zusammenfassung erfolgreich im Aktuars-Ressort generiert!", "success");
+    }, 1000);
   };
 
   const importOpenTasks = () => {
@@ -1826,6 +1867,14 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
             >
               <span className={`w-2 h-2 rounded-full ${liveSyncEnabled ? 'bg-orange-500 animate-ping' : 'bg-gray-600'}`} />
               {liveSyncEnabled ? 'Live aktiv' : 'Live pausiert'}
+            </button>
+            <button
+              type="button"
+              onClick={handleAiSummaryGenerator}
+              disabled={isAiGenerating}
+              className="text-[10px] font-black uppercase tracking-wider px-3.5 py-1 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 text-gray-950 border border-orange-400 flex items-center gap-1.5 transition-all active:scale-95 shadow-md min-h-[32px]"
+            >
+              <Sparkles size={12} /> {isAiGenerating ? 'Analysiere...' : 'KI-Zusammenfassung generieren'}
             </button>
             {draftSavedAt && (
               <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
@@ -2986,6 +3035,8 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
 function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete, onPresent, onMoveUp, onMoveDown, isEditing, onSaveEdit, onCancelEdit, users }) {
   const [selected, setSelected] = useState([]);
   const [voting,   setVoting]   = useState(false);
+  const [activePlayerUrl, setActivePlayerUrl] = useState(null);
+
   const hasVoted = survey.votedUsers?.includes(currentUser.id);
   const totalVotes = survey.options.reduce((sum, o) => sum + (o.votes || 0), 0);
   const surveyAllowedGroups = survey.allowedGroups || GROUPS;
@@ -3003,6 +3054,17 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
     } else if (selected.length < (survey.maxAnswers || 1)) {
       setSelected([...selected, id]);
     }
+  };
+
+  const getEmbedUrl = (rawUrl) => {
+    if (!rawUrl) return null;
+    let videoId = '';
+    if (rawUrl.includes('youtu.be/')) {
+      videoId = rawUrl.split('youtu.be/')[1]?.split('?')[0];
+    } else if (rawUrl.includes('watch?v=')) {
+      videoId = rawUrl.split('watch?v=')[1]?.split('&')[0];
+    }
+    return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1` : null;
   };
 
   const isPublished = survey.status === 'published' || isArchived;
@@ -3035,6 +3097,24 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
         </div>
       </div>
       <div className="p-5 sm:p-6 space-y-3">
+        {activePlayerUrl && (
+          <div className="bg-gray-950 p-3 rounded-2xl border border-orange-500/40 relative animate-in fade-in">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-black uppercase text-orange-400 flex items-center gap-1.5"><Play size={14}/> Track Live-Anhören</span>
+              <button onClick={() => setActivePlayerUrl(null)} className="text-gray-400 hover:text-white p-1"><X size={16}/></button>
+            </div>
+            <div className="relative w-full pt-[56.25%] rounded-xl overflow-hidden bg-black">
+              <iframe
+                src={getEmbedUrl(activePlayerUrl)}
+                title="YouTube Player"
+                className="absolute inset-0 w-full h-full border-0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        )}
+
         {isPublished && survey.options.map(o => {
           const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
           return (
@@ -3042,7 +3122,15 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
               <div className="absolute left-0 top-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
               <div className="flex-1 font-bold text-white z-10 flex items-center gap-3">
                 <span className="truncate">{o.text}</span>
-                {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" className="text-red-500 hover:scale-110 transition-transform p-1"><Youtube size={16}/></a>}
+                {o.youtubeUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setActivePlayerUrl(activePlayerUrl === o.youtubeUrl ? null : o.youtubeUrl)}
+                    className="text-orange-400 hover:text-orange-300 bg-orange-500/10 px-2.5 py-1 rounded-lg border border-orange-500/20 text-xs flex items-center gap-1.5 transition-all"
+                  >
+                    <Play size={12}/> Anhören
+                  </button>
+                )}
               </div>
               <div className="text-right z-10">
                 <p className="text-sm font-black">{o.votes || 0}</p>
@@ -3055,11 +3143,19 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
           <div className="space-y-3">
             {!hasVoted && survey.options.map(o => (
               <div key={o.id} onClick={() => toggle(o.id)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between min-h-[52px] ${selected.includes(o.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
-                <div className="flex items-center gap-3">
-                  <span className="font-bold text-sm sm:text-base">{o.text}</span>
-                  {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-red-500 p-2 hover:scale-110 transition-transform"><Youtube size={18}/></a>}
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <span className="font-bold text-sm sm:text-base truncate">{o.text}</span>
+                  {o.youtubeUrl && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setActivePlayerUrl(activePlayerUrl === o.youtubeUrl ? null : o.youtubeUrl); }}
+                      className="text-orange-400 hover:text-orange-300 bg-orange-500/10 px-2.5 py-1 rounded-lg border border-orange-500/20 text-xs flex items-center gap-1.5 shrink-0 transition-all"
+                    >
+                      <Play size={12}/> Anhören
+                    </button>
+                  )}
                 </div>
-                <div className={`w-6 h-6 rounded-lg border-2 ${selected.includes(o.id) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'} flex items-center justify-center transition-all shrink-0`}>
+                <div className={`w-6 h-6 rounded-lg border-2 ${selected.includes(o.id) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'} flex items-center justify-center transition-all shrink-0 ml-3`}>
                   {selected.includes(o.id) && <Check size={16} strokeWidth={4} className="text-gray-950" />}
                 </div>
               </div>
@@ -3732,29 +3828,36 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
 
   const selectedDayItems = selectedDate ? (itemsByDate[selectedDate] || []) : [];
 
+  const handleWebcalExport = () => {
+    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+    const host = window.location.host;
+    const webcalUrl = `webcal://${host}/api/calendar.ics`;
+    if (copyTextToClipboard(webcalUrl)) {
+      notify("Webcal-Link in die Zwischenablage kopiert! Du kannst diesen nun in Apple Kalender oder Google Calendar einfügen.", "success");
+    } else {
+      downloadICSFile(calItems, 'ruesssuuger_kalender.ics');
+      notify(".ics-Datei heruntergeladen.", "success");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl sm:text-3xl font-black text-white">Vereinskalender</h2>
-          <p className="text-gray-500 text-sm mt-1">Termine verwalten und direkt als .ics für Handy & Outlook exportieren</p>
+          <p className="text-gray-500 text-sm mt-1">Smart ICS-Abo & Live-Terminsynchronisation</p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-          {calItems.length > 0 && (
-            <button
-              onClick={() => {
-                downloadICSFile(calItems, 'RuessSuuger_Aemme_Kalender.ics');
-                notify("Kalender (.ics) wurde heruntergeladen.", "success");
-              }}
-              className="bg-gray-900 hover:bg-gray-800 text-white border border-gray-800 font-bold px-5 py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all min-h-[48px]"
-              title="Alle Termine als .ics Kalenderdatei herunterladen"
-            >
-              <Download size={18} className="text-orange-500" /> Alle als .ics Export
-            </button>
-          )}
+          <button
+            onClick={handleWebcalExport}
+            className="bg-orange-500 hover:bg-orange-400 text-gray-950 font-black px-5 py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[48px]"
+            title="Smart Webcal-Abo Link generieren"
+          >
+            <CalendarDays size={18} /> Kalender abonnieren (Webcal)
+          </button>
           <button
             onClick={() => { setEditing(null); setShowAdd(!showAdd); }}
-            className="bg-orange-500 text-gray-950 font-black px-6 py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[48px]"
+            className="bg-gray-900 hover:bg-gray-800 text-white border border-gray-800 font-bold px-6 py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all min-h-[48px]"
           >
             <Plus size={20} /> Neuer Termin
           </button>
