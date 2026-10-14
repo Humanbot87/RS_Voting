@@ -5,7 +5,7 @@ import {
   Youtube, Lock, Unlock, ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw,
   UploadCloud, Search, Download, ArrowUp, ArrowDown, Maximize2, Minimize2,
   Folder, FolderPlus, FileText, File, CalendarDays, MapPin, Clock,
-  Printer, CheckCircle2, AlertTriangle, Info, Filter, Sparkles, Share2
+  Printer, CheckCircle2, AlertTriangle, Info, Filter, Sparkles, Share2, QrCode
 } from 'lucide-react';
 import {
   signInWithCustomToken,
@@ -2715,6 +2715,8 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
   const votedCount = survey.votedUsers?.length || 0;
   const pctVoted = eligibleUsersCount === 0 ? 0 : Math.round((votedCount / eligibleUsersCount) * 100);
 
+  const currentUrl = typeof window !== 'undefined' ? window.location.href : 'https://ruesssuuger-aemme.ch';
+
   return (
     <div className="fixed inset-0 z-[200] bg-gray-950 flex flex-col animate-in fade-in duration-300">
       <div className="flex items-center justify-between px-6 sm:px-8 py-5 border-b border-gray-800">
@@ -2739,14 +2741,30 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 sm:px-8 py-10 max-w-4xl mx-auto w-full">
-        <h2 className="text-3xl sm:text-5xl font-black text-white text-center leading-tight mb-4">
-          {survey.title}
-        </h2>
-        <p className="text-gray-500 font-bold uppercase tracking-widest text-xs sm:text-sm mb-10 text-center">
-          {survey.majorityType === 'two_thirds' ? '⅔ Zwei-Drittel-Mehrheit erforderlich' : survey.majorityType === 'simple' ? 'Einfache Mehrheit (50%+1)' : ''}
-        </p>
+        <div className="flex flex-col md:flex-row items-center justify-between w-full gap-8 mb-8">
+          <div className="flex-1 text-center md:text-left">
+            <span className="inline-flex items-center gap-1.5 bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-black uppercase px-3 py-1 rounded-full mb-3">
+              <QrCode size={14} /> Mit Handy abstimmen
+            </span>
+            <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight mb-2">
+              {survey.title}
+            </h2>
+            <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">
+              {survey.majorityType === 'two_thirds' ? '⅔ Zwei-Drittel-Mehrheit erforderlich' : survey.majorityType === 'simple' ? 'Einfache Mehrheit (50%+1)' : ''}
+            </p>
+          </div>
 
-        <div className="w-full space-y-4 mb-12">
+          <div className="bg-white p-4 rounded-3xl shadow-2xl shrink-0 flex flex-col items-center">
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentUrl)}`}
+              alt="QR-Code zum Abstimmen"
+              className="w-32 h-32 object-contain"
+            />
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-950 mt-2">QR-Code scannen</p>
+          </div>
+        </div>
+
+        <div className="w-full space-y-4 mb-10">
           {survey.status === 'published' ? (
             survey.options.map(o => {
               const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
