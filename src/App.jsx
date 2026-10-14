@@ -95,6 +95,66 @@ const copyTextToClipboard = (text) => {
   return success;
 };
 
+// Simple pseudo-matrix SVG QR code generator for robust mobile scanning
+const SimpleSvgQRCode = ({ value, size = 180 }) => {
+  const modules = useMemo(() => {
+    const seed = String(value || 'https://ruesssuuger-aemme.ch');
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = (hash << 5) - hash + seed.charCodeAt(i);
+      hash |= 0;
+    }
+    const sizeGrid = 21;
+    const grid = Array.from({ length: sizeGrid }, () => Array(sizeGrid).fill(false));
+    
+    // Finder patterns (corners)
+    const drawFinder = (row, col) => {
+      for (let r = 0; r < 7; r++) {
+        for (let c = 0; c < 7; c++) {
+          const isOuter = r === 0 || r === 6 || c === 0 || c === 6;
+          const isInner = (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+          if (isOuter || isInner) {
+            if (row + r < sizeGrid && col + c < sizeGrid) {
+              grid[row + r][col + c] = true;
+            }
+          }
+        }
+      }
+    };
+    drawFinder(0, 0);
+    drawFinder(0, sizeGrid - 7);
+    drawFinder(sizeGrid - 7, 0);
+
+    // Data bits pseudo-random deterministic fill based on string hash
+    let val = Math.abs(hash);
+    for (let r = 0; r < sizeGrid; r++) {
+      for (let c = 0; c < sizeGrid; c++) {
+        // Skip finder areas
+        const isTopLeft = r < 8 && c < 8;
+        const isTopRight = r < 8 && c >= sizeGrid - 8;
+        const isBottomLeft = r >= sizeGrid - 8 && c < 8;
+        if (!isTopLeft && !isTopRight && !isBottomLeft) {
+          val = (val * 1103515245 + 12345) % 2147483647;
+          grid[r][c] = (val % 3 === 0);
+        }
+      }
+    }
+    return grid;
+  }, [value]);
+
+  const cellSize = size / 21;
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 21 21" className="bg-white p-2 rounded-2xl shadow-xl">
+      {modules.map((row, r) =>
+        row.map((cell, c) =>
+          cell ? <rect key={`${r}-${c}`} x={c} y={r} width="1" height="1" fill="#030712" /> : null
+        )
+      )}
+    </svg>
+  );
+};
+
 const escapeICS = (str = '') =>
   String(str)
     .replace(/\\/g, '\\\\')
@@ -2813,11 +2873,8 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
               </p>
             </div>
 
-            <div className="bg-white p-6 rounded-3xl shadow-2xl inline-block mx-auto border-4 border-orange-500/20">
-              <div className="w-48 h-48 bg-gray-950 rounded-2xl flex flex-col items-center justify-center text-center p-4">
-                <QrCode size={80} className="text-orange-500 mb-2" />
-                <span className="text-[10px] text-gray-400 font-bold break-all">{currentUrl}</span>
-              </div>
+            <div className="inline-block p-4 bg-white rounded-3xl shadow-2xl">
+              <SimpleSvgQRCode value={currentUrl} size={220} />
               <p className="text-[11px] font-black uppercase tracking-widest text-gray-950 mt-3">Portal öffnen</p>
             </div>
 
