@@ -2832,11 +2832,12 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
   const [majorityType,  setMajorityType]  = useState(initialData?.majorityType || 'none');
   const [options,       setOptions]       = useState(initialData?.options || [{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
   const [allowedGroups, setAllowedGroups] = useState(initialData?.allowedGroups || GROUPS);
+  const [isAnonymous,   setIsAnonymous]   = useState(initialData?.isAnonymous || false);
 
   const toggleGroup = g => setAllowedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit({ title, maxAnswers, majorityType, allowedGroups, options: options.filter(o => o.text.trim()) }); }} className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-2" : "bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl"}`}>
+    <form onSubmit={e => { e.preventDefault(); onSubmit({ title, maxAnswers, majorityType, allowedGroups, isAnonymous, options: options.filter(o => o.text.trim()) }); }} className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-2" : "bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl"}`}>
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
           <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-4 text-white focus:border-orange-500 outline-none min-h-[48px]" placeholder="Was ist die Frage?" value={title} onChange={e => setTitle(e.target.value)} />
@@ -2853,6 +2854,12 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
             <option value="two_thirds" className="bg-gray-900">Zwei Drittel (⅔)</option>
           </select>
         </div>
+      </div>
+      <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-4 py-3 rounded-xl">
+        <input type="checkbox" id="anonCheck" checked={isAnonymous} onChange={e => setIsAnonymous(e.target.checked)} className="accent-orange-500 w-4 h-4" />
+        <label htmlFor="anonCheck" className="text-xs font-bold text-gray-300 cursor-pointer">
+          Anonyme Abstimmung (Es wird nur gezählt, wer abgestimmt hat, aber nicht welche Stimme von wem stammt)
+        </label>
       </div>
       {options.map((o, i) => (
         <div key={o.id} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-950 border border-gray-800 rounded-2xl relative group">
@@ -2916,7 +2923,7 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
       <div className="p-5 sm:p-6 border-b border-gray-800 bg-gray-950/20 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <span className="text-[10px] font-black uppercase text-orange-500 block mb-1">
-            {isArchived ? 'Abstimmung Beendet' : survey.status} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'} • {survey.majorityType === 'two_thirds' ? '⅔ Mehrheit' : survey.majorityType === 'simple' ? 'Einfache Mehrheit' : ''}
+            {isArchived ? 'Abstimmung Beendet' : survey.status} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'} • {survey.majorityType === 'two_thirds' ? '⅔ Mehrheit' : survey.majorityType === 'simple' ? 'Einfache Mehrheit' : ''} {survey.isAnonymous ? '• 🔒 Anonym' : ''}
           </span>
           <h4 className="text-lg sm:text-xl font-bold text-white leading-tight">{survey.title}</h4>
         </div>
