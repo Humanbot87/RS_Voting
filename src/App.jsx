@@ -1554,8 +1554,21 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
   const [nextMeetingDate,   setNextMeetingDate]   = useState('');
   const [nextMeetingTime,   setNextMeetingTime]   = useState('19:30');
   const [nextMeetingLoc,    setNextMeetingLoc]    = useState('Vereinslokal Ämme');
+  const [sessionSeconds,    setSessionSeconds]    = useState(0);
+
   const isRemoteUpdateRef = React.useRef(false);
   const lastLocalEditRef  = React.useRef(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setSessionSeconds(s => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatSessionTime = (sec) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
 
   useEffect(() => {
     if (!liveSyncEnabled || !liveDraft?.form) return;
@@ -1799,6 +1812,9 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
             <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 inline-block">
               {initialData ? 'Protokoll bearbeiten' : 'Neues Sitzungsprotokoll'}
             </span>
+            <div className="text-[10px] font-bold text-gray-400 bg-gray-950 px-3 py-1 rounded-full border border-gray-800 flex items-center gap-1">
+              <Clock size={12} className="text-orange-500" /> Sitzungsdauer: {formatSessionTime(sessionSeconds)}
+            </div>
             <button
               type="button"
               onClick={() => setLiveSyncEnabled(!liveSyncEnabled)}
@@ -1932,6 +1948,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3 items-start">
+        {/* Linke Spalte (Anwesenheit & Nächste Sitzung planen) - Separat scrollbar */}
         <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
           <div className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl shadow-xl">
             <div className="flex items-center justify-between mb-5">
@@ -1979,7 +1996,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
             <h3 className="text-sm font-black uppercase tracking-widest text-orange-500 flex items-center gap-2">
               <CalendarDays size={16} /> Nächste Sitzung planen
             </h3>
-            <p className="text-xs text-gray-500">Trage den nächsten Sitzungstermin direkt in den Vereinskalender ein:</p>
+            <p className="text-xs text-gray-500">Trage den nächsten Termin direkt in den Vereinskalender ein:</p>
             <div className="grid grid-cols-2 gap-2">
               <input
                 type="date"
@@ -2011,6 +2028,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
           </div>
         </div>
 
+        {/* Rechte Spalte (Traktanden) - Separat scrollbar */}
         <div className="lg:col-span-2 space-y-6 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
           {visibleTraktanden.map(traktandum => {
             const points = form.traktanden[traktandum] || [];
