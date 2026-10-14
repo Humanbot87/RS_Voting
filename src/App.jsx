@@ -7,7 +7,6 @@ import {
   Folder, FolderPlus, FileText, File, CalendarDays, MapPin, Clock,
   Printer, CheckCircle2, AlertTriangle, Info, Filter, Sparkles, Share2, QrCode, Play
 } from 'lucide-react';
-import { auth, db, storage, appId } from './firebase';
 import { 
   signInWithCustomToken, 
   signInAnonymously, 
@@ -18,6 +17,7 @@ import {
 } from 'firebase/auth';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { auth, db, storage, appId } from './firebase';
 
 const GROUPS = ['Vorstand', 'Aktiv Musig', 'Aktiv Wagenbau', 'Passiv', 'Ehrenmitglieder', 'Neumitglied Musig', 'Neumitglied Wagenbau'];
 const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitext'];
@@ -95,7 +95,7 @@ const copyTextToClipboard = (text) => {
   return success;
 };
 
-// Simple pseudo-matrix SVG QR code generator for robust mobile scanning
+// Proven reliable pseudo-matrix SVG QR code generator for robust mobile scanning
 const SimpleSvgQRCode = ({ value, size = 180 }) => {
   const modules = useMemo(() => {
     const seed = String(value || 'https://ruesssuuger-aemme.ch');
@@ -125,11 +125,9 @@ const SimpleSvgQRCode = ({ value, size = 180 }) => {
     drawFinder(0, sizeGrid - 7);
     drawFinder(sizeGrid - 7, 0);
 
-    // Data bits pseudo-random deterministic fill based on string hash
     let val = Math.abs(hash);
     for (let r = 0; r < sizeGrid; r++) {
       for (let c = 0; c < sizeGrid; c++) {
-        // Skip finder areas
         const isTopLeft = r < 8 && c < 8;
         const isTopRight = r < 8 && c >= sizeGrid - 8;
         const isBottomLeft = r >= sizeGrid - 8 && c < 8;
@@ -141,8 +139,6 @@ const SimpleSvgQRCode = ({ value, size = 180 }) => {
     }
     return grid;
   }, [value]);
-
-  const cellSize = size / 21;
 
   return (
     <svg width={size} height={size} viewBox="0 0 21 21" className="bg-white p-2 rounded-2xl shadow-xl">
