@@ -2928,80 +2928,157 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
         </div>
       )}
 
+      {}
       <div className="space-y-6">
-        {event.surveys?.map((s, index) => (
-          <div key={s.id} id={`survey-card-${s.id}`} className="transition-all">
-            <SurveyCard
-              survey={s}
-              currentUser={currentUser}
-              isArchived={isArchived}
-              onEdit={() => setEditingSurvey(editingSurvey?.id === s.id ? null : s)}
-              onDelete={() => deleteSurvey(s.id)}
-              onPresent={setPresentingSurvey}
-              onMoveUp={index > 0 ? () => moveSurvey(index, -1) : null}
-              onMoveDown={index < event.surveys.length - 1 ? () => moveSurvey(index, 1) : null}
-              isEditing={editingSurvey?.id === s.id}
-              onSaveEdit={saveSurvey}
-              onCancelEdit={() => setEditingSurvey(null)}
-              onVote={async (opts) => {
-                const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
-                try {
-                  await runTransaction(db, async (transaction) => {
-                    const snap = await transaction.get(eventRef);
-                    if (!snap.exists()) throw new Error("Event nicht gefunden.");
-                    const data = snap.data();
-                    const srv = data.surveys?.find(x => x.id === s.id);
-                    if (!srv) throw new Error("Umfrage nicht gefunden.");
-                    if (srv.votedUsers?.includes(currentUser.id)) throw new Error("Bereits abgestimmt.");
-                    const updatedSurveys = data.surveys.map(x => {
-                      if (x.id !== s.id) return x;
-                      return {
-                        ...x,
-                        options: x.options.map(o => opts.includes(o.id) ? { ...o, votes: (o.votes || 0) + 1 } : o),
-                        votedUsers: [...(x.votedUsers || []), currentUser.id]
-                      };
-                    });
-                    transaction.update(eventRef, { surveys: updatedSurveys });
-                  });
-                } catch (err) {
-                  console.error("Vote Error:", err);
-                  if (err.message === "Bereits abgestimmt.") notify("Du hast bereits abgestimmt.", "error");
-                }
-              }}
-              onStatusChange={st => {
-                let updated = event.surveys.map(x => x.id === s.id ? {...x, status: st} : x);
-                if (st === 'published') {
-                  const idx = updated.findIndex(x => x.id === s.id);
-                  const [moved] = updated.splice(idx, 1);
-                  updated.push(moved);
-                  triggerCelebration();
-                }
-                onUpdate({ surveys: updated });
-              }}
-              users={users}
-            />
-          </div>
-        ))}
+        {(() => {
+          const allSurveys = event.surveys || [];
+          const activeSurveys = allSurveys.filter(s => s.status === 'active');
+          const finishedSurveys = allSurveys.filter(s => s.status === 'published');
+
+          const handleVoteForSurvey = async (s, opts) => {
+            const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
+            try {
+              await runTransaction(db, async (transaction) => {
+                const snap = await transaction.get(eventRef);
+                if (!snap.exists()) throw new Error("Event nicht gefunden.");
+                const data = snap.data();
+                const srv = data.surveys?.find(x => x.id === s.id);
+                if (!srv) throw new Error("Umfrage nicht gefunden.");
+                if (srv.votedUsers?.includes(currentUser.id)) throw new Error("Bereits abgestimmt.");
+                const updatedSurveys = data.surveys.map(x => {
+                  if (x.id !== s.id) return x;
+                  return {
+                    ...x,
+                    options: x.options.map(o => opts.includes(o.id) ? { ...o, votes: (o.votes || 0) + 1 } : o),
+                    votedUsers: [...(x.votedUsers || []), currentUser.id]
+                  };
+                });
+                transaction.update(eventRef, { surveys: updatedSurveys });
+              });
+            } catch (err) {
+              console.error("Vote Error:", err);
+              if (err.message === "Bereits abgestimmt.") notify("Du hast bereits abgestimmt.", "error");
+            }
+          };
+
+          const handleStatusChangeForSurvey = (s, st) => {
+            const updated = allSurveys.map(x => {
+              if (x.id === s.id) return { ...x, status: st };
+              // Wenn eine neue Abstimmung aktiviert wird, werden andere laufende automatisch als beendet/publiziert markiert
+              if (st === 'active' && x.status === 'active') return { ...x, status: 'published' };
+              return x;
+            });
+            if (st === 'published') {
+              triggerCelebration();
+            }
+            onUpdate({ surveys: updated });
+          };
+
+          // Admin sieht alle Umfragen in der gewohnten Verwaltungs-Reihenfolge
+          if (currentUser.role === 'admin' || isArchived) {
+            return allSurveys.map((s, index) => (
+              <div key={s.id} id={`survey-card-${s.id}`} className="transition-all">
+                <SurveyCard
+                  survey={s}
+                  currentUser={currentUser}
+                  isArchived={isArchived}
+                  onEdit={() => setEditingSurvey(editingSurvey?.id === s.id ? null : s)}
+                  onDelete={() => deleteSurvey(s.id)}
+                  onPresent={setPresentingSurvey}
+                  onMoveUp={index > 0 ? () => moveSurvey(index, -1) : null}
+                  onMoveDown={index < allSurveys.length - 1 ? () => moveSurvey(index, 1) : null}
+                  isEditing={editingSurvey?.id === s.id}
+                  onSaveEdit={saveSurvey}
+                  onCancelEdit={() => setEditingSurvey(null)}
+                  onVote={(opts) => handleVoteForSurvey(s, opts)}
+                  onStatusChange={(st) => handleStatusChangeForSurvey(s, st)}
+                  users={users}
+                />
+              </div>
+            ));
+          }
+
+          // Mitglieder-Ansicht: Fokus auf die EINE aktuelle Abstimmung, beendete Abstimmungen darunter im Event belassen
+          return (
+            <>
+              {activeSurveys.length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 px-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping" />
+                    <span className="text-xs font-black uppercase tracking-widest text-orange-400">
+                      Aktuelle Live-Abstimmung
+                    </span>
+                  </div>
+                  {activeSurveys.map(s => (
+                    <div key={s.id} id={`survey-card-${s.id}`} className="transition-all">
+                      <SurveyCard
+                        survey={s}
+                        currentUser={currentUser}
+                        isArchived={false}
+                        onVote={(opts) => handleVoteForSurvey(s, opts)}
+                        users={users}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {finishedSurveys.length > 0 && (
+                <div className="space-y-4 pt-6 border-t border-gray-800/80">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-xs font-black uppercase tracking-widest text-gray-500">
+                      Abgeschlossene Abstimmungen ({finishedSurveys.length})
+                    </span>
+                  </div>
+                  {finishedSurveys.map(s => (
+                    <div key={s.id} id={`survey-card-${s.id}`} className="transition-all opacity-85">
+                      <SurveyCard
+                        survey={s}
+                        currentUser={currentUser}
+                        isArchived={true}
+                        onVote={(opts) => handleVoteForSurvey(s, opts)}
+                        users={users}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {presentingSurvey && (
         <PresentationModal
           survey={event.surveys.find(s => s.id === presentingSurvey.id) || presentingSurvey}
+          allSurveys={event.surveys || []}
           users={users}
           onClose={() => setPresentingSurvey(null)}
+          onSelectSurvey={(nextSurvey, autoActivate = false) => {
+            if (autoActivate) {
+              const updated = (event.surveys || []).map(x => {
+                if (x.id === nextSurvey.id) return { ...x, status: x.status === 'published' ? 'published' : 'active' };
+                if (x.status === 'active') return { ...x, status: 'published' };
+                return x;
+              });
+              onUpdate({ surveys: updated });
+            }
+            setPresentingSurvey(nextSurvey);
+          }}
           onStart={() => {
             const s = event.surveys.find(x => x.id === presentingSurvey.id);
             if (!s) return;
-            const updated = event.surveys.map(x => x.id === s.id ? { ...x, status: 'active' } : x);
+            const updated = event.surveys.map(x => {
+              if (x.id === s.id) return { ...x, status: 'active' };
+              if (x.status === 'active') return { ...x, status: 'published' };
+              return x;
+            });
             onUpdate({ surveys: updated });
           }}
           onPublish={() => {
             const s = event.surveys.find(x => x.id === presentingSurvey.id);
             if (!s) return;
-            let updated = event.surveys.map(x => x.id === s.id ? {...x, status: 'published'} : x);
-            const idx = updated.findIndex(x => x.id === s.id);
-            const [moved] = updated.splice(idx, 1);
-            updated.push(moved);
+            const updated = event.surveys.map(x => x.id === s.id ? { ...x, status: 'published' } : x);
             triggerCelebration();
             onUpdate({ surveys: updated });
           }}
@@ -3011,8 +3088,12 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
   );
 }
 
-function PresentationModal({ survey, users, onClose, onStart, onPublish }) {
+function PresentationModal({ survey, allSurveys = [], users, onClose, onSelectSurvey, onStart, onPublish }) {
   const [step, setStep] = useState('welcome'); // 'welcome' | 'voting'
+
+  const currentIndex = allSurveys.findIndex(x => x.id === survey.id);
+  const prevSurvey = currentIndex > 0 ? allSurveys[currentIndex - 1] : null;
+  const nextSurvey = currentIndex >= 0 && currentIndex < allSurveys.length - 1 ? allSurveys[currentIndex + 1] : null;
 
   const surveyAllowedGroups = survey.allowedGroups || GROUPS;
   const eligibleUsers = users.filter(u => surveyAllowedGroups.some(g => u.groups?.includes(g)));
@@ -3037,7 +3118,7 @@ function PresentationModal({ survey, users, onClose, onStart, onPublish }) {
 
   return (
     <div className="fixed inset-0 z-[200] bg-gray-950 flex flex-col animate-in fade-in duration-300">
-      <div className="flex items-center justify-between px-6 sm:px-8 py-5 border-b border-gray-800">
+      <div className="flex flex-wrap items-center justify-between px-6 sm:px-8 py-5 border-b border-gray-800 gap-4">
         <div className="flex items-center gap-4">
           <h1 className="text-xl sm:text-2xl font-black italic tracking-tighter">
             <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span> <span className="text-gray-400">Ämme</span>
@@ -3045,6 +3126,39 @@ function PresentationModal({ survey, users, onClose, onStart, onPublish }) {
           <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1.5 rounded-lg border border-orange-500/20 hidden sm:inline-block">
             {step === 'welcome' ? 'Willkommen & QR-Code' : 'Live Abstimmung'}
           </span>
+          {allSurveys.length > 1 && (
+            <div className="flex items-center gap-1.5 bg-gray-900 border border-gray-800 px-2.5 py-1.5 rounded-xl">
+              <button
+                type="button"
+                disabled={!prevSurvey}
+                onClick={() => {
+                  if (prevSurvey && onSelectSurvey) {
+                    onSelectSurvey(prevSurvey, step === 'voting');
+                  }
+                }}
+                title="Vorherige Abstimmung"
+                className="p-1.5 text-gray-400 hover:text-white disabled:opacity-30 transition-colors"
+              >
+                <ChevronRight size={16} className="rotate-180" />
+              </button>
+              <span className="text-xs font-black text-gray-300 px-2">
+                Abstimmung {currentIndex + 1} / {allSurveys.length}
+              </span>
+              <button
+                type="button"
+                disabled={!nextSurvey}
+                onClick={() => {
+                  if (nextSurvey && onSelectSurvey) {
+                    onSelectSurvey(nextSurvey, step === 'voting');
+                  }
+                }}
+                title="Nächste Abstimmung"
+                className="p-1.5 text-gray-400 hover:text-white disabled:opacity-30 transition-colors"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {step === 'welcome' ? (
@@ -3057,11 +3171,26 @@ function PresentationModal({ survey, users, onClose, onStart, onPublish }) {
               Zur Abstimmung starten →
             </button>
           ) : (
-            survey.status === 'active' && onPublish && (
-              <button onClick={onPublish} className="px-5 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[44px]">
-                Resultate publizieren
-              </button>
-            )
+            <>
+              {survey.status === 'draft' && onStart && (
+                <button onClick={onStart} className="px-5 py-3 bg-green-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg min-h-[44px]">
+                  Abstimmung freigeben
+                </button>
+              )}
+              {survey.status === 'active' && onPublish && (
+                <button onClick={onPublish} className="px-5 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[44px]">
+                  Resultate publizieren
+                </button>
+              )}
+              {nextSurvey && onSelectSurvey && (
+                <button
+                  onClick={() => onSelectSurvey(nextSurvey, true)}
+                  className="px-5 py-3 bg-gray-800 hover:bg-orange-500 text-white hover:text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all border border-gray-700 hover:border-orange-500 min-h-[44px] flex items-center gap-1.5"
+                >
+                  Nächste Abstimmung →
+                </button>
+              )}
+            </>
           )}
           <button onClick={onClose} className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center">
             <Minimize2 size={20} />
@@ -3069,136 +3198,7 @@ function PresentationModal({ survey, users, onClose, onStart, onPublish }) {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center px-6 sm:px-8 py-10 max-w-4xl mx-auto w-full">
-        {step === 'welcome' ? (
-          <div className="w-full text-center space-y-8 animate-in fade-in duration-300">
-            <div className="space-y-3">
-              <span className="inline-flex items-center gap-2 bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-black uppercase px-4 py-1.5 rounded-full">
-                <QrCode size={16} /> QR-Code scannen & Einloggen
-              </span>
-              <h2 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
-                Herzlich Willkommen zur Abstimmung!
-              </h2>
-              <p className="text-gray-400 text-sm sm:text-base max-w-xl mx-auto">
-                Bitte scanne den QR-Code mit der Handykamera, öffne das Portal und melde dich an. Sobald alle bereit sind, starten wir den Durchgang.
-              </p>
-            </div>
-
-            <div className="inline-block p-4 bg-white rounded-3xl shadow-2xl">
-              <StandardQRCodeImage value={currentUrl} size={220} />
-              <p className="text-[11px] font-black uppercase tracking-widest text-gray-950 mt-3">Portal öffnen</p>
-            </div>
-
-            <div className="max-w-md mx-auto w-full bg-gray-900 border border-gray-800 p-6 rounded-3xl shadow-xl space-y-3">
-              <div className="flex justify-between text-sm font-bold text-gray-400">
-                <span>Mitglieder online im System</span>
-                <span className="text-orange-500 font-black">{onlineCount} von {eligibleUsersCount}</span>
-              </div>
-              <div className="w-full h-3 bg-gray-950 rounded-full overflow-hidden border border-gray-800">
-                <div
-                  className="h-full bg-orange-500 rounded-full transition-all duration-700"
-                  style={{ width: `${pctOnline}%` }}
-                />
-              </div>
-            </div>
-
-            <div className="pt-4">
-              <button
-                onClick={() => {
-                  if (survey.status === 'draft' && onStart) {
-                    onStart();
-                  }
-                  setStep('voting');
-                }}
-                className="px-8 py-4 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl text-base shadow-xl active:scale-95 transition-all"
-              >
-                Zur Abstimmung starten →
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="w-full space-y-8 animate-in fade-in duration-300">
-            <div className="flex flex-col md:flex-row items-center justify-between w-full gap-8">
-              <div className="flex-1 text-center md:text-left">
-                <button onClick={() => setStep('welcome')} className="text-xs text-gray-500 hover:text-orange-400 font-bold mb-2 inline-flex items-center gap-1">
-                  ← Zurück zur Startseite / QR-Code
-                </button>
-                <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight mb-2">
-                  {survey.title}
-                </h2>
-                <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">
-                  {survey.majorityType === 'two_thirds' ? '⅔ Zwei-Drittel-Mehrheit erforderlich' : survey.majorityType === 'simple' ? 'Einfache Mehrheit (50%+1)' : ''}
-                </p>
-              </div>
-            </div>
-
-            <div className="w-full space-y-4">
-              {survey.status === 'published' ? (
-                <>
-                  {survey.options.map(o => {
-                    const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
-                    const isLeading = totalVotes > 0 && (o.votes || 0) === Math.max(...survey.options.map(x => x.votes || 0)) && (o.votes || 0) > 0;
-                    return (
-                      <div key={o.id} className={`relative h-20 rounded-2xl overflow-hidden flex items-center px-6 border-2 transition-all ${isLeading ? 'border-orange-500 shadow-lg shadow-orange-500/20' : 'border-gray-800 bg-gray-900'}`}>
-                        <div
-                          className={`absolute left-0 top-0 h-full transition-all duration-1000 ease-out ${isLeading ? 'bg-orange-500/20' : 'bg-gray-800/60'}`}
-                          style={{ width: `${pct}%` }}
-                        />
-                        <span className="flex-1 font-black text-white text-lg sm:text-xl z-10 truncate flex items-center gap-2">
-                          {o.text}
-                        </span>
-                        <div className="z-10 text-right ml-4">
-                          <p className="text-2xl sm:text-3xl font-black text-white">{o.votes || 0}</p>
-                          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Stimmen ({pct}%)</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {survey.majorityType && survey.majorityType !== 'none' && (
-                    <div className={`p-4 rounded-2xl border text-center font-bold text-sm ${quorumReached ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-                      {quorumReached ? '✓ Quorum / Mehrheit erfolgreich erreicht!' : '⚠ Erforderliche Mehrheit noch nicht erreicht'}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-center py-12 bg-gray-900 border border-gray-800 rounded-3xl w-full">
-                  <p className="text-orange-400 font-bold uppercase tracking-widest text-sm mb-2">Abstimmung läuft noch</p>
-                  <p className="text-gray-500 text-xs">Resultate werden nach der Veröffentlichung eingeblendet.</p>
-                </div>
-              )}
-            </div>
-
-            <div className="w-full bg-gray-900 border border-gray-800 p-6 rounded-3xl shadow-xl space-y-3">
-              <div className="flex justify-between text-sm font-bold text-gray-400">
-                <span>{votedCount} von {eligibleUsersCount} haben abgestimmt</span>
-                <span className="text-orange-500 font-black">{pctVoted}%</span>
-              </div>
-              <div className="w-full h-3 bg-gray-950 rounded-full overflow-hidden border border-gray-800">
-                <div
-                  className="h-full bg-orange-500 rounded-full transition-all duration-700"
-                  style={{ width: `${pctVoted}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function CreateEventForm({ onSubmit }) {
-  const [form, setForm] = useState({ title: '', category: CATEGORIES[0], date: new Date().toISOString().slice(0,16), endDate: '', autoArchive: false });
-  return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl mb-8 space-y-5">
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-gray-600 uppercase ml-1">Event Titel</label>
-          <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[44px]" placeholder="z.B. GV 2026" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-gray-600 uppercase ml-1">Kategorie</label>
-          <select className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white min-h-[44px]" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+      <div className="flex-1 flex flex-col items-center justify-center px-6 sm:px-8 py-10 max-w-4xl mx-auto w-full overflow-y-auto">
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
@@ -3290,28 +3290,29 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
           Anonyme Abstimmung (Es wird nur gezählt, wer abgestimmt hat, aber nicht welche Stimme von wem stammt)
         </label>
       </div>
-      {options.map((o, i) => (
-        <div key={o.id} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-950 border border-gray-800 rounded-2xl relative group">
-          <input required className="bg-transparent border-b border-gray-800 px-2 py-3 text-white outline-none focus:border-orange-500 font-bold min-h-[40px]" placeholder={`Option ${i+1}`} value={o.text} onChange={e => { const n = [...options]; n[i].text = e.target.value; setOptions(n); }} />
-          <div className="flex items-center gap-2">
-            <Youtube size={18} className="text-red-500 shrink-0" />
-            <input className="w-full bg-transparent border-b border-gray-800 px-2 py-3 text-gray-500 outline-none focus:border-orange-500 text-xs min-h-[40px]" placeholder="YouTube Link..." value={o.youtubeUrl} onChange={e => { const n = [...options]; n[i].youtubeUrl = e.target.value; setOptions(n); }} />
-            {options.length > 2 && (
-              <button type="button" onClick={() => setOptions(options.filter(x => x.id !== o.id))} className="p-3 text-gray-700 hover:text-red-500 transition-colors bg-gray-900 rounded-lg ml-2 shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"><Trash2 size={16} /></button>
-            )}
-          </div>
-        </div>
-      ))}
-      <button type="button" onClick={() => setOptions([...options, { id: Date.now().toString(), text: '', youtubeUrl: '' }])} className="text-orange-500 text-xs font-bold hover:underline transition-all py-2 inline-block">+ Option hinzufügen</button>
-      <div className="space-y-3 pt-4 border-t border-gray-800">
-        <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Wer darf an dieser Umfrage teilnehmen?</label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          {GROUPS.map(g => (
-            <label key={g} className={`flex items-center gap-2 p-3.5 rounded-xl border-2 cursor-pointer transition-all min-h-[48px] ${allowedGroups.includes(g) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
-              <input type="checkbox" className="hidden" checked={allowedGroups.includes(g)} onChange={() => toggleGroup(g)} />
-              <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${allowedGroups.includes(g) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'}`}>
-                {allowedGroups.includes(g) && <Check size={12} className="text-gray-950" strokeWidth={4} />}
-              </div>
+                  {survey.majorityType && survey.majorityType !== 'none' && (
+                    <div className={`p-4 rounded-2xl border text-center font-bold text-sm ${quorumReached ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
+                      {quorumReached ? '✓ Quorum / Mehrheit erfolgreich erreicht!' : '⚠ Erforderliche Mehrheit noch nicht erreicht'}
+                    </div>
+                  )}
+                  {nextSurvey && onSelectSurvey && (
+                    <div className="pt-4 flex justify-center">
+                      <button
+                        onClick={() => onSelectSurvey(nextSurvey, true)}
+                        className="px-8 py-4 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl text-base shadow-xl shadow-orange-500/20 active:scale-95 transition-all flex items-center gap-2"
+                      >
+                        Weiter zur nächsten Abstimmung: «{nextSurvey.title}» →
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-12 bg-gray-900 border border-gray-800 rounded-3xl w-full">
+                  <p className="text-orange-400 font-bold uppercase tracking-widest text-sm mb-2">Abstimmung läuft noch</p>
+                  <p className="text-gray-500 text-xs">Resultate werden nach der Veröffentlichung eingeblendet.</p>
+                </div>
+              )}
+            </div>
               <span className="text-[10px] font-black uppercase tracking-tighter truncate">{g}</span>
             </label>
           ))}
@@ -3367,7 +3368,7 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
       <div className="p-5 sm:p-6 border-b border-gray-800 bg-gray-950/20 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <span className="text-[10px] font-black uppercase text-orange-500 block mb-1">
-            {isArchived ? 'Abstimmung Beendet' : survey.status} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'} • {survey.majorityType === 'two_thirds' ? '⅔ Mehrheit' : survey.majorityType === 'simple' ? 'Einfache Mehrheit' : ''} {survey.isAnonymous ? '• 🔒 Anonym' : ''}
+            {isArchived || survey.status === 'published' ? 'Abstimmung Beendet' : survey.status === 'active' ? 'Live-Abstimmung' : 'Entwurf'} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'} • {survey.majorityType === 'two_thirds' ? '⅔ Mehrheit' : survey.majorityType === 'simple' ? 'Einfache Mehrheit' : ''} {survey.isAnonymous ? '• 🔒 Anonym' : ''}
           </span>
           <h4 className="text-lg sm:text-xl font-bold text-white leading-tight">{survey.title}</h4>
         </div>
