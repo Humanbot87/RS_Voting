@@ -1575,6 +1575,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
   const [focusedField,      setFocusedField]      = useState({ traktandum: null, pointId: null });
   const [nextMeetingDate,   setNextMeetingDate]   = useState('');
   const [nextMeetingTime,   setNextMeetingTime]   = useState('19:30');
+  const [nextMeetingLoc,    setNextMeetingLoc]    = useState('Vereinslokal Ämme');
   const isRemoteUpdateRef = React.useRef(false);
   const lastLocalEditRef  = React.useRef(0);
 
@@ -1676,7 +1677,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
       title: 'Vorstandssitzung',
       date: nextMeetingDate,
       time: nextMeetingTime || '19:30',
-      location: 'Vereinslokal Ämme',
+      location: nextMeetingLoc || 'Vereinslokal Ämme',
       description: `Geplant in Sitzung «${form.title || 'Vorstandssitzung'}»`
     });
     notify(`Nächste Vorstandssitzung (${new Date(nextMeetingDate).toLocaleDateString('de-CH')}) im Kalender eingetragen!`, "success");
@@ -2017,6 +2018,13 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                 className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white font-bold focus:border-orange-500 outline-none"
               />
             </div>
+            <input
+              type="text"
+              placeholder="Ort (z.B. Vereinslokal Ämme)"
+              value={nextMeetingLoc}
+              onChange={e => setNextMeetingLoc(e.target.value)}
+              className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white font-bold focus:border-orange-500 outline-none"
+            />
             <button
               type="button"
               onClick={scheduleNextMeeting}
