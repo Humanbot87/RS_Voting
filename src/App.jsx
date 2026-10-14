@@ -2709,8 +2709,16 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
 }
 
 function PresentationModal({ survey, users, onClose, onPublish }) {
+  const [step, setStep] = useState('welcome'); // 'welcome' | 'voting'
+
   const surveyAllowedGroups = survey.allowedGroups || GROUPS;
-  const eligibleUsersCount = users.filter(u => surveyAllowedGroups.some(g => u.groups?.includes(g))).length;
+  const eligibleUsers = users.filter(u => surveyAllowedGroups.some(g => u.groups?.includes(g)));
+  const eligibleUsersCount = eligibleUsers.length;
+  
+  // Mitglieder, die aktuell online / eingeloggt sind (letzte 45 Sek aktiv)
+  const onlineCount = eligibleUsers.filter(u => u.isOnline && Date.now() - (u.lastSeen || 0) < 45000).length;
+  const pctOnline = eligibleUsersCount === 0 ? 0 : Math.round((onlineCount / eligibleUsersCount) * 100);
+
   const totalVotes = survey.options.reduce((sum, o) => sum + (o.votes || 0), 0);
   const votedCount = survey.votedUsers?.length || 0;
   const pctVoted = eligibleUsersCount === 0 ? 0 : Math.round((votedCount / eligibleUsersCount) * 100);
@@ -2725,14 +2733,20 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
             <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span> <span className="text-gray-400">Ämme</span>
           </h1>
           <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1.5 rounded-lg border border-orange-500/20 hidden sm:inline-block">
-            Live Abstimmung
+            {step === 'welcome' ? 'Willkommen & QR-Code' : 'Live Abstimmung'}
           </span>
         </div>
         <div className="flex items-center gap-3">
-          {survey.status === 'active' && onPublish && (
-            <button onClick={onPublish} className="px-5 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[44px]">
-              Publizieren
+          {step === 'welcome' ? (
+            <button onClick={() => setStep('voting')} className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[44px]">
+              Zur Abstimmung starten →
             </button>
+          ) : (
+            survey.status === 'active' && onPublish && (
+              <button onClick={onPublish} className="px-5 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[44px]">
+                Resultate publizieren
+              </button>
+            )
           )}
           <button onClick={onClose} className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center">
             <Minimize2 size={20} />
@@ -2741,68 +2755,99 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 sm:px-8 py-10 max-w-4xl mx-auto w-full">
-        <div className="flex flex-col md:flex-row items-center justify-between w-full gap-8 mb-8">
-          <div className="flex-1 text-center md:text-left">
-            <span className="inline-flex items-center gap-1.5 bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-black uppercase px-3 py-1 rounded-full mb-3">
-              <QrCode size={14} /> Mit Handy abstimmen
-            </span>
-            <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight mb-2">
-              {survey.title}
-            </h2>
-            <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">
-              {survey.majorityType === 'two_thirds' ? '⅔ Zwei-Drittel-Mehrheit erforderlich' : survey.majorityType === 'simple' ? 'Einfache Mehrheit (50%+1)' : ''}
-            </p>
-          </div>
-
-          <div className="bg-white p-4 rounded-3xl shadow-2xl shrink-0 flex flex-col items-center">
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentUrl)}`}
-              alt="QR-Code zum Abstimmen"
-              className="w-32 h-32 object-contain"
-            />
-            <p className="text-[10px] font-black uppercase tracking-widest text-gray-950 mt-2">QR-Code scannen</p>
-          </div>
-        </div>
-
-        <div className="w-full space-y-4 mb-10">
-          {survey.status === 'published' ? (
-            survey.options.map(o => {
-              const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
-              const isLeading = totalVotes > 0 && (o.votes || 0) === Math.max(...survey.options.map(x => x.votes || 0)) && (o.votes || 0) > 0;
-              return (
-                <div key={o.id} className={`relative h-20 rounded-2xl overflow-hidden flex items-center px-6 border-2 transition-all ${isLeading ? 'border-orange-500' : 'border-gray-800 bg-gray-900'}`}>
-                  <div
-                    className={`absolute left-0 top-0 h-full transition-all duration-1000 ease-out ${isLeading ? 'bg-orange-500/20' : 'bg-gray-800/60'}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                  <span className="flex-1 font-black text-white text-lg sm:text-xl z-10 truncate">{o.text}</span>
-                  <div className="z-10 text-right ml-4">
-                    <p className="text-2xl sm:text-3xl font-black text-white">{o.votes || 0}</p>
-                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Stimmen</p>
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            <div className="text-center py-12 bg-gray-900 border border-gray-800 rounded-3xl w-full">
-              <p className="text-orange-400 font-bold uppercase tracking-widest text-sm mb-2">Abstimmung läuft noch</p>
-              <p className="text-gray-500 text-xs">Resultate werden nach der Veröffentlichung / Publikation eingeblendet.</p>
+        {step === 'welcome' ? (
+          <div className="w-full text-center space-y-8 animate-in fade-in duration-300">
+            <div className="space-y-3">
+              <span className="inline-flex items-center gap-2 bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-black uppercase px-4 py-1.5 rounded-full">
+                <QrCode size={16} /> QR-Code scannen & Einloggen
+              </span>
+              <h2 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
+                Herzlich Willkommen zur Abstimmung!
+              </h2>
+              <p className="text-gray-400 text-sm sm:text-base max-w-xl mx-auto">
+                Bitte scanne den QR-Code mit der Handykamera, öffne das Portal und melde dich an. Sobald alle bereit sind, starten wir den Durchgang.
+              </p>
             </div>
-          )}
-        </div>
 
-        <div className="w-full">
-          <div className="flex justify-between text-sm font-bold text-gray-500 mb-3">
-            <span>{votedCount} von {eligibleUsersCount} haben abgestimmt</span>
-            <span>{pctVoted}%</span>
+            <div className="bg-white p-6 rounded-3xl shadow-2xl inline-block mx-auto border-4 border-orange-500/20">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(currentUrl)}`}
+                alt="QR-Code zum Portal"
+                className="w-52 h-52 object-contain"
+              />
+              <p className="text-[11px] font-black uppercase tracking-widest text-gray-950 mt-3">Portal öffnen</p>
+            </div>
+
+            <div className="max-w-md mx-auto w-full bg-gray-900 border border-gray-800 p-6 rounded-3xl shadow-xl space-y-3">
+              <div className="flex justify-between text-sm font-bold text-gray-400">
+                <span>Mitglieder online im System</span>
+                <span className="text-orange-500 font-black">{onlineCount} von {eligibleUsersCount}</span>
+              </div>
+              <div className="w-full h-3 bg-gray-950 rounded-full overflow-hidden border border-gray-800">
+                <div
+                  className="h-full bg-orange-500 rounded-full transition-all duration-700"
+                  style={{ width: `${pctOnline}%` }}
+                />
+              </div>
+            </div>
           </div>
-          <div className="w-full h-3 bg-gray-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-orange-500 rounded-full transition-all duration-700"
-              style={{ width: `${pctVoted}%` }}
-            />
+        ) : (
+          <div className="w-full space-y-8 animate-in fade-in duration-300">
+            <div className="flex flex-col md:flex-row items-center justify-between w-full gap-8">
+              <div className="flex-1 text-center md:text-left">
+                <button onClick={() => setStep('welcome')} className="text-xs text-gray-500 hover:text-orange-400 font-bold mb-2 inline-flex items-center gap-1">
+                  ← Zurück zur Startseite / QR-Code
+                </button>
+                <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight mb-2">
+                  {survey.title}
+                </h2>
+                <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">
+                  {survey.majorityType === 'two_thirds' ? '⅔ Zwei-Drittel-Mehrheit erforderlich' : survey.majorityType === 'simple' ? 'Einfache Mehrheit (50%+1)' : ''}
+                </p>
+              </div>
+            </div>
+
+            <div className="w-full space-y-4">
+              {survey.status === 'published' ? (
+                survey.options.map(o => {
+                  const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
+                  const isLeading = totalVotes > 0 && (o.votes || 0) === Math.max(...survey.options.map(x => x.votes || 0)) && (o.votes || 0) > 0;
+                  return (
+                    <div key={o.id} className={`relative h-20 rounded-2xl overflow-hidden flex items-center px-6 border-2 transition-all ${isLeading ? 'border-orange-500' : 'border-gray-800 bg-gray-900'}`}>
+                      <div
+                        className={`absolute left-0 top-0 h-full transition-all duration-1000 ease-out ${isLeading ? 'bg-orange-500/20' : 'bg-gray-800/60'}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                      <span className="flex-1 font-black text-white text-lg sm:text-xl z-10 truncate">{o.text}</span>
+                      <div className="z-10 text-right ml-4">
+                        <p className="text-2xl sm:text-3xl font-black text-white">{o.votes || 0}</p>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Stimmen</p>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-12 bg-gray-900 border border-gray-800 rounded-3xl w-full">
+                  <p className="text-orange-400 font-bold uppercase tracking-widest text-sm mb-2">Abstimmung läuft noch</p>
+                  <p className="text-gray-500 text-xs">Resultate werden nach der Veröffentlichung eingeblendet.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="w-full bg-gray-900 border border-gray-800 p-6 rounded-3xl shadow-xl space-y-3">
+              <div className="flex justify-between text-sm font-bold text-gray-400">
+                <span>{votedCount} von {eligibleUsersCount} haben abgestimmt</span>
+                <span className="text-orange-500 font-black">{pctVoted}%</span>
+              </div>
+              <div className="w-full h-3 bg-gray-950 rounded-full overflow-hidden border border-gray-800">
+                <div
+                  className="h-full bg-orange-500 rounded-full transition-all duration-700"
+                  style={{ width: `${pctVoted}%` }}
+                />
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
