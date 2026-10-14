@@ -3199,6 +3199,144 @@ function PresentationModal({ survey, allSurveys = [], users, onClose, onSelectSu
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 sm:px-8 py-10 max-w-4xl mx-auto w-full overflow-y-auto">
+        {step === 'welcome' ? (
+          <div className="text-center space-y-8 animate-in fade-in duration-300 w-full max-w-lg">
+            <div className="space-y-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20">
+                Beamer & Live-Einlass
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-black text-white">QR-Code scannen & mitmachen</h2>
+              <p className="text-gray-400 text-sm">Richte die Smartphone-Kamera auf den QR-Code, um dem Portal beizutreten.</p>
+            </div>
+
+            <div className="bg-white p-4 rounded-3xl shadow-2xl inline-block mx-auto">
+              <StandardQRCodeImage value={currentUrl} size={240} />
+            </div>
+
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-3">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-bold text-gray-400">Mitglieder im System (Online):</span>
+                <span className="font-black text-orange-500">{onlineCount} / {eligibleUsersCount} ({pctOnline}%)</span>
+              </div>
+              <div className="w-full h-3 bg-gray-950 rounded-full overflow-hidden">
+                <div className="h-full bg-orange-500 transition-all duration-500" style={{ width: `${pctOnline}%` }} />
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                if (survey.status === 'draft' && onStart) {
+                  onStart();
+                }
+                setStep('voting');
+              }}
+              className="w-full py-5 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl text-lg shadow-xl shadow-orange-500/20 active:scale-95 transition-all"
+            >
+              Zur Abstimmung starten →
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-8 w-full animate-in fade-in duration-300">
+            <div className="text-center space-y-2">
+              <span className="text-xs font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3.5 py-1.5 rounded-full border border-orange-500/20">
+                {survey.status === 'published' ? 'Abstimmung Beendet & Resultate' : 'Live-Abstimmung läuft'}
+              </span>
+              <h2 className="text-2xl sm:text-4xl font-black text-white">{survey.title}</h2>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
+              <div className="bg-gray-900 border border-gray-800 p-4 rounded-2xl text-center">
+                <p className="text-[10px] font-black uppercase text-gray-500">Stimmbeteiligung</p>
+                <p className="text-2xl sm:text-3xl font-black text-white mt-1">{votedCount} / {eligibleUsersCount}</p>
+                <p className="text-xs text-orange-400 font-bold mt-0.5">{pctVoted}% der Berechtigten</p>
+              </div>
+              <div className="bg-gray-900 border border-gray-800 p-4 rounded-2xl text-center">
+                <p className="text-[10px] font-black uppercase text-gray-500">Abgegebene Stimmen</p>
+                <p className="text-2xl sm:text-3xl font-black text-orange-500 mt-1">{totalVotes}</p>
+                <p className="text-xs text-gray-400 font-bold mt-0.5">Gesamt</p>
+              </div>
+            </div>
+
+            <div className="space-y-4 max-w-2xl mx-auto w-full">
+              {survey.options.map(o => {
+                const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
+                const maxV = Math.max(...survey.options.map(x => x.votes || 0));
+                const isWinner = survey.status === 'published' && totalVotes > 0 && (o.votes || 0) === maxV && maxV > 0;
+
+                return (
+                  <div key={o.id} className={`relative h-16 bg-gray-900 border rounded-2xl overflow-hidden flex items-center px-5 ${isWinner ? 'border-orange-500 ring-1 ring-orange-500/30' : 'border-gray-800'}`}>
+                    <div className="absolute left-0 top-0 h-full bg-orange-500/20 transition-all duration-1000 ease-out" style={{ width: `${survey.status === 'published' ? pct : Math.round(((o.votes || 0) / (eligibleUsersCount || 1)) * 100)}%` }} />
+                    <div className="flex-1 font-black text-white text-base sm:text-lg z-10 truncate mr-3">
+                      {o.text}
+                    </div>
+                    <div className="text-right z-10 shrink-0">
+                      {survey.status === 'published' ? (
+                        <>
+                          <p className="text-lg font-black text-orange-400">{o.votes || 0} Stimmen</p>
+                          <p className="text-xs text-gray-400 font-bold">{pct}%</p>
+                        </>
+                      ) : (
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Wird gezählt...</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {survey.status === 'published' && survey.majorityType && survey.majorityType !== 'none' && (
+              <div className={`p-4 rounded-2xl border text-center font-bold text-sm max-w-2xl mx-auto ${quorumReached ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
+                {quorumReached ? '✓ Erforderliche Mehrheit erreicht / Antrag angenommen!' : '⚠ Erforderliche Mehrheit nicht erreicht'}
+              </div>
+            )}
+
+            {survey.status === 'active' && (
+              <div className="text-center pt-2">
+                <button
+                  onClick={onPublish}
+                  className="px-8 py-4 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl text-base shadow-xl shadow-orange-500/20 active:scale-95 transition-all"
+                >
+                  Resultate jetzt publizieren 🔓
+                </button>
+              </div>
+            )}
+
+            {nextSurvey && (
+              <div className="pt-4 flex justify-center">
+                <button
+                  onClick={() => onSelectSurvey(nextSurvey, true)}
+                  className="px-8 py-4 bg-gray-900 hover:bg-orange-500 text-white hover:text-gray-950 border border-gray-800 hover:border-orange-500 font-black rounded-2xl text-sm active:scale-95 transition-all flex items-center gap-2"
+                >
+                  Weiter zur nächsten Abstimmung: «{nextSurvey.title}» →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CreateEventForm({ onSubmit }) {
+  const [form, setForm] = useState({
+    title: '',
+    category: 'Generalversammlung',
+    date: new Date().toISOString().slice(0, 16),
+    autoArchive: false,
+    endDate: ''
+  });
+
+  return (
+    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl space-y-4 shadow-2xl animate-in slide-in-from-top-2">
+      <div className="space-y-1">
+        <label className="text-xs font-bold text-gray-600 uppercase ml-1">Event-Titel</label>
+        <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[44px]" placeholder="z.B. Generalversammlung 2026" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-gray-600 uppercase ml-1">Kategorie</label>
+          <select className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[44px]" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
