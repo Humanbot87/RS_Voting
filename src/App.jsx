@@ -49,7 +49,7 @@ const generateSessionId = () => {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 };
 
-// SHA-256 Passwort-Hash Fallback (falls Email/Password Provider in Firebase Console deaktiviert ist)
+// SHA-256 Passwort-Hash Fallback
 const hashPassword = async (password, userId) => {
   const encoder = new TextEncoder();
   const data = encoder.encode(`${password}::ruesssuuger::${userId}`);
@@ -72,7 +72,7 @@ const readFileAsDataURL = (file) => new Promise((resolve, reject) => {
   reader.readAsDataURL(file);
 });
 
-// Hilfsfunktion: Sicheres Datei-Herunterladen (unterstützt URLs und Base64 Data-URLs)
+// Hilfsfunktion: Sicheres Datei-Herunterladen
 const triggerFileDownload = (url, fileName = 'Dokument') => {
   if (!url) return;
   const link = document.createElement('a');
@@ -85,7 +85,7 @@ const triggerFileDownload = (url, fileName = 'Dokument') => {
   document.body.removeChild(link);
 };
 
-// Hilfsfunktion: Text in die Zwischenablage kopieren (kompatibel mit iFrames & allen Browsern)
+// Hilfsfunktion: Text in die Zwischenablage kopieren
 const copyTextToClipboard = (text) => {
   const textarea = document.createElement('textarea');
   textarea.value = text;
@@ -185,7 +185,7 @@ export default function App() {
   const [connError, setConnError] = useState(null);
   const [hasCheckedAutoLogin, setHasCheckedAutoLogin] = useState(false);
 
-  // Globales UX Toast- und Bestätigungs-System (ersetzt alert & confirm)
+  // Globales UX Toast- und Bestätigungs-System
   const [toasts, setToasts] = useState([]);
   const [confirmDialog, setConfirmDialog] = useState(null);
 
@@ -390,7 +390,7 @@ export default function App() {
         <p className="text-gray-400 max-w-md mb-8">{connError}</p>
         <button 
           onClick={() => window.location.reload()} 
-          className="flex items-center gap-2 bg-orange-500 text-gray-950 font-black px-6 py-3 rounded-2xl active:scale-95 transition-all"
+          className="flex items-center gap-2 bg-orange-500 text-gray-950 font-black px-6 py-3 rounded-2xl active:scale-95 transition-all min-h-[44px]"
         >
           <RefreshCw size={20} /> Seite neu laden
         </button>
@@ -433,9 +433,9 @@ export default function App() {
             <p className="text-xs font-bold text-white flex-1 leading-snug">{t.message}</p>
             <button
               onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))}
-              className="text-gray-500 hover:text-white p-1"
+              className="text-gray-500 hover:text-white p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
             >
-              <X size={14} />
+              <X size={16} />
             </button>
           </div>
         ))}
@@ -457,13 +457,13 @@ export default function App() {
             <div className="flex justify-end gap-3 pt-3 border-t border-gray-800">
               <button
                 onClick={confirmDialog.onCancel}
-                className="px-5 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold text-sm transition-all"
+                className="px-5 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold text-sm transition-all min-h-[44px]"
               >
                 Abbrechen
               </button>
               <button
                 onClick={confirmDialog.onConfirm}
-                className={`px-6 py-2.5 rounded-xl font-black text-sm transition-all active:scale-95 shadow-lg ${
+                className={`px-6 py-3 rounded-xl font-black text-sm transition-all active:scale-95 shadow-lg min-h-[44px] ${
                   confirmDialog.danger
                     ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/20'
                     : 'bg-orange-500 hover:bg-orange-600 text-gray-950 shadow-orange-500/20'
@@ -481,14 +481,14 @@ export default function App() {
       ) : (
         <>
           <header className="bg-gray-900/90 backdrop-blur-md border-b border-gray-800 sticky top-0 z-50 shadow-2xl">
-            <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div className="max-w-6xl mx-auto px-4 py-3.5 flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="w-2.5 h-8 bg-orange-500 rounded-full hidden sm:block" />
-                <h1 className="text-xl sm:text-2xl font-black italic tracking-tighter">
+                <h1 className="text-lg sm:text-2xl font-black italic tracking-tighter">
                   <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span> <span className="text-gray-400">Ämme</span>
                 </h1>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
                 <div className="text-right hidden sm:block">
                   <p className="text-sm font-bold text-white leading-tight">{currentUser.firstName} {currentUser.lastName}</p>
                   <div className="flex items-center justify-end gap-1.5 mt-0.5">
@@ -501,7 +501,7 @@ export default function App() {
                 <button
                   onClick={handleLogout}
                   title="Abmelden"
-                  className="p-2.5 bg-gray-800 hover:bg-gray-700 rounded-xl transition-all active:scale-95 group border border-gray-700/50"
+                  className="p-3 bg-gray-800 hover:bg-gray-700 rounded-xl transition-all active:scale-95 group border border-gray-700/50 min-h-[44px] min-w-[44px] flex items-center justify-center"
                 >
                   <LogOut size={20} className="text-gray-400 group-hover:text-orange-500 transition-colors" />
                 </button>
@@ -509,8 +509,8 @@ export default function App() {
             </div>
           </header>
 
-          <main className="max-w-6xl mx-auto px-4 py-8">
-            <nav className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+          <main className="max-w-6xl mx-auto px-4 py-6 sm:py-8">
+            <nav className="flex gap-2 mb-6 sm:mb-8 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
               <TabButton active={activeTab === 'events'}   onClick={() => setActiveTab('events')}   icon={<Calendar size={18} />}      label="Events" />
               {isVorstand && (
                 <TabButton active={activeTab === 'minutes'}  onClick={() => setActiveTab('minutes')}  icon={<ClipboardList size={18} />} label="Protokolle" />
@@ -613,7 +613,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
             createErr.code === 'auth/operation-not-allowed' ||
             createErr.code === 'auth/admin-restricted-operation'
           ) {
-            // Email/Password Provider in Firebase deaktiviert -> SHA-256 Hash in Firestore reicht aus
+            // Firebase Auth Provider deaktiviert -> Firestore Hash reicht
           } else {
             throw createErr;
           }
@@ -667,12 +667,12 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl">
-        <div className="text-center mb-10">
-          <h1 className="text-5xl font-black mb-2 italic tracking-tighter">
+      <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
+        <div className="text-center mb-8 sm:mb-10">
+          <h1 className="text-4xl sm:text-5xl font-black mb-2 italic tracking-tighter">
             <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span> <span className="text-gray-400">Ämme</span>
           </h1>
-          <p className="text-gray-500 font-medium tracking-wide">Internes Portal & Voting</p>
+          <p className="text-gray-500 font-medium tracking-wide text-sm">Internes Portal & Voting</p>
         </div>
 
         {users.length === 0 ? (
@@ -682,7 +682,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
             <button 
               onClick={onSeed} 
               disabled={isSeeding} 
-              className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl transition-all shadow-lg shadow-orange-500/10 disabled:opacity-50 active:scale-95"
+              className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl transition-all shadow-lg shadow-orange-500/10 disabled:opacity-50 active:scale-95 min-h-[44px]"
             >
               {isSeeding ? 'Wird erstellt...' : 'Admin Suuger jetzt erstellen'}
             </button>
@@ -694,8 +694,8 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
           >
             {step === 'name' ? (
               <div className="space-y-4">
-                <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all" placeholder="Vorname" value={firstName} onChange={e => setFirstName(e.target.value)} />
-                <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all" placeholder="Nachname" value={lastName} onChange={e => setLastName(e.target.value)} />
+                <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all text-base min-h-[44px]" placeholder="Vorname" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all text-base min-h-[44px]" placeholder="Nachname" value={lastName} onChange={e => setLastName(e.target.value)} />
               </div>
             ) : (
               <div className="animate-in slide-in-from-right-4 duration-300 space-y-3">
@@ -703,7 +703,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
                   <button
                     type="button"
                     onClick={() => { setStep('name'); setPassword(''); setError(''); }}
-                    className="text-xs text-gray-500 hover:text-white font-bold flex items-center gap-1"
+                    className="text-xs text-gray-500 hover:text-white font-bold flex items-center gap-1 min-h-[44px] py-2"
                   >
                     <ChevronRight size={14} className="rotate-180" /> Zurück
                   </button>
@@ -715,7 +715,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
                   autoFocus
                   type="password"
                   required
-                  className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none text-center text-3xl tracking-[0.5em]"
+                  className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none text-center text-3xl tracking-[0.5em] min-h-[56px]"
                   placeholder="••••"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
@@ -725,7 +725,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg shadow-orange-500/20 active:scale-95 transition-all text-lg disabled:opacity-60"
+              className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg shadow-orange-500/20 active:scale-95 transition-all text-lg disabled:opacity-60 min-h-[48px]"
             >
               {loading ? 'Bitte warten...' : step === 'name' ? 'Weiter' : 'Anmelden'}
             </button>
@@ -760,7 +760,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
   const vorstandMembers = useMemo(() => users.filter(u => u.groups?.includes('Vorstand')), [users]);
   const myFullName = `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim();
 
-  // Echtzeit-Listener für aktives Live-Protokoll (Live-Tippen)
   useEffect(() => {
     const liveRef = doc(db, 'artifacts', appId, 'public', 'data', 'minutes', '__live_session__');
     const unsub = onSnapshot(
@@ -1003,7 +1002,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
           <div className="flex items-center gap-2.5 shrink-0">
             <button
               onClick={() => setWatchingLive(true)}
-              className="px-5 py-3 bg-gray-950 hover:bg-gray-900 text-white border border-orange-500/40 font-black rounded-2xl text-xs flex items-center gap-2 transition-all active:scale-95"
+              className="px-5 py-3 bg-gray-950 hover:bg-gray-900 text-white border border-orange-500/40 font-black rounded-2xl text-xs flex items-center gap-2 transition-all active:scale-95 min-h-[44px]"
             >
               <Eye size={16} className="text-orange-500" /> Live mitlesen
             </button>
@@ -1016,7 +1015,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                   setShowAdd(true);
                 }
               }}
-              className="px-5 py-3 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl text-xs flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-orange-500/20"
+              className="px-5 py-3 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl text-xs flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-orange-500/20 min-h-[44px]"
             >
               <Edit2 size={16} /> Gemeinsam tippen
             </button>
@@ -1024,7 +1023,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         </div>
       )}
 
-      <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
+      <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 border border-gray-800 rounded-3xl p-5 sm:p-8 shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 mb-3">
@@ -1035,7 +1034,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
           </div>
           <button
             onClick={() => setShowAdd(true)}
-            className="bg-orange-500 hover:bg-orange-400 text-gray-950 font-black px-6 py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 whitespace-nowrap w-full md:w-auto"
+            className="bg-orange-500 hover:bg-orange-400 text-gray-950 font-black px-6 py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 whitespace-nowrap w-full md:w-auto min-h-[48px]"
           >
             <Plus size={20} strokeWidth={2.5} /> Neues Protokoll erfassen
           </button>
@@ -1091,7 +1090,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
             </h3>
             <button
               onClick={() => { setOnlyOpenTasks(false); setOnlyMyTasks(false); }}
-              className="text-xs text-gray-400 hover:text-white font-bold"
+              className="text-xs text-gray-400 hover:text-white font-bold min-h-[44px] flex items-center"
             >
               Filter zurücksetzen
             </button>
@@ -1103,25 +1102,25 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
               return (
                 <div
                   key={item.point.id}
-                  className="bg-gray-900 border border-gray-800 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                 >
                   <div className="flex items-start gap-3">
                     <button
                       onClick={() => targetMinute && toggleTaskDone(targetMinute, item.traktandum, item.point.id)}
                       title="Als erledigt markieren"
-                      className="mt-0.5 w-5 h-5 rounded-lg border-2 border-orange-500 flex items-center justify-center hover:bg-orange-500/20 shrink-0 transition-all"
+                      className="mt-0.5 w-6 h-6 rounded-lg border-2 border-orange-500 flex items-center justify-center hover:bg-orange-500/20 shrink-0 transition-all min-h-[36px] min-w-[36px]"
                     />
                     <div>
                       <p className="text-sm font-bold text-white leading-snug">{item.point.text}</p>
-                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                      <div className="flex flex-wrap items-center gap-2 mt-1.5">
                         <span className="text-[10px] font-black uppercase text-orange-400">{item.traktandum}</span>
                         {item.point.assignee && (
-                          <span className="text-[10px] font-bold bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-300">
+                          <span className="text-[10px] font-bold bg-gray-950 border border-gray-800 px-2.5 py-1 rounded text-gray-300">
                             Verantwortlich: {item.point.assignee}
                           </span>
                         )}
                         {item.point.dueDate && (
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                          <span className={`text-[10px] font-bold px-2.5 py-1 rounded border ${
                             isOverdue
                               ? 'bg-red-500/15 text-red-400 border-red-500/30'
                               : 'bg-gray-950 text-gray-400 border-gray-800'
@@ -1141,7 +1140,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                       setOnlyOpenTasks(false);
                       setOnlyMyTasks(false);
                     }}
-                    className="text-xs font-bold text-orange-500 hover:underline self-end sm:self-center shrink-0"
+                    className="text-xs font-bold text-orange-500 hover:underline self-end sm:self-center shrink-0 min-h-[44px] flex items-center"
                   >
                     Zum Protokoll →
                   </button>
@@ -1162,22 +1161,22 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                 placeholder="Nach Stichworten, Beschlüssen, Verantwortlichen oder Dateien suchen..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-4 pl-12 pr-12 text-white focus:border-orange-500 outline-none shadow-lg transition-all text-sm"
+                className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-4 pl-12 pr-12 text-white focus:border-orange-500 outline-none shadow-lg transition-all text-sm min-h-[48px]"
               />
               {searchTerm && (
-                <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white p-1">
+                <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white p-2 min-h-[44px] min-w-[44px] flex items-center justify-center">
                   <X size={18} />
                 </button>
               )}
             </div>
 
             {availableYears.length > 2 && (
-              <div className="flex items-center gap-1.5 bg-gray-900 border border-gray-800 rounded-2xl p-1.5 shrink-0 overflow-x-auto">
+              <div className="flex items-center gap-1.5 bg-gray-900 border border-gray-800 rounded-2xl p-1.5 shrink-0 overflow-x-auto scrollbar-hide">
                 {availableYears.map(yr => (
                   <button
                     key={yr}
                     onClick={() => setYearFilter(yr)}
-                    className={`px-3.5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${
+                    className={`px-4 py-3 rounded-xl text-xs font-black uppercase transition-all min-h-[44px] flex items-center ${
                       yearFilter === yr ? 'bg-orange-500 text-gray-950' : 'text-gray-400 hover:text-white'
                     }`}
                   >
@@ -1188,7 +1187,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
             )}
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
             <span className="text-[10px] font-black uppercase tracking-widest text-gray-600 flex items-center gap-1 mr-1 shrink-0">
               <Filter size={12} /> Ressort:
             </span>
@@ -1196,7 +1195,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
               <button
                 key={role}
                 onClick={() => setRoleFilter(role)}
-                className={`px-3.5 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all whitespace-nowrap active:scale-95 ${
+                className={`px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all whitespace-nowrap active:scale-95 min-h-[44px] flex items-center ${
                   roleFilter === role
                     ? 'bg-orange-500 text-gray-950 shadow-md shadow-orange-500/15'
                     : 'bg-gray-900 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
@@ -1249,21 +1248,21 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
 
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                      <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-md bg-gray-800 text-gray-300 border border-gray-700">
+                      <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md bg-gray-800 text-gray-300 border border-gray-700">
                         {totalPointsCount} {totalPointsCount === 1 ? 'Eintrag' : 'Einträge'}
                       </span>
                       {openTodoCount > 0 && (
-                        <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-md bg-orange-500/15 text-orange-400 border border-orange-500/30">
+                        <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md bg-orange-500/15 text-orange-400 border border-orange-500/30">
                           {openTodoCount} {openTodoCount === 1 ? 'Pendenz offen' : 'Pendenzen offen'}
                         </span>
                       )}
                       {presentCount > 0 && (
-                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-md bg-green-500/10 text-green-400 border border-green-500/20 flex items-center gap-1">
+                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-green-500/10 text-green-400 border border-green-500/20 flex items-center gap-1">
                           <UserCheck size={11} /> {presentCount} Anwesend
                         </span>
                       )}
                       {totalDocsCount > 0 && (
-                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
+                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
                           <Paperclip size={11} /> {totalDocsCount} {totalDocsCount === 1 ? 'Anhang' : 'Anhänge'}
                         </span>
                       )}
@@ -1278,7 +1277,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                         {activeTraktanden.map(t => (
                           <span
                             key={t}
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${traktandumMeta[t]?.badge || 'bg-gray-800 text-gray-400 border-gray-700'}`}
+                            className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${traktandumMeta[t]?.badge || 'bg-gray-800 text-gray-400 border-gray-700'}`}
                           >
                             {t} ({m.traktanden[t].length})
                           </span>
@@ -1288,25 +1287,25 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0 justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-800/80" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-2.5 shrink-0 justify-end pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-800/80" onClick={e => e.stopPropagation()}>
                   <button
                     onClick={() => copyProtocolSummary(m)}
                     title="Zusammenfassung für WhatsApp / E-Mail kopieren"
-                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 hover:border-orange-500/40 rounded-2xl transition-all active:scale-90"
+                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 hover:border-orange-500/40 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
                   >
                     <Share2 size={18} />
                   </button>
                   <button
                     onClick={() => setReadingMinute(m)}
                     title="Lese- & Druckansicht (PDF)"
-                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 hover:border-orange-500/40 rounded-2xl transition-all active:scale-90"
+                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 hover:border-orange-500/40 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
                   >
                     <Printer size={18} />
                   </button>
                   <button
                     onClick={() => setEditing(m)}
                     title="Protokoll bearbeiten"
-                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700 rounded-2xl transition-all active:scale-90"
+                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
                   >
                     <Edit2 size={18} />
                   </button>
@@ -1323,13 +1322,13 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                       )
                     }
                     title="Protokoll löschen"
-                    className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90"
+                    className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
                   >
                     <Trash2 size={18} />
                   </button>
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : m.id)}
-                    className={`p-3 rounded-2xl border transition-all active:scale-90 ${
+                    className={`p-3 rounded-2xl border transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center ${
                       isExpanded
                         ? 'bg-orange-500 text-gray-950 border-orange-500'
                         : 'bg-gray-800 border-gray-700 text-gray-300 hover:text-white'
@@ -1409,7 +1408,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                                       type="button"
                                       onClick={() => toggleTaskDone(m, t, p.id)}
                                       title={p.done ? 'Als offen markieren' : 'Pendenz als erledigt abhaken'}
-                                      className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all ${
+                                      className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all min-h-[36px] min-w-[36px] ${
                                         p.done
                                           ? 'bg-emerald-500 border-emerald-500 text-gray-950'
                                           : 'border-orange-500 hover:bg-orange-500/20 text-transparent'
@@ -1457,14 +1456,14 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                                         <button
                                           type="button"
                                           onClick={() => setPreviewDoc({ url: p.docUrl, name: p.docName || 'Protokoll-Anhang' })}
-                                          className="inline-flex items-center gap-1.5 text-xs font-bold text-white hover:text-orange-300 bg-gray-900 px-3.5 py-2 rounded-xl border border-gray-800 transition-all active:scale-95"
+                                          className="inline-flex items-center gap-1.5 text-xs font-bold text-white hover:text-orange-300 bg-gray-900 px-3.5 py-2.5 rounded-xl border border-gray-800 transition-all active:scale-95 min-h-[44px]"
                                         >
                                           <Eye size={14} className="text-orange-500" /> Vorschau
                                         </button>
                                         <button
                                           type="button"
                                           onClick={() => triggerFileDownload(p.docUrl, p.docName || 'Protokoll-Anhang')}
-                                          className="inline-flex items-center gap-2 text-xs font-bold text-orange-400 hover:text-orange-300 bg-orange-500/10 px-3.5 py-2 rounded-xl border border-orange-500/20 transition-all hover:scale-[1.02] active:scale-95"
+                                          className="inline-flex items-center gap-2 text-xs font-bold text-orange-400 hover:text-orange-300 bg-orange-500/10 px-3.5 py-2.5 rounded-xl border border-orange-500/20 transition-all hover:scale-[1.02] active:scale-95 min-h-[44px]"
                                         >
                                           <Paperclip size={14} /> {p.docName || 'Dokument herunterladen'}
                                         </button>
@@ -1474,7 +1473,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                                   <button
                                     onClick={(e) => { e.stopPropagation(); setEnlargedPoint({ traktandum: t, index: idx + 1, ...p }); }}
                                     title="Grossansicht"
-                                    className="absolute top-3.5 right-3.5 p-2 bg-gray-900 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100"
+                                    className="absolute top-3.5 right-3.5 p-2.5 bg-gray-900 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
                                   >
                                     <Maximize2 size={15} />
                                   </button>
@@ -1518,21 +1517,21 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
           <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
             <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
               <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedPoint.traktandum}</h3>
-              <button onClick={() => setEnlargedPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90"><X size={20} /></button>
+              <button onClick={() => setEnlargedPoint(null)} className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"><X size={20} /></button>
             </div>
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
               <p className="text-white text-base sm:text-lg whitespace-pre-wrap leading-relaxed">{enlargedPoint.text}</p>
               {enlargedPoint.docUrl && (
-                <div className="pt-4 border-t border-gray-800 flex gap-2">
+                <div className="pt-4 border-t border-gray-800 flex flex-wrap gap-2">
                   <button
                     onClick={() => setPreviewDoc({ url: enlargedPoint.docUrl, name: enlargedPoint.docName || 'Anhang' })}
-                    className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl text-xs flex items-center gap-2"
+                    className="px-5 py-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 min-h-[44px]"
                   >
                     <Eye size={16} className="text-orange-500" /> Vorschau
                   </button>
                   <button
                     onClick={() => triggerFileDownload(enlargedPoint.docUrl, enlargedPoint.docName || 'Anhang')}
-                    className="px-4 py-2.5 bg-orange-500 text-gray-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg"
+                    className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg min-h-[44px]"
                   >
                     <Download size={16} /> Herunterladen
                   </button>
@@ -1546,7 +1545,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
   );
 }
 
-// --- Protocol Editor (Mit getrennten Scroll-Bereichen für Anwesenheit und Traktanden) ---
+// --- Protocol Editor ---
 function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], calItems = [], onSave, onCancel, initialData, notify }) {
   const [form, setForm] = useState(() => {
     if (initialData) return initialData;
@@ -1814,7 +1813,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
     : TRAKTANDEN.filter(t => t === activeTraktandum);
 
   return (
-    <div className="space-y-8 animate-in slide-in-from-bottom-8 duration-500">
+    <div className="space-y-6 sm:space-y-8 animate-in slide-in-from-bottom-8 duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gray-900 p-5 sm:p-8 rounded-3xl border border-gray-800 shadow-2xl">
         <div className="flex-1 space-y-4 w-full">
           <div className="flex flex-wrap items-center gap-2">
@@ -1824,28 +1823,28 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
             <button
               type="button"
               onClick={() => setLiveSyncEnabled(!liveSyncEnabled)}
-              className={`text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border flex items-center gap-1.5 transition-all ${
+              className={`text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border flex items-center gap-1.5 transition-all min-h-[32px] ${
                 liveSyncEnabled
                   ? 'bg-orange-500/15 text-orange-400 border-orange-500/40'
                   : 'bg-gray-950 text-gray-500 border-gray-800'
               }`}
             >
               <span className={`w-2 h-2 rounded-full ${liveSyncEnabled ? 'bg-orange-500 animate-ping' : 'bg-gray-600'}`} />
-              {liveSyncEnabled ? 'Live-Übertragung aktiv' : 'Live-Übertragung pausiert'}
+              {liveSyncEnabled ? 'Live aktiv' : 'Live pausiert'}
             </button>
             {draftSavedAt && (
               <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                ✓ Live synchronisiert ({draftSavedAt})
+                ✓ Gesichert ({draftSavedAt})
               </span>
             )}
             {liveDraft && liveDraft.sessionId !== currentUser?.sessionId && (
               <span className="text-[10px] font-black text-amber-300 bg-amber-500/15 px-3 py-1 rounded-full border border-amber-500/30 animate-pulse">
-                ✍️ {liveDraft.activeEditorName} tippt gerade{liveDraft.activeTraktandum ? ` (${liveDraft.activeTraktandum})` : ''}...
+                ✍️ {liveDraft.activeEditorName} tippt gerade...
               </span>
             )}
           </div>
           <input
-            className="w-full bg-transparent text-2xl sm:text-4xl font-black text-white border-b-2 border-gray-800 focus:border-orange-500 outline-none pb-2 transition-all placeholder:text-gray-700"
+            className="w-full bg-transparent text-2xl sm:text-4xl font-black text-white border-b-2 border-gray-800 focus:border-orange-500 outline-none pb-2 transition-all placeholder:text-gray-700 min-h-[48px]"
             placeholder="z.B. 4. Vorstandssitzung 2026..."
             value={form.title}
             onChange={e => {
@@ -1863,7 +1862,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                   markLocalEdit('Titel', null);
                   setForm(prev => ({ ...prev, title: `${preset} vom ${new Date(prev.date || Date.now()).toLocaleDateString('de-CH')}` }));
                 }}
-                className="text-[10px] font-bold bg-gray-950 hover:bg-gray-800 text-gray-400 hover:text-white border border-gray-800 px-2.5 py-1 rounded-lg transition-all"
+                className="text-[10px] font-bold bg-gray-950 hover:bg-gray-800 text-gray-400 hover:text-white border border-gray-800 px-3 py-2 rounded-lg transition-all min-h-[36px]"
               >
                 + {preset}
               </button>
@@ -1875,7 +1874,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
               <span className="text-xs font-bold text-gray-500 uppercase">Sitzungsdatum:</span>
               <input
                 type="date"
-                className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-2 text-white text-sm font-bold focus:border-orange-500 outline-none"
+                className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm font-bold focus:border-orange-500 outline-none min-h-[44px]"
                 value={form.date}
                 onChange={e => {
                   markLocalEdit('Datum', null);
@@ -1888,7 +1887,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
               <button
                 type="button"
                 onClick={importOpenTasks}
-                className="text-xs font-black bg-orange-500/10 hover:bg-orange-500 hover:text-gray-950 text-orange-400 border border-orange-500/30 px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 active:scale-95"
+                className="text-xs font-black bg-orange-500/10 hover:bg-orange-500 hover:text-gray-950 text-orange-400 border border-orange-500/30 px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 active:scale-95 min-h-[44px]"
               >
                 <Sparkles size={14} /> Offene Pendenzen übernehmen ({openTasksList.length})
               </button>
@@ -1898,7 +1897,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
           <button
             onClick={handleCancelEditor}
-            className="w-full sm:w-auto px-6 py-3.5 text-gray-400 font-bold hover:text-white transition-colors bg-gray-950 border border-gray-800 rounded-2xl"
+            className="w-full sm:w-auto px-6 py-3.5 text-gray-400 font-bold hover:text-white transition-colors bg-gray-950 border border-gray-800 rounded-2xl min-h-[48px]"
           >
             Abbrechen
           </button>
@@ -1910,18 +1909,18 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
               }
               onSave(form);
             }}
-            className="w-full sm:w-auto justify-center px-8 py-3.5 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-500/20 active:scale-95 transition-all"
+            className="w-full sm:w-auto justify-center px-8 py-3.5 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-500/20 active:scale-95 transition-all min-h-[48px]"
           >
             <Save size={20} /> Protokoll speichern
           </button>
         </div>
       </div>
 
-      <div className="bg-gray-900 border border-gray-800 p-3 rounded-2xl flex items-center gap-2 overflow-x-auto scrollbar-hide">
+      <div className="bg-gray-900 border border-gray-800 p-2.5 sm:p-3 rounded-2xl flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-3">
         <button
           type="button"
           onClick={() => setActiveTraktandum('Alle')}
-          className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 ${
+          className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 min-h-[40px] flex items-center ${
             activeTraktandum === 'Alle'
               ? 'bg-orange-500 text-gray-950'
               : 'bg-gray-950 text-gray-400 hover:text-white border border-gray-800'
@@ -1936,7 +1935,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
               key={t}
               type="button"
               onClick={() => setActiveTraktandum(t)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-2 ${
+              className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-2 min-h-[40px] ${
                 activeTraktandum === t
                   ? 'bg-orange-500 text-gray-950 font-black'
                   : 'bg-gray-950 text-gray-400 hover:text-white border border-gray-800'
@@ -1953,10 +1952,10 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
         })}
       </div>
 
-      {/* Hauptbereich mit getrennt scrollbaren Spalten */}
-      <div className="grid gap-8 lg:grid-cols-3 items-start">
-        {/* Linke Spalte: Anwesenheit & Nächster Termin (eigenständig scrollbar / sticky) */}
-        <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-24 max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
+      {/* Hauptbereich mit getrennt scrollbaren Spalten (auf Mobile untereinander, auf Desktop nebeneinander) */}
+      <div className="grid gap-6 lg:grid-cols-3 items-start">
+        {/* Linke Spalte: Anwesenheit & Nächster Termin */}
+        <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
           <div className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl shadow-xl">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-black text-white flex items-center gap-2.5">
@@ -1965,7 +1964,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
               <button
                 type="button"
                 onClick={markAllPresent}
-                className="text-[10px] font-black uppercase tracking-wider text-orange-500 hover:underline"
+                className="text-[10px] font-black uppercase tracking-wider text-orange-500 hover:underline min-h-[44px] flex items-center"
               >
                 Alle anwesend
               </button>
@@ -1984,7 +1983,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                         type="button"
                         key={status.id}
                         onClick={() => updateAttendance(m.id, status.id)}
-                        className={`text-[10px] font-black uppercase py-2 rounded-xl border transition-all ${
+                        className={`text-[10px] font-black uppercase py-2.5 rounded-xl border transition-all min-h-[40px] flex items-center justify-center ${
                           form.attendance[m.id] === status.id
                             ? status.color
                             : 'bg-gray-900 text-gray-600 border-gray-800 hover:border-gray-700 hover:text-gray-400'
@@ -2009,13 +2008,13 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                 type="date"
                 value={nextMeetingDate}
                 onChange={e => setNextMeetingDate(e.target.value)}
-                className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white font-bold focus:border-orange-500 outline-none"
+                className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2.5 text-xs text-white font-bold focus:border-orange-500 outline-none min-h-[44px]"
               />
               <input
                 type="time"
                 value={nextMeetingTime}
                 onChange={e => setNextMeetingTime(e.target.value)}
-                className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white font-bold focus:border-orange-500 outline-none"
+                className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2.5 text-xs text-white font-bold focus:border-orange-500 outline-none min-h-[44px]"
               />
             </div>
             <input
@@ -2023,20 +2022,20 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
               placeholder="Ort (z.B. Vereinslokal Ämme)"
               value={nextMeetingLoc}
               onChange={e => setNextMeetingLoc(e.target.value)}
-              className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white font-bold focus:border-orange-500 outline-none"
+              className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-bold focus:border-orange-500 outline-none min-h-[44px]"
             />
             <button
               type="button"
               onClick={scheduleNextMeeting}
-              className="w-full py-2.5 bg-gray-950 hover:bg-orange-500 text-orange-400 hover:text-gray-950 border border-orange-500/30 font-black text-xs rounded-xl transition-all active:scale-95"
+              className="w-full py-3 bg-gray-950 hover:bg-orange-500 text-orange-400 hover:text-gray-950 border border-orange-500/30 font-black text-xs rounded-xl transition-all active:scale-95 min-h-[44px]"
             >
               + In Kalender eintragen
             </button>
           </div>
         </div>
 
-        {/* Rechte Spalte: Traktanden-Karten (eigenständig scrollbar) */}
-        <div className="lg:col-span-2 space-y-6 max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
+        {/* Rechte Spalte: Traktanden-Karten */}
+        <div className="lg:col-span-2 space-y-6 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
           {visibleTraktanden.map(traktandum => {
             const points = form.traktanden[traktandum] || [];
             return (
@@ -2051,32 +2050,32 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                       {points.length === 0 ? 'Noch keine Einträge' : `${points.length} ${points.length === 1 ? 'Traktandenpunkt' : 'Traktandenpunkte'}`}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <button
                       type="button"
                       onClick={() => addPoint(traktandum, 'info')}
-                      className="px-3.5 py-2 bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 flex items-center gap-1"
+                      className="px-3.5 py-2.5 bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 flex items-center gap-1 min-h-[40px]"
                     >
                       <Plus size={15} /> Punkt
                     </button>
                     <button
                       type="button"
                       onClick={() => addPoint(traktandum, 'decision')}
-                      className="px-3 py-2 bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 hidden sm:flex items-center gap-1"
+                      className="px-3.5 py-2.5 bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 flex items-center gap-1 min-h-[40px]"
                     >
                       + Beschluss
                     </button>
                     <button
                       type="button"
                       onClick={() => addPoint(traktandum, 'todo')}
-                      className="px-3 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 hidden sm:flex items-center gap-1"
+                      className="px-3.5 py-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 flex items-center gap-1 min-h-[40px]"
                     >
                       + Pendenz
                     </button>
                   </div>
                 </div>
 
-                <div className="p-5 sm:p-7 space-y-4">
+                <div className="p-4 sm:p-7 space-y-4">
                   {points.map((point, index) => {
                     const otherTypingThisPoint =
                       liveDraft &&
@@ -2093,13 +2092,13 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                       }`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-900">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="w-6 h-6 rounded-lg bg-gray-900 border border-gray-800 text-orange-500 font-black text-[11px] flex items-center justify-center shrink-0 mr-1">
                             #{index + 1}
                           </span>
                           {otherTypingThisPoint && (
-                            <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-md animate-pulse mr-1">
-                              ✍️ {liveDraft.activeEditorName} tippt hier...
+                            <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-md animate-pulse mr-1">
+                              ✍️ {liveDraft.activeEditorName} tippt...
                             </span>
                           )}
                           {[
@@ -2111,7 +2110,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                               key={tOpt.id}
                               type="button"
                               onClick={() => updatePoint(traktandum, point.id, 'type', tOpt.id)}
-                              className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg border transition-all ${
+                              className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border transition-all min-h-[36px] flex items-center ${
                                 (point.type || 'info') === tOpt.id
                                   ? tOpt.activeClass
                                   : 'bg-gray-900/50 text-gray-600 border-gray-800 hover:text-gray-400'
@@ -2122,13 +2121,13 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                           ))}
                         </div>
 
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <select
                             value={point.assignee || ''}
                             onChange={e => updatePoint(traktandum, point.id, 'assignee', e.target.value)}
-                            className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1 text-[11px] font-bold text-gray-300 focus:border-orange-500 outline-none"
+                            className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-2 text-[11px] font-bold text-gray-300 focus:border-orange-500 outline-none min-h-[36px]"
                           >
-                            <option value="">Verantwortlich (optional)...</option>
+                            <option value="">Verantwortlich...</option>
                             {vorstand.map(v => (
                               <option key={v.id} value={`${v.firstName} ${v.lastName}`}>
                                 {v.firstName} {v.lastName}
@@ -2143,7 +2142,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                               value={point.dueDate || ''}
                               onChange={e => updatePoint(traktandum, point.id, 'dueDate', e.target.value)}
                               title="Fälligkeitsdatum (Bis wann?)"
-                              className="bg-gray-900 border border-gray-800 rounded-lg px-2 py-1 text-[11px] font-bold text-orange-400 focus:border-orange-500 outline-none"
+                              className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-2 text-[11px] font-bold text-orange-400 focus:border-orange-500 outline-none min-h-[36px]"
                             />
                           )}
 
@@ -2151,7 +2150,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                             type="button"
                             onClick={() => setEnlargedEditPoint({ traktandum, id: point.id, text: point.text })}
                             title="Im Vollbild bearbeiten"
-                            className="p-1.5 text-gray-500 hover:text-orange-500 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                            className="p-2 text-gray-500 hover:text-orange-500 transition-colors bg-gray-900 rounded-lg border border-gray-800 min-h-[36px] min-w-[36px] flex items-center justify-center"
                           >
                             <Maximize2 size={14} />
                           </button>
@@ -2159,7 +2158,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                             type="button"
                             onClick={() => movePoint(traktandum, index, -1)}
                             disabled={index === 0}
-                            className="p-1.5 text-gray-500 hover:text-orange-500 disabled:opacity-30 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                            className="p-2 text-gray-500 hover:text-orange-500 disabled:opacity-30 transition-colors bg-gray-900 rounded-lg border border-gray-800 min-h-[36px] min-w-[36px] flex items-center justify-center"
                           >
                             <ArrowUp size={14} />
                           </button>
@@ -2167,14 +2166,14 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                             type="button"
                             onClick={() => movePoint(traktandum, index, 1)}
                             disabled={index === points.length - 1}
-                            className="p-1.5 text-gray-500 hover:text-orange-500 disabled:opacity-30 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                            className="p-2 text-gray-500 hover:text-orange-500 disabled:opacity-30 transition-colors bg-gray-900 rounded-lg border border-gray-800 min-h-[36px] min-w-[36px] flex items-center justify-center"
                           >
                             <ArrowDown size={14} />
                           </button>
                           <button
                             type="button"
                             onClick={() => removePoint(traktandum, point.id)}
-                            className="p-1.5 text-gray-500 hover:text-red-500 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                            className="p-2 text-gray-500 hover:text-red-500 transition-colors bg-gray-900 rounded-lg border border-gray-800 min-h-[36px] min-w-[36px] flex items-center justify-center"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -2197,7 +2196,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                       </div>
 
                       <div className="flex flex-col sm:flex-row items-center gap-3 pt-3 border-t border-gray-900">
-                        <div className="w-full flex-1 flex items-center gap-3 bg-gray-900 px-4 py-2.5 rounded-xl border border-gray-800 relative overflow-hidden">
+                        <div className="w-full flex-1 flex items-center gap-3 bg-gray-900 px-4 py-3 rounded-xl border border-gray-800 relative overflow-hidden">
                           {uploading[point.id] !== undefined && (
                             <div className="absolute left-0 top-0 h-full bg-orange-500/20 transition-all" style={{ width: `${uploading[point.id]}%` }} />
                           )}
@@ -2210,20 +2209,20 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                                 <button
                                   type="button"
                                   onClick={() => triggerFileDownload(point.docUrl, point.docName || 'Dokument')}
-                                  className="text-xs text-white hover:text-orange-400 truncate font-bold max-w-[200px] sm:max-w-[280px] text-left"
+                                  className="text-xs text-white hover:text-orange-400 truncate font-bold max-w-[180px] sm:max-w-[280px] text-left"
                                 >
                                   {point.docName || 'Dokument herunterladen'}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })}
-                                  className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md shrink-0"
+                                  className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-2 rounded-md shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center"
                                 >
                                   <X size={14} />
                                 </button>
                               </div>
                             ) : (
-                              <label className="cursor-pointer text-xs text-gray-400 hover:text-white w-full block font-bold transition-colors truncate">
+                              <label className="cursor-pointer text-xs text-gray-400 hover:text-white w-full block font-bold transition-colors truncate py-1">
                                 <UploadCloud size={14} className="inline mr-2 text-orange-500" />
                                 Datei anhängen (PDF, Word, Excel, Bild)
                                 <input type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" onChange={e => handleFileUpload(e, traktandum, point.id)} />
@@ -2232,7 +2231,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                           </div>
                         </div>
                         <input
-                          className="w-full sm:w-48 bg-gray-900 px-3.5 py-2.5 rounded-xl border border-gray-800 text-xs text-gray-300 focus:border-orange-500 outline-none"
+                          className="w-full sm:w-48 bg-gray-900 px-3.5 py-3 rounded-xl border border-gray-800 text-xs text-gray-300 focus:border-orange-500 outline-none min-h-[44px]"
                           placeholder="Anzeige-Name (optional)"
                           value={point.docName}
                           onChange={e => updatePoint(traktandum, point.id, 'docName', e.target.value)}
@@ -2246,7 +2245,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                     <button
                       type="button"
                       onClick={() => addPoint(traktandum)}
-                      className="w-full py-6 border-2 border-dashed border-gray-800 hover:border-orange-500/40 rounded-2xl text-gray-600 hover:text-orange-400 text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                      className="w-full py-6 border-2 border-dashed border-gray-800 hover:border-orange-500/40 rounded-2xl text-gray-600 hover:text-orange-400 text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 min-h-[56px]"
                     >
                       <Plus size={16} /> Ersten Eintrag für {traktandum} erfassen
                     </button>
@@ -2262,12 +2261,12 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
         <div className="fixed inset-0 z-[100] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-3xl flex flex-col shadow-2xl h-[80vh] max-h-[800px]">
             <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
-              <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedEditPoint.traktandum} – Fokussiertes Schreiben</h3>
-              <button onClick={() => setEnlargedEditPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90"><X size={20} /></button>
+              <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedEditPoint.traktandum} – Vollbild</h3>
+              <button onClick={() => setEnlargedEditPoint(null)} className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"><X size={20} /></button>
             </div>
             <div className="p-6 flex-1 flex flex-col">
               <textarea
-                className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-2xl p-6 text-white focus:border-orange-500 outline-none resize-none leading-relaxed text-lg"
+                className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-2xl p-6 text-white focus:border-orange-500 outline-none resize-none leading-relaxed text-base sm:text-lg"
                 value={enlargedEditPoint.text}
                 onChange={e => setEnlargedEditPoint({...enlargedEditPoint, text: e.target.value})}
                 placeholder="Beschluss oder Notiz..."
@@ -2281,7 +2280,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                   updatePoint(enlargedEditPoint.traktandum, enlargedEditPoint.id, 'text', enlargedEditPoint.text);
                   setEnlargedEditPoint(null);
                 }}
-                className="w-full sm:w-auto px-8 py-4 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg"
+                className="w-full sm:w-auto px-8 py-4 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg min-h-[48px]"
               >
                 Text übernehmen
               </button>
@@ -2293,7 +2292,7 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
   );
 }
 
-// --- Lesbare & Druckbare Ansicht (PDF Export) ---
+// --- Lesbare & Druckbare Ansicht ---
 function ReadingViewModal({ minute, users, onClose }) {
   const presentCount = Object.values(minute.attendance || {}).filter(s => s === 'present').length;
 
@@ -2308,26 +2307,26 @@ function ReadingViewModal({ minute, users, onClose }) {
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => window.print()}
-              className="px-4 py-2 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 shadow-lg"
+              className="px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 shadow-lg min-h-[44px]"
             >
-              <Printer size={14} /> Drucken / PDF speichern
+              <Printer size={14} /> Drucken / PDF
             </button>
             <button
               onClick={onClose}
-              className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all"
+              className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
             >
               <X size={18} />
             </button>
           </div>
         </div>
 
-        <div className="p-8 sm:p-12 flex-1 overflow-auto bg-white text-gray-900 space-y-8 select-text">
-          <div className="border-b-2 border-gray-900 pb-6 flex justify-between items-end">
+        <div className="p-6 sm:p-12 flex-1 overflow-auto bg-white text-gray-900 space-y-8 select-text">
+          <div className="border-b-2 border-gray-900 pb-6 flex flex-col sm:flex-row justify-between sm:items-end gap-2">
             <div>
               <p className="text-xs font-black uppercase tracking-widest text-orange-600 mb-1">RüssSuuger Ämme • Vorstandsprotokoll</p>
-              <h1 className="text-3xl sm:text-4xl font-black text-gray-950 tracking-tight">{minute.title}</h1>
+              <h1 className="text-2xl sm:text-4xl font-black text-gray-950 tracking-tight">{minute.title}</h1>
             </div>
-            <div className="text-right">
+            <div className="text-left sm:text-right">
               <p className="text-sm font-bold text-gray-700">{minute.date ? new Date(minute.date).toLocaleDateString('de-CH', { dateStyle: 'long' }) : ''}</p>
             </div>
           </div>
@@ -2341,7 +2340,7 @@ function ReadingViewModal({ minute, users, onClose }) {
                   if (!status) return null;
                   const label = status === 'present' ? 'Anwesend' : status === 'absent' ? 'Unentschuldigt' : 'Entschuldigt';
                   return (
-                    <span key={u.id} className="text-xs bg-white border border-gray-300 px-3 py-1 rounded-lg font-medium text-gray-800">
+                    <span key={u.id} className="text-xs bg-white border border-gray-300 px-3 py-1.5 rounded-lg font-medium text-gray-800">
                       <b>{u.firstName} {u.lastName}</b>: {label}
                     </span>
                   );
@@ -2420,13 +2419,13 @@ function FilePreviewModal({ docItem, onClose }) {
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => triggerFileDownload(docItem.url, docItem.name || 'Dokument')}
-              className="px-4 py-2 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95"
+              className="px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 min-h-[44px]"
             >
               <Download size={14} /> Herunterladen
             </button>
             <button
               onClick={onClose}
-              className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all"
+              className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
             >
               <X size={18} />
             </button>
@@ -2454,7 +2453,7 @@ function FilePreviewModal({ docItem, onClose }) {
               </p>
               <button
                 onClick={() => triggerFileDownload(docItem.url, docItem.name || 'Dokument')}
-                className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-2xl text-xs inline-flex items-center gap-2 shadow-lg"
+                className="px-6 py-3.5 bg-orange-500 text-gray-950 font-black rounded-2xl text-xs inline-flex items-center gap-2 shadow-lg min-h-[44px]"
               >
                 <Download size={16} /> Datei jetzt herunterladen
               </button>
@@ -2469,7 +2468,7 @@ function FilePreviewModal({ docItem, onClose }) {
 // --- Tab Button ---
 function TabButton({ active, onClick, icon, label }) {
   return (
-    <button onClick={onClick} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold transition-all whitespace-nowrap active:scale-95 ${active ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/20' : 'bg-gray-900 text-gray-500 hover:text-gray-300 hover:bg-gray-800'}`}>
+    <button onClick={onClick} className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold transition-all whitespace-nowrap active:scale-95 min-h-[44px] ${active ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/20' : 'bg-gray-900 text-gray-500 hover:text-gray-300 hover:bg-gray-800'}`}>
       {icon} {label}
     </button>
   );
@@ -2504,10 +2503,10 @@ function EventsView({ events, currentUser, isArchive = false, users, notify, ask
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-black text-white">{isArchive ? 'Archiv' : 'Aktuelle Events'}</h2>
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+        <h2 className="text-2xl sm:text-3xl font-black text-white">{isArchive ? 'Archiv' : 'Aktuelle Events'}</h2>
         {!isArchive && currentUser.role === 'admin' && (
-          <button onClick={() => setShowCreate(!showCreate)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center gap-2 active:scale-95 transition-all">
+          <button onClick={() => setShowCreate(!showCreate)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all min-h-[48px]">
             {showCreate ? 'Schliessen' : <><Plus size={20} /> Neuer Event</>}
           </button>
         )}
@@ -2605,19 +2604,19 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
 
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4">
-      <div className="flex items-center gap-6">
-        <button onClick={onBack} className="bg-gray-900 p-3 rounded-2xl hover:text-orange-500 transition-all active:scale-90"><ChevronRight className="rotate-180" size={24} /></button>
-        <div className="flex-1">
-          <h2 className="text-3xl font-black text-white flex items-center gap-3">
-            {event.title}
-            {isArchived && <span className="bg-red-500/10 text-red-500 text-[10px] uppercase font-black px-2 py-1 rounded-md border border-red-500/20">Archiviert (Read-Only)</span>}
+      <div className="flex items-center gap-4 sm:gap-6">
+        <button onClick={onBack} className="bg-gray-900 p-3 rounded-2xl hover:text-orange-500 transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"><ChevronRight className="rotate-180" size={24} /></button>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-xl sm:text-3xl font-black text-white flex flex-wrap items-center gap-2">
+            <span className="truncate">{event.title}</span>
+            {isArchived && <span className="bg-red-500/10 text-red-500 text-[10px] uppercase font-black px-2 py-1 rounded-md border border-red-500/20">Archiviert</span>}
           </h2>
           <p className="text-orange-500 text-xs font-bold uppercase">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
         </div>
         {currentUser.role === 'admin' && (
-          <div className="flex gap-2">
-            <button onClick={exportToExcel} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-green-500 transition-all" title="Als Excel (CSV) exportieren"><Download size={20}/></button>
-            {!isArchived && <button onClick={() => onUpdate({ isArchived: !event.isArchived })} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-orange-500 transition-all" title="Manuell Archivieren"><Archive size={20}/></button>}
+          <div className="flex gap-2 shrink-0">
+            <button onClick={exportToExcel} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-green-500 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center" title="Als Excel (CSV) exportieren"><Download size={20}/></button>
+            {!isArchived && <button onClick={() => onUpdate({ isArchived: !event.isArchived })} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-orange-500 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center" title="Manuell Archivieren"><Archive size={20}/></button>}
             <button
               onClick={() =>
                 askConfirm(
@@ -2627,7 +2626,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
                   'Unwiderruflich löschen'
                 )
               }
-              className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500/20"
+              className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500/20 min-h-[44px] min-w-[44px] flex items-center justify-center"
             >
               <Trash2 size={20}/>
             </button>
@@ -2636,7 +2635,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
       </div>
 
       {currentUser.role === 'admin' && !isArchived && (
-        <button onClick={() => setShowSurveyForm(!showSurveyForm)} className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all">
+        <button onClick={() => setShowSurveyForm(!showSurveyForm)} className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all min-h-[48px]">
           {showSurveyForm ? 'Abbrechen' : 'Neue Umfrage hinzufügen'}
         </button>
       )}
@@ -2730,32 +2729,32 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
 
   return (
     <div className="fixed inset-0 z-[200] bg-gray-950 flex flex-col animate-in fade-in duration-300">
-      <div className="flex items-center justify-between px-8 py-5 border-b border-gray-800">
+      <div className="flex items-center justify-between px-6 sm:px-8 py-5 border-b border-gray-800">
         <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-black italic tracking-tighter">
+          <h1 className="text-xl sm:text-2xl font-black italic tracking-tighter">
             <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span> <span className="text-gray-400">Ämme</span>
           </h1>
-          <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1.5 rounded-lg border border-orange-500/20">
+          <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1.5 rounded-lg border border-orange-500/20 hidden sm:inline-block">
             Live Abstimmung
           </span>
         </div>
         <div className="flex items-center gap-3">
           {survey.status === 'active' && onPublish && (
-            <button onClick={onPublish} className="px-5 py-2.5 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20">
+            <button onClick={onPublish} className="px-5 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[44px]">
               Publizieren
             </button>
           )}
-          <button onClick={onClose} className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90">
+          <button onClick={onClose} className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center">
             <Minimize2 size={20} />
           </button>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center px-8 py-10 max-w-4xl mx-auto w-full">
-        <h2 className="text-4xl sm:text-5xl font-black text-white text-center leading-tight mb-4">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 sm:px-8 py-10 max-w-4xl mx-auto w-full">
+        <h2 className="text-3xl sm:text-5xl font-black text-white text-center leading-tight mb-4">
           {survey.title}
         </h2>
-        <p className="text-gray-500 font-bold uppercase tracking-widest text-sm mb-10">
+        <p className="text-gray-500 font-bold uppercase tracking-widest text-xs sm:text-sm mb-10 text-center">
           {survey.majorityType === 'two_thirds' ? '⅔ Zwei-Drittel-Mehrheit erforderlich' : survey.majorityType === 'simple' ? 'Einfache Mehrheit (50%+1)' : ''}
         </p>
 
@@ -2770,10 +2769,10 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
                     className={`absolute left-0 top-0 h-full transition-all duration-1000 ease-out ${isLeading ? 'bg-orange-500/20' : 'bg-gray-800/60'}`}
                     style={{ width: `${pct}%` }}
                   />
-                  <span className="flex-1 font-black text-white text-xl z-10 truncate">{o.text}</span>
-                  <div className="z-10 text-right ml-6">
-                    <p className="text-3xl font-black text-white">{o.votes || 0}</p>
-                    <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">Stimmen</p>
+                  <span className="flex-1 font-black text-white text-lg sm:text-xl z-10 truncate">{o.text}</span>
+                  <div className="z-10 text-right ml-4">
+                    <p className="text-2xl sm:text-3xl font-black text-white">{o.votes || 0}</p>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Stimmen</p>
                   </div>
                 </div>
               );
@@ -2781,7 +2780,7 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
           ) : (
             survey.options.map(o => (
               <div key={o.id} className="h-20 rounded-2xl flex items-center px-6 border-2 border-gray-800 bg-gray-900">
-                <span className="flex-1 font-black text-white text-xl truncate">{o.text}</span>
+                <span className="flex-1 font-black text-white text-lg sm:text-xl truncate">{o.text}</span>
                 <div className="w-8 h-8 rounded-full border-2 border-gray-700 flex items-center justify-center">
                   <div className="w-3 h-3 rounded-full bg-gray-700" />
                 </div>
@@ -2811,31 +2810,31 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
 function CreateEventForm({ onSubmit }) {
   const [form, setForm] = useState({ title: '', category: CATEGORIES[0], date: new Date().toISOString().slice(0,16), endDate: '', autoArchive: false });
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 space-y-5">
+    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl mb-8 space-y-5">
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1">
           <label className="text-xs font-bold text-gray-600 uppercase ml-1">Event Titel</label>
-          <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none" placeholder="z.B. GV 2026" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
+          <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[44px]" placeholder="z.B. GV 2026" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
         </div>
         <div className="space-y-1">
           <label className="text-xs font-bold text-gray-600 uppercase ml-1">Kategorie</label>
-          <select className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+          <select className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white min-h-[44px]" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div className="space-y-1">
           <label className="text-xs font-bold text-gray-600 uppercase ml-1">Start-Datum & Zeit</label>
-          <input type="datetime-local" required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
+          <input type="datetime-local" required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[44px]" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
         </div>
         <div className="space-y-1">
-          <label className="text-xs font-bold text-gray-600 uppercase ml-1 flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={form.autoArchive} onChange={e => setForm({...form, autoArchive: e.target.checked})} className="accent-orange-500 w-4 h-4" />
+          <label className="text-xs font-bold text-gray-600 uppercase ml-1 flex items-center gap-2 cursor-pointer py-1">
+            <input type="checkbox" checked={form.autoArchive} onChange={e => setForm({...form, autoArchive: e.target.checked})} className="accent-orange-500 w-5 h-5" />
             Auto-Archivierung am:
           </label>
-          <input type="datetime-local" required={form.autoArchive} disabled={!form.autoArchive} className={`w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none transition-all ${!form.autoArchive && 'opacity-50 cursor-not-allowed'}`} value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} />
+          <input type="datetime-local" required={form.autoArchive} disabled={!form.autoArchive} className={`w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none transition-all min-h-[44px] ${!form.autoArchive && 'opacity-50 cursor-not-allowed'}`} value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} />
         </div>
       </div>
-      <button type="submit" className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg mt-2">Event speichern</button>
+      <button type="submit" className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg mt-2 min-h-[48px]">Event speichern</button>
     </form>
   );
 }
@@ -2851,44 +2850,44 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
   const toggleGroup = g => setAllowedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit({ title, maxAnswers, majorityType, allowedGroups, options: options.filter(o => o.text.trim()) }); }} className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-2" : "bg-gray-900 border border-gray-800 p-8 rounded-3xl"}`}>
+    <form onSubmit={e => { e.preventDefault(); onSubmit({ title, maxAnswers, majorityType, allowedGroups, options: options.filter(o => o.text.trim()) }); }} className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-2" : "bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl"}`}>
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
-          <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-4 text-white focus:border-orange-500 outline-none" placeholder="Was ist die Frage?" value={title} onChange={e => setTitle(e.target.value)} />
+          <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-4 text-white focus:border-orange-500 outline-none min-h-[48px]" placeholder="Was ist die Frage?" value={title} onChange={e => setTitle(e.target.value)} />
         </div>
-        <div className="flex items-center gap-3 bg-gray-950 border border-gray-800 px-4 py-2 rounded-xl shrink-0">
+        <div className="flex items-center gap-3 bg-gray-950 border border-gray-800 px-4 py-3 rounded-xl shrink-0">
           <label className="text-xs font-bold text-gray-500 uppercase">Max. Stimmen:</label>
-          <input type="number" min="1" max="10" className="w-16 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none text-center font-bold" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} />
+          <input type="number" min="1" max="10" className="w-16 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none text-center font-bold min-h-[40px]" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} />
         </div>
-        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-4 py-2 rounded-xl shrink-0">
+        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-4 py-3 rounded-xl shrink-0">
           <label className="text-xs font-bold text-gray-500 uppercase">Mehrheit:</label>
-          <select className="bg-transparent text-white text-xs font-bold outline-none" value={majorityType} onChange={e => setMajorityType(e.target.value)}>
-            <option value="none">Keine Angabe</option>
-            <option value="simple">Einfach (50%+1)</option>
-            <option value="two_thirds">Zwei Drittel (⅔)</option>
+          <select className="bg-transparent text-white text-xs font-bold outline-none min-h-[36px]" value={majorityType} onChange={e => setMajorityType(e.target.value)}>
+            <option value="none" className="bg-gray-900">Keine Angabe</option>
+            <option value="simple" className="bg-gray-900">Einfach (50%+1)</option>
+            <option value="two_thirds" className="bg-gray-900">Zwei Drittel (⅔)</option>
           </select>
         </div>
       </div>
       {options.map((o, i) => (
         <div key={o.id} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-950 border border-gray-800 rounded-2xl relative group">
-          <input required className="bg-transparent border-b border-gray-800 px-2 py-2 text-white outline-none focus:border-orange-500 font-bold" placeholder={`Option ${i+1}`} value={o.text} onChange={e => { const n = [...options]; n[i].text = e.target.value; setOptions(n); }} />
+          <input required className="bg-transparent border-b border-gray-800 px-2 py-3 text-white outline-none focus:border-orange-500 font-bold min-h-[40px]" placeholder={`Option ${i+1}`} value={o.text} onChange={e => { const n = [...options]; n[i].text = e.target.value; setOptions(n); }} />
           <div className="flex items-center gap-2">
             <Youtube size={18} className="text-red-500 shrink-0" />
-            <input className="w-full bg-transparent border-b border-gray-800 px-2 py-2 text-gray-500 outline-none focus:border-orange-500 text-xs" placeholder="YouTube Link..." value={o.youtubeUrl} onChange={e => { const n = [...options]; n[i].youtubeUrl = e.target.value; setOptions(n); }} />
+            <input className="w-full bg-transparent border-b border-gray-800 px-2 py-3 text-gray-500 outline-none focus:border-orange-500 text-xs min-h-[40px]" placeholder="YouTube Link..." value={o.youtubeUrl} onChange={e => { const n = [...options]; n[i].youtubeUrl = e.target.value; setOptions(n); }} />
             {options.length > 2 && (
-              <button type="button" onClick={() => setOptions(options.filter(x => x.id !== o.id))} className="p-2 text-gray-700 hover:text-red-500 transition-colors bg-gray-900 rounded-lg ml-2 shrink-0"><Trash2 size={16} /></button>
+              <button type="button" onClick={() => setOptions(options.filter(x => x.id !== o.id))} className="p-3 text-gray-700 hover:text-red-500 transition-colors bg-gray-900 rounded-lg ml-2 shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"><Trash2 size={16} /></button>
             )}
           </div>
         </div>
       ))}
-      <button type="button" onClick={() => setOptions([...options, { id: Date.now().toString(), text: '', youtubeUrl: '' }])} className="text-orange-500 text-xs font-bold hover:underline transition-all">+ Option hinzufügen</button>
+      <button type="button" onClick={() => setOptions([...options, { id: Date.now().toString(), text: '', youtubeUrl: '' }])} className="text-orange-500 text-xs font-bold hover:underline transition-all py-2 inline-block">+ Option hinzufügen</button>
       <div className="space-y-3 pt-4 border-t border-gray-800">
         <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Wer darf an dieser Umfrage teilnehmen?</label>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           {GROUPS.map(g => (
-            <label key={g} className={`flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all ${allowedGroups.includes(g) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
+            <label key={g} className={`flex items-center gap-2 p-3.5 rounded-xl border-2 cursor-pointer transition-all min-h-[48px] ${allowedGroups.includes(g) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
               <input type="checkbox" className="hidden" checked={allowedGroups.includes(g)} onChange={() => toggleGroup(g)} />
-              <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all ${allowedGroups.includes(g) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'}`}>
+              <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${allowedGroups.includes(g) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'}`}>
                 {allowedGroups.includes(g) && <Check size={12} className="text-gray-950" strokeWidth={4} />}
               </div>
               <span className="text-[10px] font-black uppercase tracking-tighter truncate">{g}</span>
@@ -2897,8 +2896,8 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
         </div>
       </div>
       <div className="flex gap-4 pt-4 border-t border-gray-800">
-        <button type="button" onClick={onCancel} className="text-gray-500 font-bold px-4 py-2 hover:text-gray-300">Abbrechen</button>
-        <button type="submit" className="flex-1 bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg active:scale-[0.99] transition-all">Umfrage speichern</button>
+        <button type="button" onClick={onCancel} className="text-gray-500 font-bold px-4 py-3 hover:text-gray-300 min-h-[44px]">Abbrechen</button>
+        <button type="submit" className="flex-1 bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg active:scale-[0.99] transition-all min-h-[48px]">Umfrage speichern</button>
       </div>
     </form>
   );
@@ -2929,12 +2928,12 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
 
   return (
     <div className={`bg-gray-900 border rounded-3xl overflow-hidden shadow-xl transition-all ${survey.status === 'active' && !isArchived ? 'border-orange-500/50' : 'border-gray-800 opacity-80'}`}>
-      <div className="p-6 border-b border-gray-800 bg-gray-950/20 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+      <div className="p-5 sm:p-6 border-b border-gray-800 bg-gray-950/20 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <span className="text-[10px] font-black uppercase text-orange-500 block mb-1">
             {isArchived ? 'Abstimmung Beendet' : survey.status} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'} • {survey.majorityType === 'two_thirds' ? '⅔ Mehrheit' : survey.majorityType === 'simple' ? 'Einfache Mehrheit' : ''}
           </span>
-          <h4 className="text-xl font-bold text-white leading-tight">{survey.title}</h4>
+          <h4 className="text-lg sm:text-xl font-bold text-white leading-tight">{survey.title}</h4>
         </div>
         <div className="flex flex-col sm:items-end gap-3 shrink-0">
           <div className="text-[10px] font-bold text-gray-400 bg-gray-950 px-3 py-1.5 rounded-lg border border-gray-800 flex items-center w-fit shadow-inner">
@@ -2942,19 +2941,19 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
             {survey.votedUsers?.length || 0} / {eligibleUsersCount} haben abgestimmt
           </div>
           {currentUser.role === 'admin' && !isArchived && (
-            <div className="flex gap-2 items-center">
-              {survey.status === 'draft'  && <button onClick={() => onStatusChange('active')}    className="bg-green-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Starten</button>}
-              {survey.status === 'active' && <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-bold px-4 py-2 rounded-xl active:scale-95 transition-all">Publizieren</button>}
-              <button onClick={() => onPresent(survey)} className="p-2 bg-gray-800 text-gray-400 hover:text-orange-500 rounded-lg transition-colors ml-2" title="Präsentationsmodus"><Maximize2 size={16}/></button>
-              <button onClick={onMoveUp} disabled={!onMoveUp} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors disabled:opacity-30" title="Nach oben"><ArrowUp size={16}/></button>
-              <button onClick={onMoveDown} disabled={!onMoveDown} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors disabled:opacity-30" title="Nach unten"><ArrowDown size={16}/></button>
-              <button onClick={onEdit}   className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors"><Edit2 size={16}/></button>
-              <button onClick={onDelete} className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg transition-colors"><Trash2 size={16}/></button>
+            <div className="flex gap-1.5 sm:gap-2 items-center flex-wrap">
+              {survey.status === 'draft'  && <button onClick={() => onStatusChange('active')}    className="bg-green-500 text-gray-950 text-[10px] font-bold px-4 py-2.5 rounded-xl active:scale-95 transition-all min-h-[38px]">Starten</button>}
+              {survey.status === 'active' && <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-bold px-4 py-2.5 rounded-xl active:scale-95 transition-all min-h-[38px]">Publizieren</button>}
+              <button onClick={() => onPresent(survey)} className="p-2.5 bg-gray-800 text-gray-400 hover:text-orange-500 rounded-lg transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center" title="Präsentationsmodus"><Maximize2 size={16}/></button>
+              <button onClick={onMoveUp} disabled={!onMoveUp} className="p-2.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors disabled:opacity-30 min-h-[38px] min-w-[38px] flex items-center justify-center" title="Nach oben"><ArrowUp size={16}/></button>
+              <button onClick={onMoveDown} disabled={!onMoveDown} className="p-2.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors disabled:opacity-30 min-h-[38px] min-w-[38px] flex items-center justify-center" title="Nach unten"><ArrowDown size={16}/></button>
+              <button onClick={onEdit}   className="p-2.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"><Edit2 size={16}/></button>
+              <button onClick={onDelete} className="p-2.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"><Trash2 size={16}/></button>
             </div>
           )}
         </div>
       </div>
-      <div className="p-6 space-y-3">
+      <div className="p-5 sm:p-6 space-y-3">
         {(survey.status === 'published' || isArchived) && survey.options.map(o => {
           const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
           return (
@@ -2962,7 +2961,7 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
               <div className="absolute left-0 top-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
               <div className="flex-1 font-bold text-white z-10 flex items-center gap-3">
                 <span className="truncate">{o.text}</span>
-                {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" className="text-red-500 hover:scale-110 transition-transform"><Youtube size={16}/></a>}
+                {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" className="text-red-500 hover:scale-110 transition-transform p-1"><Youtube size={16}/></a>}
               </div>
               <div className="text-right z-10">
                 <p className="text-sm font-black">{o.votes || 0}</p>
@@ -2974,12 +2973,12 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
         {!survey.status || (survey.status !== 'published' && !isArchived && !hasVoted) ? (
           <div className="space-y-3">
             {survey.options.map(o => (
-              <div key={o.id} onClick={() => toggle(o.id)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between ${selected.includes(o.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
+              <div key={o.id} onClick={() => toggle(o.id)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between min-h-[52px] ${selected.includes(o.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
                 <div className="flex items-center gap-3">
-                  <span className="font-bold">{o.text}</span>
-                  {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-red-500 p-1 hover:scale-110 transition-transform"><Youtube size={18}/></a>}
+                  <span className="font-bold text-sm sm:text-base">{o.text}</span>
+                  {o.youtubeUrl && <a href={o.youtubeUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-red-500 p-2 hover:scale-110 transition-transform"><Youtube size={18}/></a>}
                 </div>
-                <div className={`w-6 h-6 rounded-lg border-2 ${selected.includes(o.id) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'} flex items-center justify-center transition-all`}>
+                <div className={`w-6 h-6 rounded-lg border-2 ${selected.includes(o.id) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'} flex items-center justify-center transition-all shrink-0`}>
                   {selected.includes(o.id) && <Check size={16} strokeWidth={4} className="text-gray-950" />}
                 </div>
               </div>
@@ -2987,7 +2986,7 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
             <button
               disabled={selected.length === 0 || voting}
               onClick={async () => { setVoting(true); await onVote(selected); setVoting(false); }}
-              className="w-full mt-2 bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30"
+              className="w-full mt-3 bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30 min-h-[48px]"
             >
               {voting ? 'Wird gesendet...' : 'Abstimmung senden'}
             </button>
@@ -3082,18 +3081,18 @@ function MembersView({ users, notify, askConfirm }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-black text-white">Mitglieder</h2>
+          <h2 className="text-2xl sm:text-3xl font-black text-white">Mitglieder</h2>
           <p className="text-gray-500 text-sm mt-1">Verwalte Rollen und Gruppenberechtigungen</p>
         </div>
         <div className="flex items-center gap-2">
-          <label className="bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold px-4 py-3 rounded-2xl flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-lg" title="CSV/Excel Import (Format: Vorname;Nachname)">
+          <label className="bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold px-4 py-3.5 rounded-2xl flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-lg min-h-[48px]" title="CSV Import (Format: Vorname;Nachname)">
             <UploadCloud size={20} /> <span className="hidden sm:inline">CSV Import</span>
             <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} />
           </label>
-          <button onClick={() => setShowAdd(!showAdd)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/10">
-            {showAdd ? 'Abbrechen' : <><UserPlus size={20} /> Mitglied hinzufügen</>}
+          <button onClick={() => setShowAdd(!showAdd)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3.5 rounded-2xl flex items-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/10 min-h-[48px]">
+            {showAdd ? 'Abbrechen' : <><UserPlus size={20} /> Neu</>}
           </button>
         </div>
       </div>
@@ -3107,10 +3106,10 @@ function MembersView({ users, notify, askConfirm }) {
           placeholder="Mitglied suchen..."
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
-          className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-3.5 pl-11 pr-10 text-white focus:border-orange-500 outline-none transition-all"
+          className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-3.5 pl-11 pr-10 text-white focus:border-orange-500 outline-none transition-all min-h-[48px]"
         />
         {searchTerm && (
-          <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">
+          <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white p-2 min-h-[44px] min-w-[44px] flex items-center justify-center">
             <X size={16} />
           </button>
         )}
@@ -3121,7 +3120,7 @@ function MembersView({ users, notify, askConfirm }) {
           <button
             key={g}
             onClick={() => setFilterGroup(g)}
-            className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 ${
+            className={`px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 min-h-[40px] flex items-center ${
               filterGroup === g
                 ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/20'
                 : 'bg-gray-900 border border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'
@@ -3148,23 +3147,23 @@ function MembersView({ users, notify, askConfirm }) {
                 <React.Fragment key={u.id}>
                   <tr className="hover:bg-gray-800/30 transition-colors">
                     <td className="px-6 py-5">
-                      <p className="font-bold text-white text-lg">{u.firstName} {u.lastName}</p>
+                      <p className="font-bold text-white text-base sm:text-lg">{u.firstName} {u.lastName}</p>
                       <div className="flex flex-wrap gap-1 mt-2">
                         {u.groups?.map(g => <span key={g} className="text-[8px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-500 uppercase font-black">{g}</span>)}
                       </div>
                     </td>
                     <td className="px-6 py-5">
-                      <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-md ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500' : 'bg-gray-800 text-gray-400'}`}>
-                        {u.role === 'admin' ? 'Administrator' : 'Mitglied'}
+                      <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-md ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500' : 'bg-gray-800 text-gray-400'}`}>
+                        {u.role === 'admin' ? 'Admin' : 'Mitglied'}
                       </span>
                     </td>
                     <td className="px-6 py-5">
                       {u.groups?.includes('Vorstand') ? (
-                        u.password ? <span className="text-green-500 flex items-center gap-1 text-[10px] font-black"><Lock size={12}/> PASSWORT AKTIV</span> : <span className="text-orange-500 flex items-center gap-1 text-[10px] font-black animate-pulse"><Unlock size={12}/> EINRICHTUNG NÖTIG</span>
-                      ) : <span className="text-gray-700 text-[10px] font-black uppercase">Standard-Login</span>}
+                        u.password ? <span className="text-green-500 flex items-center gap-1 text-[10px] font-black"><Lock size={12}/> AKTIV</span> : <span className="text-orange-500 flex items-center gap-1 text-[10px] font-black animate-pulse"><Unlock size={12}/> OFFEN</span>
+                      ) : <span className="text-gray-700 text-[10px] font-black uppercase">—</span>}
                     </td>
                     <td className="px-6 py-5 text-right whitespace-nowrap">
-                      <button onClick={() => setEditingUser(editingUser?.id === u.id ? null : u)} className={`transition-colors p-2 rounded-xl active:scale-90 mr-1 ${editingUser?.id === u.id ? 'text-orange-500 bg-orange-500/10' : 'text-gray-700 hover:text-orange-500 hover:bg-orange-500/10'}`}><Edit2 size={18}/></button>
+                      <button onClick={() => setEditingUser(editingUser?.id === u.id ? null : u)} className={`transition-colors p-3 rounded-xl active:scale-90 mr-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center ${editingUser?.id === u.id ? 'text-orange-500 bg-orange-500/10' : 'text-gray-400 hover:text-orange-500 hover:bg-orange-500/10'}`}><Edit2 size={18}/></button>
                       <button
                         onClick={() =>
                           askConfirm(
@@ -3177,7 +3176,7 @@ function MembersView({ users, notify, askConfirm }) {
                             'Entfernen'
                           )
                         }
-                        className="text-gray-700 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-xl active:scale-90"
+                        className="text-gray-400 hover:text-red-500 transition-colors p-3 hover:bg-red-500/10 rounded-xl active:scale-90 min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
                       >
                         <Trash2 size={18}/>
                       </button>
@@ -3211,31 +3210,31 @@ function MemberForm({ onSubmit, onCancel, initialData, inline = false }) {
   const toggleGroup = g => setForm(f => ({ ...f, groups: f.groups.includes(g) ? f.groups.filter(x => x !== g) : [...f.groups, g] }));
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-4 pt-2" : "bg-gray-900 border border-gray-800 p-8 rounded-3xl mb-8 shadow-2xl"}`}>
+    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-4 pt-2" : "bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl mb-8 shadow-2xl"}`}>
       <div className="grid gap-4 md:grid-cols-3">
         <div className="space-y-1">
           <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Vorname</label>
-          <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all" placeholder="z.B. Max" value={form.firstName} onChange={e => setForm({...form, firstName: e.target.value})} />
+          <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all min-h-[48px]" placeholder="z.B. Max" value={form.firstName} onChange={e => setForm({...form, firstName: e.target.value})} />
         </div>
         <div className="space-y-1">
           <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Nachname</label>
-          <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all" placeholder="z.B. Muster" value={form.lastName} onChange={e => setForm({...form, lastName: e.target.value})} />
+          <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all min-h-[48px]" placeholder="z.B. Muster" value={form.lastName} onChange={e => setForm({...form, lastName: e.target.value})} />
         </div>
         <div className="space-y-1">
           <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Rolle</label>
-          <select required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all appearance-none" value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
-            <option value="member">Mitglied</option>
-            <option value="admin">Administrator</option>
+          <select required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all min-h-[48px]" value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
+            <option value="member" className="bg-gray-900">Mitglied</option>
+            <option value="admin" className="bg-gray-900">Administrator</option>
           </select>
         </div>
       </div>
       <div className="space-y-3">
         <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Gruppen-Berechtigungen</label>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           {GROUPS.map(g => (
-            <label key={g} className={`flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all ${form.groups.includes(g) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
+            <label key={g} className={`flex items-center gap-2 p-3.5 rounded-xl border-2 cursor-pointer transition-all min-h-[48px] ${form.groups.includes(g) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
               <input type="checkbox" className="hidden" checked={form.groups.includes(g)} onChange={() => toggleGroup(g)} />
-              <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all ${form.groups.includes(g) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'}`}>
+              <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${form.groups.includes(g) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'}`}>
                 {form.groups.includes(g) && <Check size={12} className="text-gray-950" strokeWidth={4} />}
               </div>
               <span className="text-[10px] font-black uppercase tracking-tighter truncate">{g}</span>
@@ -3244,8 +3243,8 @@ function MemberForm({ onSubmit, onCancel, initialData, inline = false }) {
         </div>
       </div>
       <div className="flex justify-end gap-4 pt-6 border-t border-gray-800">
-        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold transition-colors">Abbrechen</button>
-        <button type="submit" className="bg-orange-500 text-gray-950 font-black px-10 py-4 rounded-2xl shadow-lg active:scale-95 transition-all">Mitglied speichern</button>
+        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold transition-colors min-h-[44px]">Abbrechen</button>
+        <button type="submit" className="bg-orange-500 text-gray-950 font-black px-8 py-3.5 rounded-2xl shadow-lg active:scale-95 transition-all min-h-[48px]">Mitglied speichern</button>
       </div>
     </form>
   );
@@ -3316,7 +3315,7 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
       const saveFallbackToFirestore = async () => {
         try {
           if (file.size > 750 * 1024) {
-            notify(`"${file.name}" ist grösser als 750 KB (Storage-Regeln prüfen).`, "error");
+            notify(`"${file.name}" ist grösser als 750 KB.`, "error");
             setUploading(prev => { const n = { ...prev }; delete n[uploadId]; return n; });
             return;
           }
@@ -3406,25 +3405,27 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl sm:text-3xl font-black text-white">Dateiablage</h2>
           <p className="text-gray-500 text-sm mt-1">Dokumente, Reglemente und Vorlagen geordnet verwalten</p>
         </div>
-        <button onClick={() => setShowNewFolder(!showNewFolder)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 w-full md:w-auto">
+        <button onClick={() => setShowNewFolder(!showNewFolder)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 w-full sm:w-auto min-h-[48px]">
           <FolderPlus size={20} /> Neuer Ordner
         </button>
       </div>
 
       {showNewFolder && (
-        <form onSubmit={createFolder} className="flex gap-3 bg-gray-900 border border-gray-800 p-4 rounded-2xl animate-in slide-in-from-top-2">
+        <form onSubmit={createFolder} className="flex flex-col sm:flex-row gap-3 bg-gray-900 border border-gray-800 p-4 rounded-2xl animate-in slide-in-from-top-2">
           <input
             autoFocus required value={folderName} onChange={e => setFolderName(e.target.value)}
             placeholder="Ordnername eingeben..."
-            className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"
+            className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[48px]"
           />
-          <button type="submit" className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all"><Save size={18}/></button>
-          <button type="button" onClick={() => setShowNewFolder(false)} className="px-4 py-3 bg-gray-800 text-gray-400 rounded-xl hover:text-white transition-all"><X size={18}/></button>
+          <div className="flex gap-2">
+            <button type="submit" className="flex-1 sm:flex-none px-6 py-3.5 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all min-h-[48px] flex items-center justify-center"><Save size={18}/></button>
+            <button type="button" onClick={() => setShowNewFolder(false)} className="px-5 py-3.5 bg-gray-800 text-gray-400 rounded-xl hover:text-white transition-all min-h-[48px] flex items-center justify-center"><X size={18}/></button>
+          </div>
         </form>
       )}
 
@@ -3436,10 +3437,10 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
             value={fileSearch}
             onChange={e => setFileSearch(e.target.value)}
             placeholder="In allen Ordnern nach Dateinamen suchen..."
-            className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-3.5 pl-11 pr-10 text-white focus:border-orange-500 outline-none transition-all text-sm"
+            className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-3.5 pl-11 pr-10 text-white focus:border-orange-500 outline-none transition-all text-sm min-h-[48px]"
           />
           {fileSearch && (
-            <button onClick={() => setFileSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">
+            <button onClick={() => setFileSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white p-2 min-h-[44px] min-w-[44px] flex items-center justify-center">
               <X size={16} />
             </button>
           )}
@@ -3457,7 +3458,7 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
             globalMatchedFiles.map(f => {
               const parentFolder = folders.find(fl => fl.id === f.folderId);
               return (
-                <div key={f.id} className="flex items-center gap-3 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3">
+                <div key={f.id} className="flex items-center gap-3 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5">
                   <span className="text-xl shrink-0">{getFileIcon(f.type)}</span>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-white text-sm truncate">{f.name}</p>
@@ -3468,7 +3469,7 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
                   <button
                     type="button"
                     onClick={() => setPreviewDoc(f)}
-                    className="p-2.5 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all border border-gray-800"
+                    className="p-3 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all border border-gray-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
                     title="Vorschau"
                   >
                     <Eye size={16}/>
@@ -3476,7 +3477,7 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
                   <button
                     type="button"
                     onClick={() => triggerFileDownload(f.url, f.name)}
-                    className="p-2.5 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all border border-gray-800"
+                    className="p-3 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all border border-gray-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
                     title="Herunterladen"
                   >
                     <Download size={16}/>
@@ -3500,7 +3501,7 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
             <p className="text-[10px] text-gray-600 mt-1">{files.filter(f => f.folderId === folder.id).length} Dateien</p>
             <button
               onClick={e => { e.stopPropagation(); deleteFolder(folder); }}
-              className="absolute top-2 right-2 p-1.5 text-gray-700 hover:text-red-500 opacity-0 group-hover:opacity-100 bg-gray-950 rounded-lg transition-all"
+              className="absolute top-2 right-2 p-2.5 text-gray-700 hover:text-red-500 opacity-0 group-hover:opacity-100 bg-gray-950 rounded-lg transition-all min-h-[40px] min-w-[40px] flex items-center justify-center"
             ><Trash2 size={14}/></button>
           </div>
         ))}
@@ -3515,10 +3516,10 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
       {selectedFolder && (
         <div className="bg-gray-900 border border-orange-500/30 rounded-3xl overflow-hidden animate-in slide-in-from-top-2 duration-300 shadow-2xl">
           <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-orange-500/5">
-            <div className="flex items-center gap-3">
-              <Folder size={20} className="text-orange-500"/>
-              <h3 className="font-black text-white text-lg">{selectedFolder.name}</h3>
-              <span className="text-[10px] text-gray-500 font-bold">{folderFiles.length} Dateien</span>
+            <div className="flex items-center gap-3 min-w-0">
+              <Folder size={20} className="text-orange-500 shrink-0"/>
+              <h3 className="font-black text-white text-lg truncate">{selectedFolder.name}</h3>
+              <span className="text-[10px] text-gray-500 font-bold shrink-0">{folderFiles.length} Dateien</span>
             </div>
           </div>
 
@@ -3530,7 +3531,7 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
           >
             <UploadCloud size={28} className="mx-auto text-orange-500/70 mb-2"/>
             <p className="text-gray-400 text-sm font-bold">Dateien per Drag & Drop hier ablegen oder</p>
-            <label className="mt-2 inline-block cursor-pointer text-orange-500 font-black text-sm hover:underline">
+            <label className="mt-2 inline-block cursor-pointer text-orange-500 font-black text-sm hover:underline py-1">
               Dateien vom Gerät auswählen
               <input type="file" multiple className="hidden" onChange={e => { handleUpload(e.target.files); e.target.value = ''; }} />
             </label>
@@ -3553,7 +3554,7 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
               <p className="text-center text-gray-700 text-xs py-6 font-bold uppercase tracking-widest">Noch keine Dateien in diesem Ordner</p>
             )}
             {folderFiles.map(f => (
-              <div key={f.id} className="flex items-center gap-3 bg-gray-950 border border-gray-800 hover:border-gray-700 rounded-xl px-4 py-3 group transition-all">
+              <div key={f.id} className="flex items-center gap-3 bg-gray-950 border border-gray-800 hover:border-gray-700 rounded-xl px-4 py-3.5 group transition-all">
                 <span className="text-xl shrink-0">{getFileIcon(f.type)}</span>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-white text-sm truncate">{f.name}</p>
@@ -3562,7 +3563,7 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
                 <button
                   type="button"
                   onClick={() => setPreviewDoc(f)}
-                  className="p-2.5 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all shrink-0 border border-gray-800"
+                  className="p-3 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all shrink-0 border border-gray-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
                   title="Vorschau öffnen"
                 >
                   <Eye size={16}/>
@@ -3570,7 +3571,7 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
                 <button
                   type="button"
                   onClick={() => triggerFileDownload(f.url, f.name)}
-                  className="p-2.5 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all shrink-0 border border-gray-800"
+                  className="p-3 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all shrink-0 border border-gray-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
                   title="Herunterladen"
                 >
                   <Download size={16}/>
@@ -3578,7 +3579,7 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
                 <button
                   type="button"
                   onClick={() => deleteFile(f)}
-                  className="p-2.5 text-gray-500 hover:text-red-500 bg-gray-900 rounded-xl transition-all shrink-0 border border-gray-800"
+                  className="p-3 text-gray-500 hover:text-red-500 bg-gray-900 rounded-xl transition-all shrink-0 border border-gray-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
                   title="Löschen"
                 >
                   <Trash2 size={16}/>
@@ -3654,7 +3655,7 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl sm:text-3xl font-black text-white">Vereinskalender</h2>
           <p className="text-gray-500 text-sm mt-1">Termine verwalten und direkt als .ics für Handy & Outlook exportieren</p>
@@ -3666,7 +3667,7 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
                 downloadICSFile(calItems, 'RuessSuuger_Aemme_Kalender.ics');
                 notify("Kalender (.ics) wurde heruntergeladen.", "success");
               }}
-              className="bg-gray-900 hover:bg-gray-800 text-white border border-gray-800 font-bold px-5 py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+              className="bg-gray-900 hover:bg-gray-800 text-white border border-gray-800 font-bold px-5 py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all min-h-[48px]"
               title="Alle Termine als .ics Kalenderdatei herunterladen"
             >
               <Download size={18} className="text-orange-500" /> Alle als .ics Export
@@ -3674,7 +3675,7 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
           )}
           <button
             onClick={() => { setEditing(null); setShowAdd(!showAdd); }}
-            className="bg-orange-500 text-gray-950 font-black px-6 py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20"
+            className="bg-orange-500 text-gray-950 font-black px-6 py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[48px]"
           >
             <Plus size={20} /> Neuer Termin
           </button>
@@ -3692,24 +3693,24 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-xl">
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-950/40">
-            <button onClick={() => setViewMonth(new Date(year, month - 1, 1))} className="p-2 bg-gray-800 rounded-xl hover:text-orange-500 transition-all active:scale-90">
+            <button onClick={() => setViewMonth(new Date(year, month - 1, 1))} className="p-3 bg-gray-800 rounded-xl hover:text-orange-500 transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center">
               <ChevronRight className="rotate-180" size={18}/>
             </button>
             <div className="flex items-center gap-3">
-              <h3 className="font-black text-white text-lg">{monthNames[month]} {year}</h3>
+              <h3 className="font-black text-white text-base sm:text-lg">{monthNames[month]} {year}</h3>
               <button
                 onClick={() => setViewMonth(new Date())}
-                className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-gray-800 text-gray-400 hover:text-white"
+                className="text-[10px] font-black uppercase px-3 py-1.5 rounded-lg bg-gray-800 text-gray-400 hover:text-white min-h-[36px] flex items-center"
               >
                 Heute
               </button>
             </div>
-            <button onClick={() => setViewMonth(new Date(year, month + 1, 1))} className="p-2 bg-gray-800 rounded-xl hover:text-orange-500 transition-all active:scale-90">
+            <button onClick={() => setViewMonth(new Date(year, month + 1, 1))} className="p-3 bg-gray-800 rounded-xl hover:text-orange-500 transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center">
               <ChevronRight size={18}/>
             </button>
           </div>
 
-          <div className="p-4">
+          <div className="p-3 sm:p-4">
             <div className="grid grid-cols-7 mb-2">
               {dayNames.map(d => (
                 <div key={d} className="text-center text-[10px] font-black text-gray-600 uppercase py-1">{d}</div>
@@ -3727,7 +3728,7 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
                   <div
                     key={day}
                     onClick={() => setSelectedDate(isSelected ? null : dateStr)}
-                    className={`min-h-[60px] rounded-xl p-1.5 border cursor-pointer transition-all ${
+                    className={`min-h-[64px] sm:min-h-[72px] rounded-xl p-1.5 border cursor-pointer transition-all ${
                       isSelected
                         ? 'border-orange-500 bg-orange-500/15'
                         : isToday
@@ -3745,7 +3746,7 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
                         {item.time ? `${item.time} ` : ''}{item.title}
                       </div>
                     ))}
-                    {dayItems.length > 2 && <p className="text-[9px] text-orange-400 font-bold text-center">+{dayItems.length - 2} weitere</p>}
+                    {dayItems.length > 2 && <p className="text-[9px] text-orange-400 font-bold text-center">+{dayItems.length - 2}</p>}
                   </div>
                 );
               })}
@@ -3753,7 +3754,7 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
           </div>
 
           {selectedDate && (
-            <div className="px-6 py-4 border-t border-gray-800 bg-gray-950/60 flex items-center justify-between">
+            <div className="px-6 py-4 border-t border-gray-800 bg-gray-950/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-black text-orange-500 uppercase">
                   Ausgewählter Tag: {new Date(selectedDate).toLocaleDateString('de-CH', { dateStyle: 'full' })}
@@ -3764,7 +3765,7 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
               </div>
               <button
                 onClick={() => { setEditing(null); setShowAdd(true); }}
-                className="px-4 py-2 bg-orange-500 text-gray-950 font-black rounded-xl text-xs active:scale-95 transition-all"
+                className="px-4 py-2.5 bg-orange-500 text-gray-950 font-black rounded-xl text-xs active:scale-95 transition-all min-h-[40px]"
               >
                 + Termin an diesem Tag
               </button>
@@ -3799,21 +3800,21 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
                       notify(`"${item.title}" als .ics heruntergeladen.`, "success");
                     }}
                     title="Diesen Termin als .ics herunterladen"
-                    className="p-2 bg-gray-950 border border-gray-800 text-orange-500 hover:bg-orange-500 hover:text-gray-950 rounded-xl transition-all"
+                    className="p-3 bg-gray-950 border border-gray-800 text-orange-500 hover:bg-orange-500 hover:text-gray-950 rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
                   >
                     <Download size={14}/>
                   </button>
                   <button
                     onClick={() => setEditing(item)}
                     title="Bearbeiten"
-                    className="p-2 bg-gray-950 border border-gray-800 text-gray-400 hover:text-white rounded-xl transition-all"
+                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-white rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
                   >
                     <Edit2 size={14}/>
                   </button>
                   <button
                     onClick={() => deleteItem(item.id)}
                     title="Löschen"
-                    className="p-2 bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 rounded-xl transition-all"
+                    className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
                   >
                     <Trash2 size={14}/>
                   </button>
@@ -3837,28 +3838,28 @@ function CalendarItemForm({ initialData, onSave, onCancel }) {
       <div className="grid gap-4 md:grid-cols-2">
         <div className="md:col-span-2 space-y-1">
           <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Titel</label>
-          <input required value={form.title} onChange={e => setForm({...form, title: e.target.value})} placeholder="z.B. Vorstandssitzung" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"/>
+          <input required value={form.title} onChange={e => setForm({...form, title: e.target.value})} placeholder="z.B. Vorstandssitzung" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[48px]"/>
         </div>
         <div className="space-y-1">
           <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Datum</label>
-          <input required type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"/>
+          <input required type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[48px]"/>
         </div>
         <div className="space-y-1">
           <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Uhrzeit (optional)</label>
-          <input type="time" value={form.time} onChange={e => setForm({...form, time: e.target.value})} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"/>
+          <input type="time" value={form.time} onChange={e => setForm({...form, time: e.target.value})} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[48px]"/>
         </div>
         <div className="md:col-span-2 space-y-1">
           <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Ort (optional)</label>
-          <input value={form.location} onChange={e => setForm({...form, location: e.target.value})} placeholder="z.B. Vereinslokal Ämme" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"/>
+          <input value={form.location} onChange={e => setForm({...form, location: e.target.value})} placeholder="z.B. Vereinslokal Ämme" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[48px]"/>
         </div>
         <div className="md:col-span-2 space-y-1">
           <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Beschreibung (optional)</label>
-          <textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Weitere Details..." rows={3} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none resize-none"/>
+          <textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Weitere Details..." rows={3} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none resize-none"/>
         </div>
       </div>
       <div className="flex justify-end gap-3 pt-2 border-t border-gray-800">
-        <button type="button" onClick={onCancel} className="px-6 py-3 text-gray-500 hover:text-white font-bold transition-colors">Abbrechen</button>
-        <button type="submit" className="px-8 py-3 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg flex items-center gap-2"><Save size={18}/> Speichern</button>
+        <button type="button" onClick={onCancel} className="px-6 py-3.5 text-gray-500 hover:text-white font-bold transition-colors min-h-[48px]">Abbrechen</button>
+        <button type="submit" className="px-8 py-3.5 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg flex items-center gap-2 min-h-[48px]"><Save size={18}/> Speichern</button>
       </div>
     </form>
   );
