@@ -183,6 +183,34 @@ const downloadICSFile = (items, filename = 'ruesssuuger_kalender.ics') => {
   URL.revokeObjectURL(url);
 };
 
+const ConfettiOverlay = ({ active }) => {
+  if (!active) return null;
+  const pieces = Array.from({ length: 36 });
+  return (
+    <div className="fixed inset-0 pointer-events-none z-[280] overflow-hidden">
+      {pieces.map((_, idx) => {
+        const left = (idx * 97) % 100;
+        const delay = (idx % 9) * 0.08;
+        const duration = 2.2 + (idx % 5) * 0.35;
+        const colors = ['#f97316', '#fbbf24', '#ffffff', '#10b981', '#fb923c'];
+        const bg = colors[idx % colors.length];
+        return (
+          <span
+            key={idx}
+            style={{
+              left: `${left}%`,
+              animationDelay: `${delay}s`,
+              animationDuration: `${duration}s`,
+              backgroundColor: bg,
+            }}
+            className="absolute -top-4 w-2.5 h-4 rounded-sm opacity-90 animate-bounce"
+          />
+        );
+      })}
+    </div>
+  );
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
@@ -351,6 +379,7 @@ export default function App() {
       try {
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', currentUser.id), { isOnline: false });
       } catch(e) {}
+      localStorage.setItem('ruesssuuger_lastUserId', currentUser.id);
     }
     localStorage.removeItem('ruesssuuger_userId');
     localStorage.removeItem('ruesssuuger_sessionId');
@@ -359,6 +388,23 @@ export default function App() {
   };
 
   const isVorstand = useMemo(() => currentUser?.groups?.includes('Vorstand'), [currentUser]);
+
+  const myOpenTodosCount = useMemo(() => {
+    if (!currentUser || !isVorstand) return 0;
+    const myFullName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim();
+    let count = 0;
+    minutes.forEach(m => {
+      if (m.id === '__live_session__' || !m.traktanden) return;
+      Object.values(m.traktanden).forEach(pts => {
+        (pts || []).forEach(p => {
+          if (p.type === 'todo' && !p.done && (p.assignee === myFullName || p.assignee === 'Gesamtvorstand')) {
+            count++;
+          }
+        });
+      });
+    });
+    return count;
+  }, [minutes, currentUser, isVorstand]);
 
   if (connError) {
     return (
@@ -391,8 +437,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-200 selection:bg-orange-500 selection:text-white">
-      <div className="fixed bottom-5 right-5 z-[300] flex flex-col gap-2.5 max-w-sm w-full px-4 sm:px-0 pointer-events-none">
+    <div className="min-h-screen bg-gray-950 text-gray-200 selection:bg-orange-500 selection:text-white pb-24 sm:pb-0">
+      <div className="fixed bottom-20 sm:bottom-5 right-5 z-[300] flex flex-col gap-2.5 max-w-sm w-full px-4 sm:px-0 pointer-events-none">
         {toasts.map(t => (
           <div
             key={t.id}
@@ -486,10 +532,10 @@ export default function App() {
           </header>
 
           <main className="max-w-6xl mx-auto px-4 py-6 sm:py-8">
-            <nav className="flex gap-2 mb-6 sm:mb-8 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
+            <nav className="hidden sm:flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
               <TabButton active={activeTab === 'events'}   onClick={() => setActiveTab('events')}   icon={<Calendar size={18} />}      label="Events" />
               {isVorstand && (
-                <TabButton active={activeTab === 'minutes'}  onClick={() => setActiveTab('minutes')}  icon={<ClipboardList size={18} />} label="Protokolle" />
+                <TabButton active={activeTab === 'minutes'}  onClick={() => setActiveTab('minutes')}  icon={<ClipboardList size={18} />} label="Protokolle" badge={myOpenTodosCount} />
               )}
               {isVorstand && (
                 <TabButton active={activeTab === 'files'}    onClick={() => setActiveTab('files')}    icon={<Folder size={18} />}        label="Dateien" />
@@ -505,12 +551,32 @@ export default function App() {
               )}
             </nav>
 
+            {/* Mobile Bottom Navigation Bar */}
+            <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-[150] bg-gray-900/95 backdrop-blur-xl border-t border-gray-800 px-2 py-1.5 flex items-center justify-around shadow-2xl">
+              <MobileTabButton active={activeTab === 'events'} onClick={() => setActiveTab('events')} icon={<Calendar size={20} />} label="Events" />
+              {isVorstand && (
+                <MobileTabButton active={activeTab === 'minutes'} onClick={() => setActiveTab('minutes')} icon={<ClipboardList size={20} />} label="Protokolle" badge={myOpenTodosCount} />
+              )}
+              {isVorstand && (
+                <MobileTabButton active={activeTab === 'files'} onClick={() => setActiveTab('files')} icon={<Folder size={20} />} label="Dateien" />
+              )}
+              {isVorstand && (
+                <MobileTabButton active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')} icon={<CalendarDays size={20} />} label="Kalender" />
+              )}
+              {currentUser.role === 'admin' && (
+                <>
+                  <MobileTabButton active={activeTab === 'archive'} onClick={() => setActiveTab('archive')} icon={<Archive size={20} />} label="Archiv" />
+                  <MobileTabButton active={activeTab === 'members'} onClick={() => setActiveTab('members')} icon={<Users size={20} />} label="Mitglieder" />
+                </>
+              )}
+            </nav>
+
             <div className="animate-in fade-in duration-500">
-              {activeTab === 'events'   && <EventsView events={events.filter(e => !e.isArchived)} currentUser={currentUser} users={users} notify={notify} askConfirm={askConfirm} />}
+              {activeTab === 'events'   && <EventsView events={events.filter(e => !e.isArchived)} calItems={calItems} currentUser={currentUser} users={users} notify={notify} askConfirm={askConfirm} />}
               {activeTab === 'minutes'  && isVorstand && <ProtocolView minutes={minutes} users={users} currentUser={currentUser} calItems={calItems} notify={notify} askConfirm={askConfirm} />}
               {activeTab === 'files'    && isVorstand && <FilesView folders={folders} files={files} currentUser={currentUser} notify={notify} askConfirm={askConfirm} />}
               {activeTab === 'calendar' && isVorstand && <CalendarView calItems={calItems} currentUser={currentUser} notify={notify} askConfirm={askConfirm} />}
-              {activeTab === 'archive'  && <EventsView events={events.filter(e => e.isArchived)} currentUser={currentUser} isArchive users={users} notify={notify} askConfirm={askConfirm} />}
+              {activeTab === 'archive'  && <EventsView events={events.filter(e => e.isArchived)} calItems={calItems} currentUser={currentUser} isArchive users={users} notify={notify} askConfirm={askConfirm} />}
               {activeTab === 'members'  && currentUser.role === 'admin' && <MembersView users={users} notify={notify} askConfirm={askConfirm} />}
             </div>
           </main>
@@ -529,11 +595,62 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   const [error,     setError]     = useState('');
   const [loading,   setLoading]   = useState(false);
 
+  const lastRememberedUser = useMemo(() => {
+    const lastId = localStorage.getItem('ruesssuuger_lastUserId');
+    if (!lastId) return null;
+    return users.find(u => u.id === lastId) || null;
+  }, [users]);
+
+  const matchingSuggestions = useMemo(() => {
+    const qFirst = firstName.trim().toLowerCase();
+    const qLast  = lastName.trim().toLowerCase();
+    if (qFirst.length < 2 && qLast.length < 2) return [];
+    return users
+      .filter(u => {
+        const f = (u.firstName || '').toLowerCase();
+        const l = (u.lastName || '').toLowerCase();
+        if (qFirst && qLast) return f.startsWith(qFirst) && l.startsWith(qLast);
+        if (qFirst) return f.startsWith(qFirst) || l.startsWith(qFirst);
+        return l.startsWith(qLast);
+      })
+      .slice(0, 5);
+  }, [users, firstName, lastName]);
+
   const finalizeLogin = (u) => {
     const newSession = generateSessionId();
     localStorage.setItem('ruesssuuger_sessionId', newSession);
     localStorage.setItem('ruesssuuger_userId',    u.id);
+    localStorage.setItem('ruesssuuger_lastUserId', u.id);
     onLogin({ ...u, sessionId: newSession });
+  };
+
+  const proceedWithUser = (u) => {
+    if (!u) { setError("Mitglied nicht gefunden."); return; }
+
+    const timeSinceLastSeen = Date.now() - (u.lastSeen || 0);
+    const savedSession = localStorage.getItem('ruesssuuger_sessionId');
+    const isMultiLoginAllowed = u.role === 'admin' || u.groups?.includes('Vorstand');
+    if (!isMultiLoginAllowed && u.isOnline && timeSinceLastSeen < 15000 && u.sessionId !== savedSession) {
+      setError("Dieses Mitglied ist bereits aktiv angemeldet. Bei Verbindungsabbruch bitte ca. 15 Sekunden warten.");
+      return;
+    }
+
+    if (u.groups?.includes('Vorstand')) {
+      setFoundUser(u);
+      setStep(!u.password ? 'setPassword' : 'password');
+      setError('');
+    } else {
+      finalizeLogin(u);
+    }
+  };
+
+  const handleNameSubmit = (e) => {
+    e.preventDefault();
+    const u = users.find(
+      x => x.firstName.trim().toLowerCase() === firstName.trim().toLowerCase() &&
+           x.lastName.trim().toLowerCase()  === lastName.trim().toLowerCase()
+    );
+    proceedWithUser(u);
   };
 
   const handleNameSubmit = (e) => {
@@ -669,8 +786,52 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
           >
             {step === 'name' ? (
               <div className="space-y-4">
+                {lastRememberedUser && !firstName && !lastName && (
+                  <button
+                    type="button"
+                    onClick={() => proceedWithUser(lastRememberedUser)}
+                    className="w-full p-3.5 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-2xl flex items-center justify-between transition-all active:scale-95 group"
+                  >
+                    <div className="flex items-center gap-3 text-left">
+                      <div className="w-9 h-9 rounded-xl bg-orange-500 text-gray-950 font-black flex items-center justify-center text-sm">
+                        {lastRememberedUser.firstName?.[0]}{lastRememberedUser.lastName?.[0]}
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">Schnell-Anmeldung</p>
+                        <p className="text-sm font-black text-white">Als {lastRememberedUser.firstName} {lastRememberedUser.lastName} weiterfahren 👋</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-orange-500 group-hover:translate-x-0.5 transition-transform" />
+                  </button>
+                )}
+
                 <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all text-base min-h-[44px]" placeholder="Vorname" value={firstName} onChange={e => setFirstName(e.target.value)} />
                 <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all text-base min-h-[44px]" placeholder="Nachname" value={lastName} onChange={e => setLastName(e.target.value)} />
+
+                {matchingSuggestions.length > 0 && (
+                  <div className="bg-gray-950 border border-gray-800 rounded-2xl p-2 space-y-1 animate-in fade-in">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 px-2.5 py-1">Vorschläge (Antippen zum Auswählen)</p>
+                    {matchingSuggestions.map(sug => (
+                      <button
+                        key={sug.id}
+                        type="button"
+                        onClick={() => {
+                          setFirstName(sug.firstName);
+                          setLastName(sug.lastName);
+                          proceedWithUser(sug);
+                        }}
+                        className="w-full px-3 py-2.5 rounded-xl hover:bg-orange-500/15 text-left flex items-center justify-between transition-colors group"
+                      >
+                        <span className="text-sm font-bold text-white group-hover:text-orange-400">
+                          {sug.firstName} {sug.lastName}
+                        </span>
+                        <span className="text-[10px] font-black uppercase text-gray-500 group-hover:text-orange-500">
+                          Auswählen →
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="animate-in slide-in-from-right-4 duration-300 space-y-3">
@@ -726,6 +887,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
   const [yearFilter,     setYearFilter]     = useState('Alle');
   const [onlyOpenTasks,  setOnlyOpenTasks]  = useState(false);
   const [onlyMyTasks,    setOnlyMyTasks]    = useState(false);
+  const [compactFactsOnly, setCompactFactsOnly] = useState(false);
   const [expandedId,     setExpandedId]     = useState(null);
   const [enlargedPoint,  setEnlargedPoint]  = useState(null);
   const [readingMinute,  setReadingMinute]  = useState(null);
@@ -1341,6 +1503,22 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
 
                 {isExpanded && (
                   <div className="border-t border-gray-800 bg-gray-950/60 p-5 sm:p-8 space-y-8 animate-in slide-in-from-top-2 duration-300">
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-gray-900 border border-gray-800 px-4 py-3 rounded-2xl">
+                      <span className="text-xs font-bold text-gray-400">Ansichts-Modus für dieses Protokoll:</span>
+                      <button
+                        type="button"
+                        onClick={() => setCompactFactsOnly(!compactFactsOnly)}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider border transition-all min-h-[38px] flex items-center gap-2 ${
+                          compactFactsOnly
+                            ? 'bg-orange-500 text-gray-950 border-orange-500 shadow-lg shadow-orange-500/20'
+                            : 'bg-gray-950 text-gray-300 border-gray-800 hover:border-orange-500/40'
+                        }`}
+                      >
+                        <Filter size={13} />
+                        {compactFactsOnly ? '✓ Nur Beschlüsse & Pendenzen aktiv' : 'Nur Beschlüsse & Pendenzen anzeigen'}
+                      </button>
+                    </div>
+
                     {m.attendance && Object.keys(m.attendance).length > 0 && (
                       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-5">
                         <h4 className="text-orange-500 font-black uppercase text-[10px] tracking-widest mb-3 flex items-center gap-2">
@@ -1368,7 +1546,10 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
 
                     <div className="grid gap-5">
                       {TRAKTANDEN.map(t => {
-                        const points = m.traktanden?.[t];
+                        const rawPoints = m.traktanden?.[t] || [];
+                        const points = compactFactsOnly
+                          ? rawPoints.filter(p => p.type === 'decision' || p.type === 'todo')
+                          : rawPoints;
                         if (!points || points.length === 0) return null;
                         const meta = traktandumMeta[t] || { badge: 'bg-gray-800 text-gray-300 border-gray-700', dot: 'bg-orange-500' };
 
@@ -1511,6 +1692,69 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
 
       {readingMinute && (
         <ReadingViewModal minute={readingMinute} users={users} onClose={() => setReadingMinute(null)} />
+      )}
+
+      {watchingLive && liveDraft && (
+        <div className="fixed inset-0 z-[230] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-gray-900 border-2 border-orange-500/50 rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="px-6 py-4 bg-gray-950 border-b border-gray-800 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="w-3 h-3 rounded-full bg-orange-500 animate-ping shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">
+                    Teleprompter • Live-Mitlese-Modus (Schreibgeschützt)
+                  </p>
+                  <h3 className="font-black text-white text-base sm:text-lg truncate">
+                    {liveDraft.form?.title || 'Laufende Vorstandssitzung'}
+                  </h3>
+                </div>
+              </div>
+              <button
+                onClick={() => setWatchingLive(false)}
+                className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-5">
+              <div className="bg-orange-500/10 border border-orange-500/30 rounded-2xl px-4 py-3 flex items-center justify-between text-xs">
+                <span className="font-bold text-orange-300">
+                  ✍️ {liveDraft.activeEditorName || 'Aktuar'} schreibt gerade{liveDraft.activeTraktandum ? ` in «${liveDraft.activeTraktandum}»` : ''}...
+                </span>
+                <span className="text-[10px] font-black uppercase text-orange-400">Echtzeit-Sync</span>
+              </div>
+
+              {TRAKTANDEN.map(t => {
+                const pts = liveDraft.form?.traktanden?.[t] || [];
+                if (pts.length === 0) return null;
+                return (
+                  <div key={t} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 space-y-2.5">
+                    <h4 className="text-sm font-black text-orange-500 uppercase tracking-wider">{t}</h4>
+                    {pts.map((p, i) => (
+                      <div
+                        key={p.id || i}
+                        className={`p-3 rounded-xl border text-sm ${
+                          liveDraft.activePointId === p.id
+                            ? 'bg-orange-500/10 border-orange-500/50 text-white'
+                            : 'bg-gray-900 border-gray-800 text-gray-200'
+                        }`}
+                      >
+                        {p.type && p.type !== 'info' && (
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 mr-2">
+                            {p.type === 'decision' ? 'Beschluss' : 'Pendenz'}
+                          </span>
+                        )}
+                        {p.assignee && <span className="text-xs font-bold text-gray-400 mr-2">(@{p.assignee})</span>}
+                        <span className="whitespace-pre-wrap">{p.text || '...'}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       )}
 
       {enlargedPoint && (
@@ -2441,52 +2685,52 @@ function FilePreviewModal({ docItem, onClose }) {
               <X size={18} />
             </button>
           </div>
-        </div>
-
-        <div className="p-6 flex-1 overflow-auto flex items-center justify-center bg-gray-950/50 min-h-[320px]">
-          {isImage ? (
-            <img
-              src={docItem.url}
-              alt={docItem.name}
-              className="max-h-[72vh] max-w-full object-contain rounded-2xl shadow-lg"
-            />
-          ) : isPdf ? (
-            <iframe
-              src={docItem.url}
-              title={docItem.name}
-              className="w-full h-[72vh] rounded-2xl border border-gray-800 bg-white"
-            />
-          ) : (
-            <div className="text-center py-12 space-y-4">
-              <File size={48} className="mx-auto text-orange-500/60" />
-              <p className="text-gray-300 font-bold text-sm">
-                Für diesen Dateityp ist keine direkte Browser-Vorschau verfügbar.
-              </p>
-              <button
-                onClick={() => triggerFileDownload(docItem.url, docItem.name || 'Dokument')}
-                className="px-6 py-3.5 bg-orange-500 text-gray-950 font-black rounded-2xl text-xs inline-flex items-center gap-2 shadow-lg min-h-[44px]"
-              >
-                <Download size={16} /> Datei jetzt herunterladen
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TabButton({ active, onClick, icon, label }) {
+function TabButton({ active, onClick, icon, label, badge = 0 }) {
   return (
     <button onClick={onClick} className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold transition-all whitespace-nowrap active:scale-95 min-h-[44px] ${active ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/20' : 'bg-gray-900 text-gray-500 hover:text-gray-300 hover:bg-gray-800'}`}>
-      {icon} {label}
+      {icon}
+      <span>{label}</span>
+      {badge > 0 && (
+        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${active ? 'bg-gray-950 text-orange-400' : 'bg-red-500 text-white'}`}>
+          {badge}
+        </span>
+      )}
     </button>
   );
 }
 
-function EventsView({ events, currentUser, isArchive = false, users, notify, askConfirm }) {
+function MobileTabButton({ active, onClick, icon, label, badge = 0 }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`relative flex flex-col items-center justify-center py-1.5 px-2.5 rounded-2xl transition-all min-h-[48px] min-w-[56px] ${
+        active ? 'text-orange-500 font-black' : 'text-gray-500 hover:text-gray-300 font-bold'
+      }`}
+    >
+      <div className="relative">
+        {icon}
+        {badge > 0 && (
+          <span className="absolute -top-1.5 -right-2.5 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+            {badge}
+          </span>
+        )}
+      </div>
+      <span className="text-[10px] mt-1 tracking-tight truncate max-w-[64px]">{label}</span>
+    </button>
+  );
+}
+
+function EventsView({ events, calItems = [], currentUser, isArchive = false, users, notify, askConfirm }) {
   const [showCreate,    setShowCreate]    = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
+
+  const nextUpcomingCalItem = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const future = [...(calItems || [])]
+      .filter(i => i.date >= todayStr)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    return future[0] || null;
+  }, [calItems]);
 
   if (selectedEvent) {
     const current = events.find(e => e.id === selectedEvent.id);
@@ -2512,6 +2756,33 @@ function EventsView({ events, currentUser, isArchive = false, users, notify, ask
 
   return (
     <div className="space-y-6">
+      {!isArchive && nextUpcomingCalItem && (
+        <div className="bg-gradient-to-r from-orange-500/15 via-gray-900 to-gray-900 border border-orange-500/30 rounded-2xl px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-orange-500/20 text-orange-400 shrink-0">
+              <CalendarDays size={18} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">Nächster Vereinstermin</p>
+              <p className="text-sm font-black text-white">
+                {nextUpcomingCalItem.title} •{' '}
+                <span className="text-orange-400">
+                  {new Date(nextUpcomingCalItem.date).toLocaleDateString('de-CH', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  {nextUpcomingCalItem.time ? `, ${nextUpcomingCalItem.time} Uhr` : ''}
+                </span>
+                {nextUpcomingCalItem.location ? ` (${nextUpcomingCalItem.location})` : ''}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => downloadICSFile(nextUpcomingCalItem, `${nextUpcomingCalItem.title}.ics`)}
+            className="text-xs font-bold text-orange-400 hover:text-orange-300 self-end sm:self-center shrink-0"
+          >
+            + In Kalender speichern
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
         <h2 className="text-2xl sm:text-3xl font-black text-white">{isArchive ? 'Archiv' : 'Aktuelle Events'}</h2>
         {!isArchive && currentUser.role === 'admin' && (
@@ -2559,6 +2830,27 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
   const [showSurveyForm,   setShowSurveyForm]   = useState(false);
   const [editingSurvey,    setEditingSurvey]    = useState(null);
   const [presentingSurvey, setPresentingSurvey] = useState(null);
+  const [showConfetti,     setShowConfetti]     = useState(false);
+  const prevActiveIdsRef = useRef([]);
+
+  const triggerCelebration = () => {
+    setShowConfetti(true);
+    setTimeout(() => setShowConfetti(false), 3200);
+  };
+
+  useEffect(() => {
+    const currentActiveIds = (event.surveys || [])
+      .filter(s => s.status === 'active')
+      .map(s => s.id);
+    const newlyActivated = currentActiveIds.find(id => !prevActiveIdsRef.current.includes(id));
+    if (newlyActivated) {
+      const el = document.getElementById(`survey-card-${newlyActivated}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+    prevActiveIdsRef.current = currentActiveIds;
+  }, [event.surveys]);
 
   const saveSurvey = (s) => {
     if (editingSurvey) {
@@ -2659,9 +2951,21 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
         <CreateSurveyForm onSubmit={saveSurvey} onCancel={() => setShowSurveyForm(false)} />
       )}
 
+      <ConfettiOverlay active={showConfetti} />
+
+      {!isArchived && currentUser.role !== 'admin' && (event.surveys || []).filter(s => s.status !== 'draft').length === 0 && (
+        <div className="bg-gray-900 border border-orange-500/30 rounded-3xl p-8 text-center space-y-3 animate-pulse">
+          <Sparkles className="mx-auto text-orange-500" size={36} />
+          <h3 className="text-lg font-black text-white">🎙️ Die Abstimmung wird gerade vom Vorstand vorbereitet</h3>
+          <p className="text-xs text-gray-400 max-w-md mx-auto">
+            Bitte halte dein Smartphone bereit – sobald der Admin die erste Abstimmung am Beamer startet, erscheint sie hier automatisch live!
+          </p>
+        </div>
+      )}
+
       <div className="space-y-6">
         {event.surveys?.map((s, index) => (
-          <div key={s.id} className="transition-all">
+          <div key={s.id} id={`survey-card-${s.id}`} className="transition-all">
             <SurveyCard
               survey={s}
               currentUser={currentUser}
@@ -2705,6 +3009,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
                   const idx = updated.findIndex(x => x.id === s.id);
                   const [moved] = updated.splice(idx, 1);
                   updated.push(moved);
+                  triggerCelebration();
                 }
                 onUpdate({ surveys: updated });
               }}
@@ -2732,6 +3037,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
             const idx = updated.findIndex(x => x.id === s.id);
             const [moved] = updated.splice(idx, 1);
             updated.push(moved);
+            triggerCelebration();
             onUpdate({ surveys: updated });
           }}
         />
@@ -2868,12 +3174,15 @@ function PresentationModal({ survey, users, onClose, onStart, onPublish }) {
                     const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
                     const isLeading = totalVotes > 0 && (o.votes || 0) === Math.max(...survey.options.map(x => x.votes || 0)) && (o.votes || 0) > 0;
                     return (
-                      <div key={o.id} className={`relative h-20 rounded-2xl overflow-hidden flex items-center px-6 border-2 transition-all ${isLeading ? 'border-orange-500' : 'border-gray-800 bg-gray-900'}`}>
+                      <div key={o.id} className={`relative h-20 rounded-2xl overflow-hidden flex items-center px-6 border-2 transition-all ${isLeading ? 'border-orange-500 shadow-lg shadow-orange-500/20' : 'border-gray-800 bg-gray-900'}`}>
                         <div
                           className={`absolute left-0 top-0 h-full transition-all duration-1000 ease-out ${isLeading ? 'bg-orange-500/20' : 'bg-gray-800/60'}`}
                           style={{ width: `${pct}%` }}
                         />
-                        <span className="flex-1 font-black text-white text-lg sm:text-xl z-10 truncate">{o.text}</span>
+                        <span className="flex-1 font-black text-white text-lg sm:text-xl z-10 truncate flex items-center gap-2">
+                          {isLeading && <span>👑</span>}
+                          {o.text}
+                        </span>
                         <div className="z-10 text-right ml-4">
                           <p className="text-2xl sm:text-3xl font-black text-white">{o.votes || 0}</p>
                           <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Stimmen ({pct}%)</p>
@@ -2956,8 +3265,44 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
 
   const toggleGroup = g => setAllowedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
 
+  const applyTemplate = (tpl) => {
+    if (tpl === 'yes_no') {
+      setMaxAnswers(1);
+      setMajorityType('simple');
+      setOptions([
+        { id: '1', text: 'Ja', youtubeUrl: '' },
+        { id: '2', text: 'Nein', youtubeUrl: '' },
+        { id: '3', text: 'Enthaltung', youtubeUrl: '' }
+      ]);
+    } else if (tpl === 'unanimous') {
+      setMaxAnswers(1);
+      setMajorityType('two_thirds');
+      setOptions([
+        { id: '1', text: 'Annahme (Zustimmung)', youtubeUrl: '' },
+        { id: '2', text: 'Ablehnung (Gegenstimme)', youtubeUrl: '' }
+      ]);
+    } else if (tpl === 'songs3') {
+      if (!title) setTitle('Liederwahl – Welche 3 Songs sollen wir spielen?');
+      setMaxAnswers(3);
+      setMajorityType('none');
+      setAllowedGroups(['Vorstand', 'Aktiv Musig', 'Neumitglied Musig']);
+    }
+  };
+
   return (
     <form onSubmit={e => { e.preventDefault(); onSubmit({ title, maxAnswers, majorityType, allowedGroups, isAnonymous, options: options.filter(o => o.text.trim()) }); }} className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-2" : "bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl"}`}>
+      <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-gray-800">
+        <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 mr-1">1-Klick-Vorlagen:</span>
+        <button type="button" onClick={() => applyTemplate('yes_no')} className="text-[11px] font-bold bg-gray-950 hover:bg-orange-500/15 text-gray-300 hover:text-orange-400 border border-gray-800 px-3 py-1.5 rounded-xl transition-all">
+          + Ja / Nein / Enthaltung
+        </button>
+        <button type="button" onClick={() => applyTemplate('unanimous')} className="text-[11px] font-bold bg-gray-950 hover:bg-orange-500/15 text-gray-300 hover:text-orange-400 border border-gray-800 px-3 py-1.5 rounded-xl transition-all">
+          + ⅔ Antrag (Annahme / Ablehnung)
+        </button>
+        <button type="button" onClick={() => applyTemplate('songs3')} className="text-[11px] font-bold bg-gray-950 hover:bg-orange-500/15 text-gray-300 hover:text-orange-400 border border-gray-800 px-3 py-1.5 rounded-xl transition-all">
+          + Liederwahl (3 Stimmen Musig)
+        </button>
+      </div>
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
           <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-4 text-white focus:border-orange-500 outline-none min-h-[48px]" placeholder="Was ist die Frage?" value={title} onChange={e => setTitle(e.target.value)} />
@@ -3101,24 +3446,27 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
 
         {isPublished && survey.options.map(o => {
           const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
+          const maxV = Math.max(...survey.options.map(x => x.votes || 0));
+          const isWinner = totalVotes > 0 && (o.votes || 0) === maxV && maxV > 0;
           return (
-            <div key={o.id} className="relative h-14 bg-gray-950 border border-gray-800 rounded-xl overflow-hidden flex items-center px-4">
-              <div className="absolute left-0 top-0 h-full bg-orange-500/10 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
-              <div className="flex-1 font-bold text-white z-10 flex items-center gap-3">
+            <div key={o.id} className={`relative h-14 bg-gray-950 border rounded-xl overflow-hidden flex items-center px-4 ${isWinner ? 'border-orange-500/70' : 'border-gray-800'}`}>
+              <div className="absolute left-0 top-0 h-full bg-orange-500/15 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
+              <div className="flex-1 font-bold text-white z-10 flex items-center gap-2 min-w-0">
+                {isWinner && <span title="Meiste Stimmen">👑</span>}
                 <span className="truncate">{o.text}</span>
                 {o.youtubeUrl && (
                   <button
                     type="button"
                     onClick={() => setActivePlayerUrl(activePlayerUrl === o.youtubeUrl ? null : o.youtubeUrl)}
-                    className="text-orange-400 hover:text-orange-300 bg-orange-500/10 px-2.5 py-1 rounded-lg border border-orange-500/20 text-xs flex items-center gap-1.5 transition-all"
+                    className="text-orange-400 hover:text-orange-300 bg-orange-500/10 px-2.5 py-1 rounded-lg border border-orange-500/20 text-xs flex items-center gap-1.5 transition-all shrink-0"
                   >
                     <Play size={12}/> Anhören
                   </button>
                 )}
               </div>
-              <div className="text-right z-10">
+              <div className="text-right z-10 ml-2">
                 <p className="text-sm font-black">{o.votes || 0}</p>
-                <p className="text-[9px] text-gray-600 font-bold tracking-tighter uppercase">Stimmen</p>
+                <p className="text-[9px] text-gray-600 font-bold tracking-tighter uppercase">{pct}%</p>
               </div>
             </div>
           );
@@ -3150,8 +3498,23 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
                 onClick={async () => { setVoting(true); await onVote(selected); setVoting(false); }}
                 className="w-full mt-3 bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30 min-h-[48px]"
               >
-                {voting ? 'Wird gesendet...' : 'Abstimmung senden'}
+                {voting ? 'Wird gesendet...' : `Abstimmung senden (${selected.length}/${survey.maxAnswers || 1})`}
               </button>
+            )}
+            {!hasVoted && selected.length > 0 && survey.options.length > 4 && (
+              <div className="fixed bottom-20 sm:bottom-6 left-4 right-4 z-[160] max-w-md mx-auto bg-gray-900/95 backdrop-blur-xl border-2 border-orange-500 p-3 rounded-2xl shadow-2xl flex items-center justify-between gap-3 animate-in slide-in-from-bottom-4">
+                <div className="pl-2">
+                  <p className="text-[10px] font-black uppercase text-orange-400">Auswahl bereit</p>
+                  <p className="text-xs font-bold text-white">{selected.length} von {survey.maxAnswers || 1} Stimmen gewählt</p>
+                </div>
+                <button
+                  disabled={voting}
+                  onClick={async () => { setVoting(true); await onVote(selected); setVoting(false); }}
+                  className="px-5 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-xs active:scale-95 transition-all shadow-lg"
+                >
+                  {voting ? 'Sende...' : 'Jetzt absenden ✓'}
+                </button>
+              </div>
             )}
           </div>
         ) : null}
