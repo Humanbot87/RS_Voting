@@ -95,52 +95,25 @@ const copyTextToClipboard = (text) => {
   return success;
 };
 
-const StandardQRCodeImage = ({ value, size = 200 }) => {
-  const [qrDataUrl, setQrDataUrl] = useState('');
+const StandardQRCodeImage = ({ value, size = 220 }) => {
+  const [useFallback, setUseFallback] = useState(false);
+  const targetUrl = value || 'https://ruesssuuger-aemme.ch';
+  const encoded = encodeURIComponent(targetUrl);
 
-  useEffect(() => {
-    let isMounted = true;
-    const generate = async () => {
-      try {
-        if (window.QRCode && typeof window.QRCode.toDataURL === 'function') {
-          const url = await window.QRCode.toDataURL(value, { width: size, margin: 2, color: { dark: '#030712', light: '#ffffff' } });
-          if (isMounted) setQrDataUrl(url);
-          return;
-        }
-        // Load qrcode library dynamically if missing
-        if (!document.getElementById('qrcode-lib-script')) {
-          const script = document.createElement('script');
-          script.id = 'qrcode-lib-script';
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.4/qrcode.min.js';
-          script.async = true;
-          script.onload = async () => {
-            if (window.QRCode && isMounted) {
-              try {
-                const url = await window.QRCode.toDataURL(value, { width: size, margin: 2, color: { dark: '#030712', light: '#ffffff' } });
-                setQrDataUrl(url);
-              } catch (e) {}
-            }
-          };
-          document.body.appendChild(script);
-        }
-      } catch (e) {
-        console.error("QR Code generation error:", e);
-      }
-    };
-    generate();
-    return () => { isMounted = false; };
-  }, [value, size]);
-
-  if (!qrDataUrl) {
-    return (
-      <div style={{ width: size, height: size }} className="bg-white p-4 rounded-2xl flex items-center justify-center shadow-xl">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-orange-500"></div>
-      </div>
-    );
-  }
+  const primarySrc = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=10&color=030712&bgcolor=ffffff&data=${encoded}`;
+  const fallbackSrc = `https://quickchart.io/qr?size=${size}&margin=2&dark=030712&light=ffffff&text=${encoded}`;
 
   return (
-    <img src={qrDataUrl} alt="QR Code" width={size} height={size} className="bg-white p-2 rounded-2xl shadow-xl mx-auto" />
+    <img
+      src={useFallback ? fallbackSrc : primarySrc}
+      alt="QR Code zum Portal"
+      width={size}
+      height={size}
+      onError={() => {
+        if (!useFallback) setUseFallback(true);
+      }}
+      className="bg-white p-2 rounded-2xl shadow-xl mx-auto block select-none"
+    />
   );
 };
 
