@@ -2551,6 +2551,70 @@ function ReadingViewModal({ minute, users, onClose }) {
           </div>
         </div>
 
+        <div className="p-6 sm:p-10 overflow-y-auto flex-1 space-y-6 bg-gray-950/40 text-gray-200">
+          <div className="border-b border-gray-800 pb-5">
+            <p className="text-xs font-black uppercase tracking-widest text-orange-500">RüssSuuger Ämme • Vorstandsprotokoll</p>
+            <h2 className="text-2xl sm:text-3xl font-black text-white mt-1">{minute.title}</h2>
+            <p className="text-xs text-gray-400 mt-1">
+              Datum: {minute.date ? new Date(minute.date).toLocaleDateString('de-CH') : '—'} • Anwesend: {presentCount} Vorstandsmitglieder
+            </p>
+          </div>
+
+          {TRAKTANDEN.map(t => {
+            const pts = minute.traktanden?.[t] || [];
+            if (pts.length === 0) return null;
+            return (
+              <div key={t} className="space-y-2">
+                <h4 className="text-sm font-black uppercase tracking-wider text-orange-400 border-b border-gray-800 pb-1">{t}</h4>
+                <ul className="space-y-2">
+                  {pts.map((p, idx) => (
+                    <li key={p.id || idx} className="text-sm leading-relaxed bg-gray-900/70 border border-gray-800/80 rounded-xl p-3">
+                      {p.type === 'decision' && <span className="font-black text-green-400 mr-2">[Beschluss]</span>}
+                      {p.type === 'todo' && <span className="font-black text-orange-400 mr-2">[{p.done ? 'Erledigt' : 'Pendenz'}]</span>}
+                      {p.assignee && <span className="text-xs font-bold text-gray-400 mr-2">(@{p.assignee})</span>}
+                      <span className="whitespace-pre-wrap">{p.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FilePreviewModal({ docItem, onClose }) {
+  const nameLower = (docItem?.name || '').toLowerCase();
+  const urlLower = (docItem?.url || '').toLowerCase();
+  const isImage = docItem?.type?.includes('image') || /\.(png|jpe?g|gif|webp|svg)$/.test(nameLower) || urlLower.startsWith('data:image/');
+  const isPdf = docItem?.type?.includes('pdf') || nameLower.endsWith('.pdf') || urlLower.startsWith('data:application/pdf');
+
+  return (
+    <div className="fixed inset-0 z-[240] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-gray-900 border border-gray-800 rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
+        <div className="px-6 py-4 bg-gray-950 border-b border-gray-800 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <FileText size={18} className="text-orange-500 shrink-0" />
+            <h3 className="font-black text-white text-sm sm:text-base truncate">{docItem?.name || 'Dokument-Vorschau'}</h3>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => triggerFileDownload(docItem.url, docItem.name || 'Dokument')}
+              className="px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 shadow-lg min-h-[44px]"
+            >
+              <Download size={14} /> Download
+            </button>
+            <button
+              onClick={onClose}
+              className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
         <div className="p-6 flex-1 overflow-auto flex items-center justify-center bg-gray-950/60 min-h-[320px]">
           {isImage ? (
             <img
@@ -2623,6 +2687,8 @@ function EventsView({ events, calItems = [], currentUser, isArchive = false, use
   const [showCreate,    setShowCreate]    = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
 
+  const isVorstand = currentUser?.groups?.includes('Vorstand');
+
   const nextUpcomingCalItem = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const future = [...(calItems || [])]
@@ -2655,14 +2721,14 @@ function EventsView({ events, calItems = [], currentUser, isArchive = false, use
 
   return (
     <div className="space-y-6">
-      {!isArchive && nextUpcomingCalItem && (
+      {!isArchive && isVorstand && nextUpcomingCalItem && (
         <div className="bg-gradient-to-r from-orange-500/15 via-gray-900 to-gray-900 border border-orange-500/30 rounded-2xl px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-lg">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-orange-500/20 text-orange-400 shrink-0">
               <CalendarDays size={18} />
             </div>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">Nächster Vereinstermin</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">Nächster Vorstandstermin</p>
               <p className="text-sm font-black text-white">
                 {nextUpcomingCalItem.title} •{' '}
                 <span className="text-orange-400">
@@ -3079,7 +3145,6 @@ function PresentationModal({ survey, users, onClose, onStart, onPublish }) {
                           style={{ width: `${pct}%` }}
                         />
                         <span className="flex-1 font-black text-white text-lg sm:text-xl z-10 truncate flex items-center gap-2">
-                          {isLeading && <span>👑</span>}
                           {o.text}
                         </span>
                         <div className="z-10 text-right ml-4">
@@ -3351,7 +3416,6 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
             <div key={o.id} className={`relative h-14 bg-gray-950 border rounded-xl overflow-hidden flex items-center px-4 ${isWinner ? 'border-orange-500/70' : 'border-gray-800'}`}>
               <div className="absolute left-0 top-0 h-full bg-orange-500/15 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
               <div className="flex-1 font-bold text-white z-10 flex items-center gap-2 min-w-0">
-                {isWinner && <span title="Meiste Stimmen">👑</span>}
                 <span className="truncate">{o.text}</span>
                 {o.youtubeUrl && (
                   <button
