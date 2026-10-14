@@ -2797,6 +2797,20 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
                 />
               </div>
             </div>
+
+            <div className="pt-4">
+              <button
+                onClick={() => {
+                  if (survey.status === 'draft' && onPublish) {
+                    // Start voting status
+                  }
+                  setStep('voting');
+                }}
+                className="px-8 py-4 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl text-base shadow-xl active:scale-95 transition-all"
+              >
+                Zur Abstimmung starten →
+              </button>
+            </div>
           </div>
         ) : (
           <div className="w-full space-y-8 animate-in fade-in duration-300">
