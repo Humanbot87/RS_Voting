@@ -5,8 +5,9 @@ import {
   Youtube, Lock, Unlock, ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw,
   UploadCloud, Search, Download, ArrowUp, ArrowDown, Maximize2, Minimize2,
   Folder, FolderPlus, FileText, File, CalendarDays, MapPin, Clock,
-  Printer, CheckCircle2, AlertTriangle, Info, Filter, Sparkles, Share2, QrCode, Play, ExternalLink
+  Printer, CheckCircle2, AlertTriangle, Info, Filter, Sparkles, Share2, QrCode, Play
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   signInWithCustomToken,
   signInAnonymously,
@@ -2826,11 +2827,7 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
             </div>
 
             <div className="bg-white p-6 rounded-3xl shadow-2xl inline-block mx-auto border-4 border-orange-500/20">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(currentUrl)}`}
-                alt="QR-Code zum Portal"
-                className="w-52 h-52 object-contain"
-              />
+              <QRCodeSVG value={currentUrl} size={200} includeMargin={true} />
               <p className="text-[11px] font-black uppercase tracking-widest text-gray-950 mt-3">Portal öffnen</p>
             </div>
 
@@ -2851,7 +2848,7 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
               <button
                 onClick={() => {
                   if (survey.status === 'draft' && onPublish) {
-                    // Start voting status
+                    onPublish();
                   }
                   setStep('voting');
                 }}
@@ -3828,16 +3825,9 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
 
   const selectedDayItems = selectedDate ? (itemsByDate[selectedDate] || []) : [];
 
-  const handleWebcalExport = () => {
-    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-    const host = window.location.host;
-    const webcalUrl = `webcal://${host}/api/calendar.ics`;
-    if (copyTextToClipboard(webcalUrl)) {
-      notify("Webcal-Link in die Zwischenablage kopiert! Du kannst diesen nun in Apple Kalender oder Google Calendar einfügen.", "success");
-    } else {
-      downloadICSFile(calItems, 'ruesssuuger_kalender.ics');
-      notify(".ics-Datei heruntergeladen.", "success");
-    }
+  const handleICSExport = () => {
+    downloadICSFile(calItems, 'ruesssuuger_kalender.ics');
+    notify("Kalender als .ics-Datei heruntergeladen! Du kannst sie nun in Apple Kalender oder Google Calendar öffnen.", "success");
   };
 
   return (
@@ -3845,15 +3835,15 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl sm:text-3xl font-black text-white">Vereinskalender</h2>
-          <p className="text-gray-500 text-sm mt-1">Smart ICS-Abo & Live-Terminsynchronisation</p>
+          <p className="text-gray-500 text-sm mt-1">ICS-Export & Live-Terminsynchronisation</p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           <button
-            onClick={handleWebcalExport}
+            onClick={handleICSExport}
             className="bg-orange-500 hover:bg-orange-400 text-gray-950 font-black px-5 py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[48px]"
-            title="Smart Webcal-Abo Link generieren"
+            title="Alle Termine als .ics-Datei exportieren"
           >
-            <CalendarDays size={18} /> Kalender abonnieren (Webcal)
+            <CalendarDays size={18} /> Kalender exportieren (.ics)
           </button>
           <button
             onClick={() => { setEditing(null); setShowAdd(!showAdd); }}
