@@ -8,17 +8,17 @@ import {
   Printer, CheckCircle2, AlertTriangle, Info, Filter, Sparkles, Share2, QrCode, Play
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import {
-  signInWithCustomToken,
-  signInAnonymously,
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  updatePassword,
+import { auth, db, storage, appId } from './firebase';
+import { 
+  signInWithCustomToken, 
+  signInAnonymously, 
+  onAuthStateChanged, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  updatePassword 
 } from 'firebase/auth';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
-import { auth, db, storage, appId } from './firebase';
 
 const GROUPS = ['Vorstand', 'Aktiv Musig', 'Aktiv Wagenbau', 'Passiv', 'Ehrenmitglieder', 'Neumitglied Musig', 'Neumitglied Wagenbau'];
 const CATEGORIES = ['Generalversammlung', 'Sujetsitzung', 'Liederwahl', 'Freitext'];
@@ -1021,45 +1021,56 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
           </button>
         </div>
 
-        {stats.totalMinutes > 0 && (
+        {minutes.length === 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
-            <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Sitzungen</p>
-              <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalMinutes}</p>
-            </div>
-            <div
-              onClick={() => { setOnlyOpenTasks(!onlyOpenTasks); setOnlyMyTasks(false); }}
-              className={`rounded-2xl p-3.5 sm:p-4 border cursor-pointer transition-all ${
-                onlyOpenTasks && !onlyMyTasks
-                  ? 'bg-orange-500/15 border-orange-500'
-                  : 'bg-gray-950/70 border-gray-800/80 hover:border-orange-500/40'
-              }`}
-            >
-              <p className="text-[10px] font-black uppercase tracking-widest text-orange-400 flex items-center justify-between">
-                <span>Alle Pendenzen</span>
-                {onlyOpenTasks && !onlyMyTasks && <span className="text-[9px] bg-orange-500 text-gray-950 px-1.5 py-0.5 rounded font-black">Aktiv</span>}
-              </p>
-              <p className="text-xl sm:text-2xl font-black text-orange-500 mt-1">{stats.openTodos}</p>
-            </div>
-            <div
-              onClick={() => { setOnlyMyTasks(!onlyMyTasks); setOnlyOpenTasks(false); }}
-              className={`rounded-2xl p-3.5 sm:p-4 border cursor-pointer transition-all ${
-                onlyMyTasks
-                  ? 'bg-amber-500/15 border-amber-500'
-                  : 'bg-gray-950/70 border-gray-800/80 hover:border-amber-500/40'
-              }`}
-            >
-              <p className="text-[10px] font-black uppercase tracking-widest text-amber-400 flex items-center justify-between">
-                <span>Meine Pendenzen</span>
-                {onlyMyTasks && <span className="text-[9px] bg-amber-500 text-gray-950 px-1.5 py-0.5 rounded font-black">Aktiv</span>}
-              </p>
-              <p className="text-xl sm:text-2xl font-black text-amber-400 mt-1">{stats.myOpenTodos}</p>
-            </div>
-            <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Beilagen / Dateien</p>
-              <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalAttachments}</p>
-            </div>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4 animate-pulse">
+                <div className="h-3 bg-gray-800 rounded w-1/2 mb-3"></div>
+                <div className="h-6 bg-gray-800 rounded w-1/3"></div>
+              </div>
+            ))}
           </div>
+        ) : (
+          stats.totalMinutes > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
+              <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Sitzungen</p>
+                <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalMinutes}</p>
+              </div>
+              <div
+                onClick={() => { setOnlyOpenTasks(!onlyOpenTasks); setOnlyMyTasks(false); }}
+                className={`rounded-2xl p-3.5 sm:p-4 border cursor-pointer transition-all ${
+                  onlyOpenTasks && !onlyMyTasks
+                    ? 'bg-orange-500/15 border-orange-500'
+                    : 'bg-gray-950/70 border-gray-800/80 hover:border-orange-500/40'
+                }`}
+              >
+                <p className="text-[10px] font-black uppercase tracking-widest text-orange-400 flex items-center justify-between">
+                  <span>Alle Pendenzen</span>
+                  {onlyOpenTasks && !onlyMyTasks && <span className="text-[9px] bg-orange-500 text-gray-950 px-1.5 py-0.5 rounded font-black">Aktiv</span>}
+                </p>
+                <p className="text-xl sm:text-2xl font-black text-orange-500 mt-1">{stats.openTodos}</p>
+              </div>
+              <div
+                onClick={() => { setOnlyMyTasks(!onlyMyTasks); setOnlyOpenTasks(false); }}
+                className={`rounded-2xl p-3.5 sm:p-4 border cursor-pointer transition-all ${
+                  onlyMyTasks
+                    ? 'bg-amber-500/15 border-amber-500'
+                    : 'bg-gray-950/70 border-gray-800/80 hover:border-amber-500/40'
+                }`}
+              >
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-400 flex items-center justify-between">
+                  <span>Meine Pendenzen</span>
+                  {onlyMyTasks && <span className="text-[9px] bg-amber-500 text-gray-950 px-1.5 py-0.5 rounded font-black">Aktiv</span>}
+                </p>
+                <p className="text-xl sm:text-2xl font-black text-amber-400 mt-1">{stats.myOpenTodos}</p>
+              </div>
+              <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Beilagen / Dateien</p>
+                <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalAttachments}</p>
+              </div>
+            </div>
+          )
         )}
       </div>
 
@@ -1190,294 +1201,310 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
       )}
 
       <div className="grid gap-4">
-        {filteredMinutes.map(m => {
-          const isExpanded = expandedId === m.id;
-          const dateObj = m.date ? new Date(m.date) : new Date();
-          const dayNum = dateObj.toLocaleDateString('de-CH', { day: '2-digit' });
-          const monthShort = dateObj.toLocaleDateString('de-CH', { month: 'short' });
-          const yearNum = dateObj.getFullYear();
-
-          const activeTraktanden = TRAKTANDEN.filter(t => (m.traktanden?.[t]?.length || 0) > 0);
-          const totalPointsCount = activeTraktanden.reduce((sum, t) => sum + (m.traktanden?.[t]?.length || 0), 0);
-          const totalDocsCount = activeTraktanden.reduce(
-            (sum, t) => sum + (m.traktanden?.[t]?.filter(p => p.docUrl)?.length || 0),
-            0
-          );
-          const openTodoCount = activeTraktanden.reduce(
-            (sum, t) => sum + (m.traktanden?.[t]?.filter(p => p.type === 'todo' && !p.done)?.length || 0),
-            0
-          );
-          const presentCount = Object.values(m.attendance || {}).filter(s => s === 'present').length;
-
-          return (
-            <div
-              key={m.id}
-              className={`bg-gray-900 border rounded-3xl flex flex-col transition-all duration-300 overflow-hidden shadow-xl ${
-                isExpanded ? 'border-orange-500/50 ring-1 ring-orange-500/20' : 'border-gray-800 hover:border-gray-700'
-              }`}
-            >
-              <div
-                className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6 cursor-pointer hover:bg-gray-800/20 transition-colors"
-                onClick={() => setExpandedId(isExpanded ? null : m.id)}
-              >
-                <div className="flex items-start sm:items-center gap-4 sm:gap-5 flex-1 min-w-0">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gray-950 border border-gray-800 flex flex-col items-center justify-center shrink-0 shadow-inner">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-orange-500">{monthShort}</span>
-                    <span className="text-xl sm:text-2xl font-black text-white leading-none my-0.5">{dayNum}</span>
-                    <span className="text-[10px] font-bold text-gray-600">{yearNum}</span>
+        {minutes.length === 0 ? (
+          <div className="space-y-4">
+            {[1, 2].map(i => (
+              <div key={i} className="bg-gray-900 border border-gray-800 rounded-3xl p-6 animate-pulse">
+                <div className="flex gap-4">
+                  <div className="w-16 h-16 bg-gray-800 rounded-2xl"></div>
+                  <div className="flex-1 space-y-3">
+                    <div className="h-4 bg-gray-800 rounded w-1/4"></div>
+                    <div className="h-6 bg-gray-800 rounded w-3/4"></div>
                   </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                      <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md bg-gray-800 text-gray-300 border border-gray-700">
-                        {totalPointsCount} {totalPointsCount === 1 ? 'Eintrag' : 'Einträge'}
-                      </span>
-                      {openTodoCount > 0 && (
-                        <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md bg-orange-500/15 text-orange-400 border border-orange-500/30">
-                          {openTodoCount} {openTodoCount === 1 ? 'Pendenz offen' : 'Pendenzen offen'}
-                        </span>
-                      )}
-                      {presentCount > 0 && (
-                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-green-500/10 text-green-400 border border-green-500/20 flex items-center gap-1">
-                          <UserCheck size={11} /> {presentCount} Anwesend
-                        </span>
-                      )}
-                      {totalDocsCount > 0 && (
-                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
-                          <Paperclip size={11} /> {totalDocsCount} {totalDocsCount === 1 ? 'Anhang' : 'Anhänge'}
-                        </span>
-                      )}
-                    </div>
-
-                    <h3 className="text-lg sm:text-2xl font-black text-white break-words leading-snug">
-                      {highlightText(m.title, searchTerm)}
-                    </h3>
-
-                    {activeTraktanden.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-3">
-                        {activeTraktanden.map(t => (
-                          <span
-                            key={t}
-                            className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${traktandumMeta[t]?.badge || 'bg-gray-800 text-gray-400 border-gray-700'}`}
-                          >
-                            {t} ({m.traktanden[t].length})
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2.5 shrink-0 justify-end pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-800/80" onClick={e => e.stopPropagation()}>
-                  <button
-                    onClick={() => copyProtocolSummary(m)}
-                    title="Zusammenfassung für WhatsApp / E-Mail kopieren"
-                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 hover:border-orange-500/40 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                  >
-                    <Share2 size={18} />
-                  </button>
-                  <button
-                    onClick={() => setReadingMinute(m)}
-                    title="Lese- & Druckansicht (PDF)"
-                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 hover:border-orange-500/40 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                  >
-                    <Printer size={18} />
-                  </button>
-                  <button
-                    onClick={() => setEditing(m)}
-                    title="Protokoll bearbeiten"
-                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                  >
-                    <Edit2 size={18} />
-                  </button>
-                  <button
-                    onClick={() =>
-                      askConfirm(
-                        'Protokoll löschen?',
-                        `Möchtest du das Protokoll "${m.title}" wirklich unwiderruflich löschen?`,
-                        async () => {
-                          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id));
-                          notify('Protokoll gelöscht.', 'info');
-                        },
-                        'Löschen'
-                      )
-                    }
-                    title="Protokoll löschen"
-                    className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                  <button
-                    onClick={() => setExpandedId(isExpanded ? null : m.id)}
-                    className={`p-3 rounded-2xl border transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center ${
-                      isExpanded
-                        ? 'bg-orange-500 text-gray-950 border-orange-500'
-                        : 'bg-gray-800 border-gray-700 text-gray-300 hover:text-white'
-                    }`}
-                  >
-                    <ChevronRight className={`transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''}`} size={18} />
-                  </button>
                 </div>
               </div>
+            ))}
+          </div>
+        ) : (
+          filteredMinutes.map(m => {
+            const isExpanded = expandedId === m.id;
+            const dateObj = m.date ? new Date(m.date) : new Date();
+            const dayNum = dateObj.toLocaleDateString('de-CH', { day: '2-digit' });
+            const monthShort = dateObj.toLocaleDateString('de-CH', { month: 'short' });
+            const yearNum = dateObj.getFullYear();
 
-              {isExpanded && (
-                <div className="border-t border-gray-800 bg-gray-950/60 p-5 sm:p-8 space-y-8 animate-in slide-in-from-top-2 duration-300">
-                  {m.attendance && Object.keys(m.attendance).length > 0 && (
-                    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-5">
-                      <h4 className="text-orange-500 font-black uppercase text-[10px] tracking-widest mb-3 flex items-center gap-2">
-                        <UserCheck size={14}/> Anwesenheitskontrolle
-                      </h4>
-                      <div className="flex flex-wrap gap-2">
-                        {users.filter(u => u.groups?.includes('Vorstand')).map(u => {
-                          const status = m.attendance?.[u.id];
-                          if (!status) return null;
-                          const label = status === 'present' ? 'Anwesend' : status === 'absent' ? 'Unentschuldigt' : 'Entschuldigt';
-                          const color = status === 'present'
-                            ? 'bg-green-500/10 text-green-400 border-green-500/30'
-                            : status === 'absent'
-                            ? 'bg-red-500/10 text-red-400 border-red-500/30'
-                            : 'bg-blue-500/10 text-blue-400 border-blue-500/30';
-                          return (
-                            <span key={u.id} className={`text-xs font-bold px-3 py-1.5 rounded-xl border ${color}`}>
-                              {u.firstName} {u.lastName} <span className="opacity-70 font-normal">• {label}</span>
-                            </span>
-                          );
-                        })}
-                      </div>
+            const activeTraktanden = TRAKTANDEN.filter(t => (m.traktanden?.[t]?.length || 0) > 0);
+            const totalPointsCount = activeTraktanden.reduce((sum, t) => sum + (m.traktanden?.[t]?.length || 0), 0);
+            const totalDocsCount = activeTraktanden.reduce(
+              (sum, t) => sum + (m.traktanden?.[t]?.filter(p => p.docUrl)?.length || 0),
+              0
+            );
+            const openTodoCount = activeTraktanden.reduce(
+              (sum, t) => sum + (m.traktanden?.[t]?.filter(p => p.type === 'todo' && !p.done)?.length || 0),
+              0
+            );
+            const presentCount = Object.values(m.attendance || {}).filter(s => s === 'present').length;
+
+            return (
+              <div
+                key={m.id}
+                className={`bg-gray-900 border rounded-3xl flex flex-col transition-all duration-300 overflow-hidden shadow-xl ${
+                  isExpanded ? 'border-orange-500/50 ring-1 ring-orange-500/20' : 'border-gray-800 hover:border-gray-700'
+                }`}
+              >
+                <div
+                  className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6 cursor-pointer hover:bg-gray-800/20 transition-colors"
+                  onClick={() => setExpandedId(isExpanded ? null : m.id)}
+                >
+                  <div className="flex items-start sm:items-center gap-4 sm:gap-5 flex-1 min-w-0">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gray-950 border border-gray-800 flex flex-col items-center justify-center shrink-0 shadow-inner">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-orange-500">{monthShort}</span>
+                      <span className="text-xl sm:text-2xl font-black text-white leading-none my-0.5">{dayNum}</span>
+                      <span className="text-[10px] font-bold text-gray-600">{yearNum}</span>
                     </div>
-                  )}
 
-                  <div className="grid gap-5">
-                    {TRAKTANDEN.map(t => {
-                      const points = m.traktanden?.[t];
-                      if (!points || points.length === 0) return null;
-                      const meta = traktandumMeta[t] || { badge: 'bg-gray-800 text-gray-300 border-gray-700', dot: 'bg-orange-500' };
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                        <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md bg-gray-800 text-gray-300 border border-gray-700">
+                          {totalPointsCount} {totalPointsCount === 1 ? 'Eintrag' : 'Einträge'}
+                        </span>
+                        {openTodoCount > 0 && (
+                          <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md bg-orange-500/15 text-orange-400 border border-orange-500/30">
+                            {openTodoCount} {openTodoCount === 1 ? 'Pendenz offen' : 'Pendenzen offen'}
+                          </span>
+                        )}
+                        {presentCount > 0 && (
+                          <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-green-500/10 text-green-400 border border-green-500/20 flex items-center gap-1">
+                            <UserCheck size={11} /> {presentCount} Anwesend
+                          </span>
+                        )}
+                        {totalDocsCount > 0 && (
+                          <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
+                            <Paperclip size={11} /> {totalDocsCount} {totalDocsCount === 1 ? 'Anhang' : 'Anhänge'}
+                          </span>
+                        )}
+                      </div>
 
-                      return (
-                        <div key={t} className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-lg">
-                          <div className="px-5 sm:px-6 py-4 bg-gray-950/60 border-b border-gray-800 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <span className={`w-2.5 h-2.5 rounded-full ${meta.dot}`} />
-                              <h4 className="text-white font-black text-base sm:text-lg tracking-tight">{t}</h4>
-                            </div>
-                            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg border ${meta.badge}`}>
-                              {points.length} {points.length === 1 ? 'Eintrag' : 'Einträge'}
+                      <h3 className="text-lg sm:text-2xl font-black text-white break-words leading-snug">
+                        {highlightText(m.title, searchTerm)}
+                      </h3>
+
+                      {activeTraktanden.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-3">
+                          {activeTraktanden.map(t => (
+                            <span
+                              key={t}
+                              className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${traktandumMeta[t]?.badge || 'bg-gray-800 text-gray-400 border-gray-700'}`}
+                            >
+                              {t} ({m.traktanden[t].length})
                             </span>
-                          </div>
-
-                          <div className="p-4 sm:p-6 space-y-3">
-                            {points.map((p, idx) => {
-                              const pType = p.type === 'todo' && p.done ? 'done' : (p.type || 'info');
-                              const typeBadge = pointTypeMeta[pType] || pointTypeMeta.info;
-                              const isOverdue = p.type === 'todo' && !p.done && p.dueDate && p.dueDate < todayIso;
-
-                              return (
-                                <div
-                                  key={p.id}
-                                  className={`bg-gray-950 p-4 sm:p-5 rounded-2xl border transition-all relative group flex gap-3.5 ${
-                                    isOverdue
-                                      ? 'border-red-500/50'
-                                      : p.type === 'todo' && !p.done
-                                      ? 'border-orange-500/40'
-                                      : p.type === 'decision'
-                                      ? 'border-green-500/30'
-                                      : 'border-gray-800/90 hover:border-gray-700'
-                                  }`}
-                                >
-                                  {p.type === 'todo' ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleTaskDone(m, t, p.id)}
-                                      title={p.done ? 'Als offen markieren' : 'Pendenz als erledigt abhaken'}
-                                      className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all min-h-[36px] min-w-[36px] ${
-                                        p.done
-                                          ? 'bg-emerald-500 border-emerald-500 text-gray-950'
-                                          : 'border-orange-500 hover:bg-orange-500/20 text-transparent'
-                                      }`}
-                                    >
-                                      <Check size={15} strokeWidth={3.5} />
-                                    </button>
-                                  ) : (
-                                    <span className="text-xs font-black text-gray-600 bg-gray-900 border border-gray-800 w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
-                                      {idx + 1}
-                                    </span>
-                                  )}
-
-                                  <div className="flex-1 min-w-0 pr-8">
-                                    {(p.type && p.type !== 'info') || p.assignee || p.dueDate ? (
-                                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                                        {p.type && p.type !== 'info' && (
-                                          <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border ${typeBadge.style}`}>
-                                            {typeBadge.label}
-                                          </span>
-                                        )}
-                                        {p.assignee && (
-                                          <span className="text-[10px] font-bold bg-gray-900 border border-gray-800 text-gray-300 px-2 py-0.5 rounded-md flex items-center gap-1">
-                                            <Users size={10} className="text-orange-500" /> {highlightText(p.assignee, searchTerm)}
-                                          </span>
-                                        )}
-                                        {p.dueDate && (
-                                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
-                                            isOverdue
-                                              ? 'bg-red-500/15 text-red-400 border-red-500/30'
-                                              : 'bg-gray-900 border-gray-800 text-gray-400'
-                                          }`}>
-                                            <Clock size={10} /> Bis {new Date(p.dueDate).toLocaleDateString('de-CH')}
-                                          </span>
-                                        )}
-                                      </div>
-                                    ) : null}
-
-                                    <p className={`text-sm sm:text-base whitespace-pre-wrap leading-relaxed break-words ${p.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>
-                                      {highlightText(p.text, searchTerm)}
-                                    </p>
-
-                                    {p.docUrl && (
-                                      <div className="mt-3.5 flex flex-wrap items-center gap-2">
-                                        <button
-                                          type="button"
-                                          onClick={() => setPreviewDoc({ url: p.docUrl, name: p.docName || 'Protokoll-Anhang' })}
-                                          className="inline-flex items-center gap-1.5 text-xs font-bold text-white hover:text-orange-300 bg-gray-900 px-3.5 py-2.5 rounded-xl border border-gray-800 transition-all active:scale-95 min-h-[44px]"
-                                        >
-                                          <Eye size={14} className="text-orange-500" /> Vorschau
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => triggerFileDownload(p.docUrl, p.docName || 'Protokoll-Anhang')}
-                                          className="inline-flex items-center gap-2 text-xs font-bold text-orange-400 hover:text-orange-300 bg-orange-500/10 px-3.5 py-2.5 rounded-xl border border-orange-500/20 transition-all hover:scale-[1.02] active:scale-95 min-h-[44px]"
-                                        >
-                                          <Paperclip size={14} /> {p.docName || 'Dokument herunterladen'}
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); setEnlargedPoint({ traktandum: t, index: idx + 1, ...p }); }}
-                                    title="Grossansicht"
-                                    className="absolute top-3.5 right-3.5 p-2.5 bg-gray-900 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                                  >
-                                    <Maximize2 size={15} />
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
+                          ))}
                         </div>
-                      );
-                    })}
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 shrink-0 justify-end pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-800/80" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={() => copyProtocolSummary(m)}
+                      title="Zusammenfassung für WhatsApp / E-Mail kopieren"
+                      className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 hover:border-orange-500/40 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                    >
+                      <Share2 size={18} />
+                    </button>
+                    <button
+                      onClick={() => setReadingMinute(m)}
+                      title="Lese- & Druckansicht (PDF)"
+                      className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 hover:border-orange-500/40 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                    >
+                      <Printer size={18} />
+                    </button>
+                    <button
+                      onClick={() => setEditing(m)}
+                      title="Protokoll bearbeiten"
+                      className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                    >
+                      <Edit2 size={18} />
+                    </button>
+                    <button
+                      onClick={() =>
+                        askConfirm(
+                          'Protokoll löschen?',
+                          `Möchtest du das Protokoll "${m.title}" wirklich unwiderruflich löschen?`,
+                          async () => {
+                            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id));
+                            notify('Protokoll gelöscht.', 'info');
+                          },
+                          'Löschen'
+                        )
+                      }
+                      title="Protokoll löschen"
+                      className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : m.id)}
+                      className={`p-3 rounded-2xl border transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center ${
+                        isExpanded
+                          ? 'bg-orange-500 text-gray-950 border-orange-500'
+                          : 'bg-gray-800 border-gray-700 text-gray-300 hover:text-white'
+                      }`}
+                    >
+                      <ChevronRight className={`transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''}`} size={18} />
+                    </button>
                   </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
+
+                {isExpanded && (
+                  <div className="border-t border-gray-800 bg-gray-950/60 p-5 sm:p-8 space-y-8 animate-in slide-in-from-top-2 duration-300">
+                    {m.attendance && Object.keys(m.attendance).length > 0 && (
+                      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-5">
+                        <h4 className="text-orange-500 font-black uppercase text-[10px] tracking-widest mb-3 flex items-center gap-2">
+                          <UserCheck size={14}/> Anwesenheitskontrolle
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {users.filter(u => u.groups?.includes('Vorstand')).map(u => {
+                            const status = m.attendance?.[u.id];
+                            if (!status) return null;
+                            const label = status === 'present' ? 'Anwesend' : status === 'absent' ? 'Unentschuldigt' : 'Entschuldigt';
+                            const color = status === 'present'
+                              ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                              : status === 'absent'
+                              ? 'bg-red-500/10 text-red-400 border-red-500/30'
+                              : 'bg-blue-500/10 text-blue-400 border-blue-500/30';
+                            return (
+                              <span key={u.id} className={`text-xs font-bold px-3 py-1.5 rounded-xl border ${color}`}>
+                                {u.firstName} {u.lastName} <span className="opacity-70 font-normal">• {label}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid gap-5">
+                      {TRAKTANDEN.map(t => {
+                        const points = m.traktanden?.[t];
+                        if (!points || points.length === 0) return null;
+                        const meta = traktandumMeta[t] || { badge: 'bg-gray-800 text-gray-300 border-gray-700', dot: 'bg-orange-500' };
+
+                        return (
+                          <div key={t} className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-lg">
+                            <div className="px-5 sm:px-6 py-4 bg-gray-950/60 border-b border-gray-800 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <span className={`w-2.5 h-2.5 rounded-full ${meta.dot}`} />
+                                <h4 className="text-white font-black text-base sm:text-lg tracking-tight">{t}</h4>
+                              </div>
+                              <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg border ${meta.badge}`}>
+                                {points.length} {points.length === 1 ? 'Eintrag' : 'Einträge'}
+                              </span>
+                            </div>
+
+                            <div className="p-4 sm:p-6 space-y-3">
+                              {points.map((p, idx) => {
+                                const pType = p.type === 'todo' && p.done ? 'done' : (p.type || 'info');
+                                const typeBadge = pointTypeMeta[pType] || pointTypeMeta.info;
+                                const isOverdue = p.type === 'todo' && !p.done && p.dueDate && p.dueDate < todayIso;
+
+                                return (
+                                  <div
+                                    key={p.id}
+                                    className={`bg-gray-950 p-4 sm:p-5 rounded-2xl border transition-all relative group flex gap-3.5 ${
+                                      isOverdue
+                                        ? 'border-red-500/50'
+                                        : p.type === 'todo' && !p.done
+                                        ? 'border-orange-500/40'
+                                        : p.type === 'decision'
+                                        ? 'border-green-500/30'
+                                        : 'border-gray-800/90 hover:border-gray-700'
+                                    }`}
+                                  >
+                                    {p.type === 'todo' ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleTaskDone(m, t, p.id)}
+                                        title={p.done ? 'Als offen markieren' : 'Pendenz als erledigt abhaken'}
+                                        className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all min-h-[36px] min-w-[36px] ${
+                                          p.done
+                                            ? 'bg-emerald-500 border-emerald-500 text-gray-950'
+                                            : 'border-orange-500 hover:bg-orange-500/20 text-transparent'
+                                        }`}
+                                      >
+                                        <Check size={15} strokeWidth={3.5} />
+                                      </button>
+                                    ) : (
+                                      <span className="text-xs font-black text-gray-600 bg-gray-900 border border-gray-800 w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                                        {idx + 1}
+                                      </span>
+                                    )}
+
+                                    <div className="flex-1 min-w-0 pr-8">
+                                      {(p.type && p.type !== 'info') || p.assignee || p.dueDate ? (
+                                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                                          {p.type && p.type !== 'info' && (
+                                            <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border ${typeBadge.style}`}>
+                                              {typeBadge.label}
+                                            </span>
+                                          )}
+                                          {p.assignee && (
+                                            <span className="text-[10px] font-bold bg-gray-900 border border-gray-800 text-gray-300 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                              <Users size={10} className="text-orange-500" /> {highlightText(p.assignee, searchTerm)}
+                                            </span>
+                                          )}
+                                          {p.dueDate && (
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
+                                              isOverdue
+                                                ? 'bg-red-500/15 text-red-400 border-red-500/30'
+                                                : 'bg-gray-900 border-gray-800 text-gray-400'
+                                            }`}>
+                                              <Clock size={10} /> Bis {new Date(p.dueDate).toLocaleDateString('de-CH')}
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : null}
+
+                                      <p className={`text-sm sm:text-base whitespace-pre-wrap leading-relaxed break-words ${p.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>
+                                        {highlightText(p.text, searchTerm)}
+                                      </p>
+
+                                      {p.docUrl && (
+                                        <div className="mt-3.5 flex flex-wrap items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => setPreviewDoc({ url: p.docUrl, name: p.docName || 'Protokoll-Anhang' })}
+                                            className="inline-flex items-center gap-1.5 text-xs font-bold text-white hover:text-orange-300 bg-gray-900 px-3.5 py-2.5 rounded-xl border border-gray-800 transition-all active:scale-95 min-h-[44px]"
+                                          >
+                                            <Eye size={14} className="text-orange-500" /> Vorschau
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => triggerFileDownload(p.docUrl, p.docName || 'Protokoll-Anhang')}
+                                            className="inline-flex items-center gap-2 text-xs font-bold text-orange-400 hover:text-orange-300 bg-orange-500/10 px-3.5 py-2.5 rounded-xl border border-orange-500/20 transition-all hover:scale-[1.02] active:scale-95 min-h-[44px]"
+                                          >
+                                            <Paperclip size={14} /> {p.docName || 'Dokument herunterladen'}
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setEnlargedPoint({ traktandum: t, index: idx + 1, ...p }); }}
+                                      title="Grossansicht"
+                                      className="absolute top-3.5 right-3.5 p-2.5 bg-gray-900 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                                    >
+                                      <Maximize2 size={15} />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
 
         {filteredMinutes.length === 0 && (searchTerm || roleFilter !== 'Alle' || yearFilter !== 'Alle' || onlyOpenTasks || onlyMyTasks) && (
           <div className="text-center py-12 text-gray-500 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
             Keine passenden Protokolle für deine aktuelle Filterauswahl gefunden.
           </div>
         )}
-        {stats.totalMinutes === 0 && !searchTerm && (
+        {stats.totalMinutes === 0 && !searchTerm && minutes.length > 0 && (
           <div className="text-center py-20 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
             <ClipboardList className="mx-auto text-gray-800 mb-4" size={48} />
             <p className="text-gray-600 font-bold uppercase tracking-widest text-sm">Noch keine Protokolle vorhanden</p>
@@ -1556,7 +1583,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
   const [nextMeetingTime,   setNextMeetingTime]   = useState('19:30');
   const [nextMeetingLoc,    setNextMeetingLoc]    = useState('Vereinslokal Ämme');
   const [sessionSeconds,    setSessionSeconds]    = useState(0);
-  const [isAiGenerating,    setIsAiGenerating]    = useState(false);
 
   const isRemoteUpdateRef = useRef(false);
   const lastLocalEditRef  = useRef(0);
@@ -1621,46 +1647,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
     if (traktandum || pointId) {
       setFocusedField({ traktandum, pointId });
     }
-  };
-
-  const handleAiSummaryGenerator = () => {
-    setIsAiGenerating(true);
-    setTimeout(() => {
-      let allPointsCount = 0;
-      let decisionCount = 0;
-      let todoCount = 0;
-      TRAKTANDEN.forEach(t => {
-        const pts = form.traktanden[t] || [];
-        allPointsCount += pts.length;
-        pts.forEach(p => {
-          if (p.type === 'decision') decisionCount++;
-          if (p.type === 'todo') todoCount++;
-        });
-      });
-
-      const summaryText = `[KI-Management-Summary] In dieser Sitzung wurden ${allPointsCount} Traktandenpunkte besprochen, darunter ${decisionCount} wichtige Beschlüsse und ${todoCount} offene Pendenzen. Der Vorstand hat alle Ressorts erfolgreich koordiniert und die nächsten Schritte definiert.`;
-
-      markLocalEdit('Aktuar', null);
-      setForm(prev => {
-        const aktuarList = [...(prev.traktanden['Aktuar'] || [])];
-        aktuarList.unshift({
-          id: Date.now().toString(),
-          text: summaryText,
-          type: 'decision',
-          assignee: 'Gesamtvorstand',
-          dueDate: '',
-          done: false,
-          docUrl: '',
-          docName: ''
-        });
-        return {
-          ...prev,
-          traktanden: { ...prev.traktanden, 'Aktuar': aktuarList }
-        };
-      });
-      setIsAiGenerating(false);
-      notify("KI-Zusammenfassung erfolgreich im Aktuars-Ressort generiert!", "success");
-    }, 1000);
   };
 
   const importOpenTasks = () => {
@@ -1869,14 +1855,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
               <span className={`w-2 h-2 rounded-full ${liveSyncEnabled ? 'bg-orange-500 animate-ping' : 'bg-gray-600'}`} />
               {liveSyncEnabled ? 'Live aktiv' : 'Live pausiert'}
             </button>
-            <button
-              type="button"
-              onClick={handleAiSummaryGenerator}
-              disabled={isAiGenerating}
-              className="text-[10px] font-black uppercase tracking-wider px-3.5 py-1 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 text-gray-950 border border-orange-400 flex items-center gap-1.5 transition-all active:scale-95 shadow-md min-h-[32px]"
-            >
-              <Sparkles size={12} /> {isAiGenerating ? 'Analysiere...' : 'KI-Zusammenfassung generieren'}
-            </button>
             {draftSavedAt && (
               <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
                 ✓ Gesichert ({draftSavedAt})
@@ -1998,7 +1976,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3 items-start">
-        {/* Linke Spalte (Anwesenheit & Nächste Sitzung planen) - Separat scrollbar */}
         <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
           <div className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl shadow-xl">
             <div className="flex items-center justify-between mb-5">
@@ -2078,7 +2055,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
           </div>
         </div>
 
-        {/* Rechte Spalte (Traktanden) - Separat scrollbar */}
         <div className="lg:col-span-2 space-y-6 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
           {visibleTraktanden.map(traktandum => {
             const points = form.traktanden[traktandum] || [];
@@ -2558,21 +2534,28 @@ function EventsView({ events, currentUser, isArchive = false, users, notify, ask
         notify("Event erfolgreich erstellt.", "success");
       }} />}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {events.map(e => (
-          <div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl cursor-pointer hover:border-orange-500 transition-all group shadow-lg active:scale-95">
-            <span className="text-[9px] font-black text-orange-500 uppercase bg-orange-500/10 px-3 py-1 rounded-full mb-4 inline-block tracking-widest">{e.category}</span>
-            <h3 className="text-xl font-bold text-white mb-2">{e.title}</h3>
-            <div className="flex flex-col gap-2 text-xs text-gray-500">
-              <span className="flex items-center gap-1.5"><Calendar size={14} className="text-orange-500" /> Start: {new Date(e.date).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>
-              {e.autoArchive && e.endDate && <span className="flex items-center gap-1.5"><Archive size={14} className="text-orange-500" /> Auto-Archiv: {new Date(e.endDate).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>}
-              <div className="flex items-center gap-1 mt-2 border-t border-gray-800 pt-2"><BarChart3 size={14}/> {e.surveys?.length || 0} Umfragen</div>
+        {events.length === 0 ? (
+          <div className="col-span-full space-y-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl animate-pulse">
+                <div className="h-4 bg-gray-800 rounded w-1/4 mb-4"></div>
+                <div className="h-6 bg-gray-800 rounded w-3/4 mb-3"></div>
+                <div className="h-4 bg-gray-800 rounded w-1/2"></div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          events.map(e => (
+            <div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl cursor-pointer hover:border-orange-500 transition-all group shadow-lg active:scale-95">
+              <span className="text-[9px] font-black text-orange-500 uppercase bg-orange-500/10 px-3 py-1 rounded-full mb-4 inline-block tracking-widest">{e.category}</span>
+              <h3 className="text-xl font-bold text-white mb-2">{e.title}</h3>
+              <div className="flex flex-col gap-2 text-xs text-gray-500">
+                <span className="flex items-center gap-1.5"><Calendar size={14} className="text-orange-500" /> Start: {new Date(e.date).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>
+                {e.autoArchive && e.endDate && <span className="flex items-center gap-1.5"><Archive size={14} className="text-orange-500" /> Auto-Archiv: {new Date(e.endDate).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>}
+                <div className="flex items-center gap-1 mt-2 border-t border-gray-800 pt-2"><BarChart3 size={14}/> {e.surveys?.length || 0} Umfragen</div>
+              </div>
             </div>
-          </div>
-        ))}
-        {events.length === 0 && !showCreate && (
-          <div className="md:col-span-2 lg:col-span-3 text-center py-20 bg-gray-900/30 border border-gray-800 border-dashed rounded-3xl">
-            <p className="text-gray-600 font-bold uppercase tracking-widest text-sm">Keine Events geplant</p>
-          </div>
+          ))
         )}
       </div>
     </div>
@@ -2795,7 +2778,12 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
         </div>
         <div className="flex items-center gap-3">
           {step === 'welcome' ? (
-            <button onClick={() => setStep('voting')} className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[44px]">
+            <button onClick={() => {
+              if (survey.status === 'draft' && onPublish) {
+                onPublish();
+              }
+              setStep('voting');
+            }} className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[44px]">
               Zur Abstimmung starten →
             </button>
           ) : (
@@ -3318,59 +3306,71 @@ function MembersView({ users, notify, askConfirm }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {filteredUsers.map(u => (
-                <React.Fragment key={u.id}>
-                  <tr className="hover:bg-gray-800/30 transition-colors">
-                    <td className="px-6 py-5">
-                      <p className="font-bold text-white text-base sm:text-lg">{u.firstName} {u.lastName}</p>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {u.groups?.map(g => <span key={g} className="text-[8px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-500 uppercase font-black">{g}</span>)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-5">
-                      <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-md ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500' : 'bg-gray-800 text-gray-400'}`}>
-                        {u.role === 'admin' ? 'Admin' : 'Mitglied'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-5">
-                      {u.groups?.includes('Vorstand') ? (
-                        u.password ? <span className="text-green-500 flex items-center gap-1 text-[10px] font-black"><Lock size={12}/> AKTIV</span> : <span className="text-orange-500 flex items-center gap-1 text-[10px] font-black animate-pulse"><Unlock size={12}/> OFFEN</span>
-                      ) : <span className="text-gray-700 text-[10px] font-black uppercase">—</span>}
-                    </td>
-                    <td className="px-6 py-5 text-right whitespace-nowrap">
-                      <button onClick={() => setEditingUser(editingUser?.id === u.id ? null : u)} className={`transition-colors p-3 rounded-xl active:scale-90 mr-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center ${editingUser?.id === u.id ? 'text-orange-500 bg-orange-500/10' : 'text-gray-400 hover:text-orange-500 hover:bg-orange-500/10'}`}><Edit2 size={18}/></button>
-                      <button
-                        onClick={() =>
-                          askConfirm(
-                            'Mitglied entfernen?',
-                            `Soll ${u.firstName} ${u.lastName} wirklich entfernt werden?`,
-                            async () => {
-                              await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id));
-                              notify("Mitglied entfernt.", "info");
-                            },
-                            'Entfernen'
-                          )
-                        }
-                        className="text-gray-400 hover:text-red-500 transition-colors p-3 hover:bg-red-500/10 rounded-xl active:scale-90 min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
-                      >
-                        <Trash2 size={18}/>
-                      </button>
-                    </td>
-                  </tr>
-                  {editingUser?.id === u.id && (
-                    <tr>
-                      <td colSpan={4} className="px-4 pb-4 bg-gray-900">
-                        <MemberForm
-                          initialData={editingUser}
-                          onSubmit={async (m) => { await saveMember(m); }}
-                          onCancel={() => setEditingUser(null)}
-                          inline
-                        />
+              {users.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8">
+                    <div className="space-y-3 animate-pulse">
+                      {[1, 2, 3].map(i => (
+                        <div key={i} className="h-10 bg-gray-800 rounded-xl w-full"></div>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map(u => (
+                  <React.Fragment key={u.id}>
+                    <tr className="hover:bg-gray-800/30 transition-colors">
+                      <td className="px-6 py-5">
+                        <p className="font-bold text-white text-base sm:text-lg">{u.firstName} {u.lastName}</p>
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {u.groups?.map(g => <span key={g} className="text-[8px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-500 uppercase font-black">{g}</span>)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-md ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500' : 'bg-gray-800 text-gray-400'}`}>
+                          {u.role === 'admin' ? 'Admin' : 'Mitglied'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-5">
+                        {u.groups?.includes('Vorstand') ? (
+                          u.password ? <span className="text-green-500 flex items-center gap-1 text-[10px] font-black"><Lock size={12}/> AKTIV</span> : <span className="text-orange-500 flex items-center gap-1 text-[10px] font-black animate-pulse"><Unlock size={12}/> OFFEN</span>
+                        ) : <span className="text-gray-700 text-[10px] font-black uppercase">—</span>}
+                      </td>
+                      <td className="px-6 py-5 text-right whitespace-nowrap">
+                        <button onClick={() => setEditingUser(editingUser?.id === u.id ? null : u)} className={`transition-colors p-3 rounded-xl active:scale-90 mr-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center ${editingUser?.id === u.id ? 'text-orange-500 bg-orange-500/10' : 'text-gray-400 hover:text-orange-500 hover:bg-orange-500/10'}`}><Edit2 size={18}/></button>
+                        <button
+                          onClick={() =>
+                            askConfirm(
+                              'Mitglied entfernen?',
+                              `Soll ${u.firstName} ${u.lastName} wirklich entfernt werden?`,
+                              async () => {
+                                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id));
+                                notify("Mitglied entfernt.", "info");
+                              },
+                              'Entfernen'
+                            )
+                          }
+                          className="text-gray-400 hover:text-red-500 transition-colors p-3 hover:bg-red-500/10 rounded-xl active:scale-90 min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
+                        >
+                          <Trash2 size={18}/>
+                        </button>
                       </td>
                     </tr>
-                  )}
-                </React.Fragment>
-              ))}
+                    {editingUser?.id === u.id && (
+                      <tr>
+                        <td colSpan={4} className="px-4 pb-4 bg-gray-900">
+                          <MemberForm
+                            initialData={editingUser}
+                            onSubmit={async (m) => { await saveMember(m); }}
+                            onCancel={() => setEditingUser(null)}
+                            inline
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -3663,26 +3663,31 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-        {folders.map(folder => (
-          <div
-            key={folder.id}
-            onClick={() => setSelectedFolder(selectedFolder?.id === folder.id ? null : folder)}
-            className={`bg-gray-900 border rounded-2xl p-4 cursor-pointer transition-all active:scale-95 group relative ${selectedFolder?.id === folder.id ? 'border-orange-500 bg-orange-500/5 shadow-lg shadow-orange-500/5' : 'border-gray-800 hover:border-gray-700'}`}
-          >
-            <Folder size={32} className={`mb-2 ${selectedFolder?.id === folder.id ? 'text-orange-500' : 'text-gray-600 group-hover:text-gray-400'}`} />
-            <p className="font-bold text-white text-sm truncate">{folder.name}</p>
-            <p className="text-[10px] text-gray-600 mt-1">{files.filter(f => f.folderId === folder.id).length} Dateien</p>
-            <button
-              onClick={e => { e.stopPropagation(); deleteFolder(folder); }}
-              className="absolute top-2 right-2 p-2.5 text-gray-700 hover:text-red-500 opacity-0 group-hover:opacity-100 bg-gray-950 rounded-lg transition-all min-h-[40px] min-w-[40px] flex items-center justify-center"
-            ><Trash2 size={14}/></button>
+        {folders.length === 0 ? (
+          <div className="col-span-full space-y-3">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="bg-gray-900 border border-gray-800 p-4 rounded-2xl animate-pulse">
+                <div className="h-8 w-8 bg-gray-800 rounded-lg mb-2"></div>
+                <div className="h-4 bg-gray-800 rounded w-1/2"></div>
+              </div>
+            ))}
           </div>
-        ))}
-        {folders.length === 0 && (
-          <div className="col-span-full text-center py-12 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
-            <Folder className="mx-auto text-gray-800 mb-3" size={40}/>
-            <p className="text-gray-600 font-bold uppercase tracking-widest text-xs">Noch keine Ordner angelegt</p>
-          </div>
+        ) : (
+          folders.map(folder => (
+            <div
+              key={folder.id}
+              onClick={() => setSelectedFolder(selectedFolder?.id === folder.id ? null : folder)}
+              className={`bg-gray-900 border rounded-2xl p-4 cursor-pointer transition-all active:scale-95 group relative ${selectedFolder?.id === folder.id ? 'border-orange-500 bg-orange-500/5 shadow-lg shadow-orange-500/5' : 'border-gray-800 hover:border-gray-700'}`}
+            >
+              <Folder size={32} className={`mb-2 ${selectedFolder?.id === folder.id ? 'text-orange-500' : 'text-gray-600 group-hover:text-gray-400'}`} />
+              <p className="font-bold text-white text-sm truncate">{folder.name}</p>
+              <p className="text-[10px] text-gray-600 mt-1">{files.filter(f => f.folderId === folder.id).length} Dateien</p>
+              <button
+                onClick={e => { e.stopPropagation(); deleteFolder(folder); }}
+                className="absolute top-2 right-2 p-2.5 text-gray-700 hover:text-red-500 opacity-0 group-hover:opacity-100 bg-gray-950 rounded-lg transition-all min-h-[40px] min-w-[40px] flex items-center justify-center"
+              ><Trash2 size={14}/></button>
+            </div>
+          ))
         )}
       </div>
 
@@ -3949,7 +3954,16 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
           <h3 className="font-black text-white text-lg flex items-center gap-2">
             <Clock size={18} className="text-orange-500"/> Kommende Termine
           </h3>
-          {upcomingItems.length === 0 ? (
+          {calItems.length === 0 ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 animate-pulse">
+                  <div className="h-4 bg-gray-800 rounded w-3/4 mb-2"></div>
+                  <div className="h-3 bg-gray-800 rounded w-1/2"></div>
+                </div>
+              ))}
+            </div>
+          ) : upcomingItems.length === 0 ? (
             <div className="bg-gray-900 border border-gray-800 border-dashed rounded-2xl p-6 text-center">
               <p className="text-gray-600 text-xs font-bold uppercase tracking-widest">Keine kommenden Termine</p>
             </div>
