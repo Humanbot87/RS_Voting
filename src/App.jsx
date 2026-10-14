@@ -741,7 +741,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   );
 }
 
-// --- Protokoll View (Redesigned & Aufgewertet) ---
+// --- Protokoll View ---
 function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askConfirm }) {
   const [editing,        setEditing]        = useState(null);
   const [showAdd,        setShowAdd]        = useState(false);
@@ -782,7 +782,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
     return () => unsub();
   }, []);
 
-  // Farb-Akzente pro Traktandum für schnelle visuelle Orientierung
   const traktandumMeta = {
     'Präsident':     { badge: 'bg-orange-500/15 text-orange-400 border-orange-500/30', dot: 'bg-orange-500' },
     'Vizepräsident': { badge: 'bg-amber-500/15 text-amber-400 border-amber-500/30',   dot: 'bg-amber-500' },
@@ -793,7 +792,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
     'Aktuar':        { badge: 'bg-blue-500/15 text-blue-400 border-blue-500/30',       dot: 'bg-blue-500' },
   };
 
-  // Punkt-Typen (Info, Beschluss, Pendenz)
   const pointTypeMeta = {
     'info':     { label: 'Info',      style: 'bg-gray-800 text-gray-300 border-gray-700' },
     'decision': { label: 'Beschluss', style: 'bg-green-500/15 text-green-400 border-green-500/30' },
@@ -801,7 +799,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
     'done':     { label: 'Erledigt',  style: 'bg-emerald-500/10 text-emerald-400/70 border-emerald-500/20' },
   };
 
-  // Verfügbare Sitzungsjahre ermitteln
   const availableYears = useMemo(() => {
     const years = new Set();
     minutes.forEach(m => {
@@ -810,7 +807,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
     return ['Alle', ...Array.from(years).sort((a, b) => b.localeCompare(a))];
   }, [minutes]);
 
-  // Kennzahlen & Offene Pendenzen berechnen
   const { stats, openTasksList } = useMemo(() => {
     let totalPoints = 0;
     let totalAttachments = 0;
@@ -906,7 +902,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
     notify("Protokoll erfolgreich gespeichert.", "success");
   };
 
-  // Direktes Abhaken einer Pendenz in der Leseansicht
   const toggleTaskDone = async (minute, traktandum, pointId) => {
     const updatedList = (minute.traktanden?.[traktandum] || []).map(p =>
       p.id === pointId ? { ...p, done: !p.done } : p
@@ -919,7 +914,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
     notify("Pendenzen-Status aktualisiert.", "success");
   };
 
-  // Kompakte Zusammenfassung für WhatsApp-Vorstandschat oder E-Mail kopieren
   const copyProtocolSummary = (m) => {
     const dateStr = m.date ? new Date(m.date).toLocaleDateString('de-CH') : '';
     const lines = [
@@ -964,32 +958,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
     );
   };
 
-  const renderSnippets = (m) => {
-    if (!searchTerm.trim()) return null;
-    const term = searchTerm.toLowerCase();
-    const snippets = [];
-    if (m.traktanden) {
-      for (const [tName, points] of Object.entries(m.traktanden)) {
-        points.forEach(p => {
-          if (p.text?.toLowerCase().includes(term) || p.docName?.toLowerCase().includes(term)) {
-            snippets.push(
-              <div key={p.id} className="mt-2.5 bg-orange-500/5 border border-orange-500/20 p-3.5 rounded-2xl text-sm flex items-start gap-3">
-                <span className="font-black text-orange-500 uppercase tracking-wider text-[10px] bg-orange-500/10 px-2.5 py-1 rounded-lg shrink-0 mt-0.5">{tName}</span>
-                <div className="flex-1 min-w-0">
-                  <span className="text-gray-300 break-words leading-relaxed">{highlightText(p.text, searchTerm)}</span>
-                  {p.docName && p.docName.toLowerCase().includes(term) && (
-                    <span className="ml-2 italic text-orange-400 text-xs break-words">({highlightText(p.docName, searchTerm)})</span>
-                  )}
-                </div>
-              </div>
-            );
-          }
-        });
-      }
-    }
-    return snippets.slice(0, 3);
-  };
-
   const todayIso = new Date().toISOString().slice(0, 10);
 
   if (editing || showAdd) {
@@ -1010,7 +978,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
 
   return (
     <div className="space-y-6">
-      {/* Live-Ticker Banner, wenn jemand gerade ein Protokoll tippt */}
       {liveDraft && (
         <div className="bg-gradient-to-r from-orange-500/20 via-orange-500/10 to-gray-900 border-2 border-orange-500/60 rounded-3xl p-5 sm:p-6 shadow-2xl animate-in fade-in duration-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start sm:items-center gap-4">
@@ -1057,7 +1024,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         </div>
       )}
 
-      {/* Top Header & KPI Cards */}
       <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -1075,7 +1041,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
           </button>
         </div>
 
-        {/* Statistik-Leiste */}
         {stats.totalMinutes > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
             <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
@@ -1089,7 +1054,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                   ? 'bg-orange-500/15 border-orange-500'
                   : 'bg-gray-950/70 border-gray-800/80 hover:border-orange-500/40'
               }`}
-              title="Klicken, um alle offenen Pendenzen anzuzeigen"
             >
               <p className="text-[10px] font-black uppercase tracking-widest text-orange-400 flex items-center justify-between">
                 <span>Alle Pendenzen</span>
@@ -1104,7 +1068,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                   ? 'bg-amber-500/15 border-amber-500'
                   : 'bg-gray-950/70 border-gray-800/80 hover:border-amber-500/40'
               }`}
-              title="Nur Pendenzen anzeigen, die mir oder dem Gesamtvorstand zugewiesen sind"
             >
               <p className="text-[10px] font-black uppercase tracking-widest text-amber-400 flex items-center justify-between">
                 <span>Meine Pendenzen</span>
@@ -1120,7 +1083,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         )}
       </div>
 
-      {/* Offene Pendenzen Schnell-Übersicht (wenn vorhanden & aktiviert) */}
       {(onlyOpenTasks || onlyMyTasks) && displayedTasks.length > 0 && (
         <div className="bg-orange-500/5 border border-orange-500/30 rounded-3xl p-5 sm:p-6 space-y-3 animate-in fade-in">
           <div className="flex items-center justify-between">
@@ -1190,7 +1152,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         </div>
       )}
 
-      {/* Suchfeld, Jahres- & Ressort-Filter */}
       {stats.totalMinutes > 0 && (
         <div className="space-y-3 animate-in fade-in">
           <div className="flex flex-col sm:flex-row gap-3">
@@ -1248,7 +1209,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         </div>
       )}
 
-      {/* Protokoll-Karten */}
       <div className="grid gap-4">
         {filteredMinutes.map(m => {
           const isExpanded = expandedId === m.id;
@@ -1276,20 +1236,17 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                 isExpanded ? 'border-orange-500/50 ring-1 ring-orange-500/20' : 'border-gray-800 hover:border-gray-700'
               }`}
             >
-              {/* Karten-Kopf */}
               <div
                 className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6 cursor-pointer hover:bg-gray-800/20 transition-colors"
                 onClick={() => setExpandedId(isExpanded ? null : m.id)}
               >
                 <div className="flex items-start sm:items-center gap-4 sm:gap-5 flex-1 min-w-0">
-                  {/* Kalender-Badge */}
                   <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gray-950 border border-gray-800 flex flex-col items-center justify-center shrink-0 shadow-inner">
                     <span className="text-[10px] font-black uppercase tracking-widest text-orange-500">{monthShort}</span>
                     <span className="text-xl sm:text-2xl font-black text-white leading-none my-0.5">{dayNum}</span>
                     <span className="text-[10px] font-bold text-gray-600">{yearNum}</span>
                   </div>
 
-                  {/* Titel & Metadaten */}
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-1.5">
                       <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-md bg-gray-800 text-gray-300 border border-gray-700">
@@ -1316,7 +1273,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                       {highlightText(m.title, searchTerm)}
                     </h3>
 
-                    {/* Ressort-Pills */}
                     {activeTraktanden.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mt-3">
                         {activeTraktanden.map(t => (
@@ -1332,7 +1288,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                   </div>
                 </div>
 
-                {/* Aktions-Buttons */}
                 <div className="flex items-center gap-2 shrink-0 justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-800/80" onClick={e => e.stopPropagation()}>
                   <button
                     onClick={() => copyProtocolSummary(m)}
@@ -1385,14 +1340,8 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                 </div>
               </div>
 
-              {!isExpanded && renderSnippets(m) && (
-                <div className="px-5 sm:px-6 pb-5">{renderSnippets(m)}</div>
-              )}
-
-              {/* Ausgeklappter Protokoll-Inhalt */}
               {isExpanded && (
                 <div className="border-t border-gray-800 bg-gray-950/60 p-5 sm:p-8 space-y-8 animate-in slide-in-from-top-2 duration-300">
-                  {/* Anwesenheits-Block */}
                   {m.attendance && Object.keys(m.attendance).length > 0 && (
                     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-5">
                       <h4 className="text-orange-500 font-black uppercase text-[10px] tracking-widest mb-3 flex items-center gap-2">
@@ -1418,7 +1367,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                     </div>
                   )}
 
-                  {/* Traktanden-Sektionen */}
                   <div className="grid gap-5">
                     {TRAKTANDEN.map(t => {
                       const points = m.traktanden?.[t];
@@ -1557,123 +1505,48 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         )}
       </div>
 
-      {/* Dokument-Vorschau Modal (Bilder & PDFs) */}
       {previewDoc && (
         <FilePreviewModal docItem={previewDoc} onClose={() => setPreviewDoc(null)} />
       )}
 
-      {/* Top Header & KPI Cards */}
-      <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 mb-3">
-              <ClipboardList size={12} /> Vorstands-Dokumentation
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Vorstands-Protokolle</h2>
-            <p className="text-gray-400 text-sm mt-1">Strukturierte Sitzungsprotokolle, Beschlüsse & Pendenzen-Tracking</p>
-          </div>
-          <button
-            onClick={() => setShowAdd(true)}
-            className="bg-orange-500 hover:bg-orange-400 text-gray-950 font-black px-6 py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 whitespace-nowrap w-full md:w-auto"
-          >
-            <Plus size={20} strokeWidth={2.5} /> Neues Protokoll erfassen
-          </button>
-        </div>
+      {readingMinute && (
+        <ReadingViewModal minute={readingMinute} users={users} onClose={() => setReadingMinute(null)} />
+      )}
 
-        {/* Statistik-Leiste */}
-        {minutes.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
-            <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Sitzungen</p>
-              <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalMinutes}</p>
+      {enlargedPoint && (
+        <div className="fixed inset-0 z-[220] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
+            <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
+              <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedPoint.traktandum}</h3>
+              <button onClick={() => setEnlargedPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90"><X size={20} /></button>
             </div>
-            <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Traktanden-Punkte</p>
-              <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalPoints}</p>
-            </div>
-            <div
-              onClick={() => setOnlyOpenTasks(!onlyOpenTasks)}
-              className={`rounded-2xl p-3.5 sm:p-4 border cursor-pointer transition-all ${
-                onlyOpenTasks
-                  ? 'bg-orange-500/15 border-orange-500'
-                  : 'bg-gray-950/70 border-gray-800/80 hover:border-orange-500/40'
-              }`}
-              title="Klicken, um nach offenen Pendenzen zu filtern"
-            >
-              <p className="text-[10px] font-black uppercase tracking-widest text-orange-400 flex items-center justify-between">
-                <span>Offene Pendenzen</span>
-                {onlyOpenTasks && <span className="text-[9px] bg-orange-500 text-gray-950 px-1.5 py-0.5 rounded font-black">Filter aktiv</span>}
-              </p>
-              <p className="text-xl sm:text-2xl font-black text-orange-500 mt-1">{stats.openTodos}</p>
-            </div>
-            <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Beilagen / Dateien</p>
-              <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalAttachments}</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Offene Pendenzen Schnell-Übersicht (wenn vorhanden & aktiviert) */}
-      {onlyOpenTasks && openTasksList.length > 0 && (
-        <div className="bg-orange-500/5 border border-orange-500/30 rounded-3xl p-5 sm:p-6 space-y-3 animate-in fade-in">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black uppercase tracking-widest text-orange-400 flex items-center gap-2">
-              <Sparkles size={16} /> Alle offenen Vorstands-Pendenzen ({openTasksList.length})
-            </h3>
-            <button
-              onClick={() => setOnlyOpenTasks(false)}
-              className="text-xs text-gray-400 hover:text-white font-bold"
-            >
-              Filter zurücksetzen
-            </button>
-          </div>
-          <div className="grid gap-2.5">
-            {openTasksList.map(item => {
-              const targetMinute = minutes.find(x => x.id === item.minuteId);
-              return (
-                <div
-                  key={item.point.id}
-                  className="bg-gray-900 border border-gray-800 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
-                  <div className="flex items-start gap-3">
-                    <button
-                      onClick={() => targetMinute && toggleTaskDone(targetMinute, item.traktandum, item.point.id)}
-                      title="Als erledigt markieren"
-                      className="mt-0.5 w-5 h-5 rounded-lg border-2 border-orange-500 flex items-center justify-center hover:bg-orange-500/20 shrink-0 transition-all"
-                    />
-                    <div>
-                      <p className="text-sm font-bold text-white leading-snug">{item.point.text}</p>
-                      <div className="flex flex-wrap items-center gap-2 mt-1">
-                        <span className="text-[10px] font-black uppercase text-orange-400">{item.traktandum}</span>
-                        {item.point.assignee && (
-                          <span className="text-[10px] font-bold bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-300">
-                            Verantwortlich: {item.point.assignee}
-                          </span>
-                        )}
-                        <span className="text-[10px] text-gray-500">
-                          aus «{item.minuteTitle}» ({new Date(item.minuteDate).toLocaleDateString('de-CH')})
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <p className="text-white text-base sm:text-lg whitespace-pre-wrap leading-relaxed">{enlargedPoint.text}</p>
+              {enlargedPoint.docUrl && (
+                <div className="pt-4 border-t border-gray-800 flex gap-2">
                   <button
-                    onClick={() => {
-                      setExpandedId(item.minuteId);
-                      setOnlyOpenTasks(false);
-                    }}
-                    className="text-xs font-bold text-orange-500 hover:underline self-end sm:self-center shrink-0"
+                    onClick={() => setPreviewDoc({ url: enlargedPoint.docUrl, name: enlargedPoint.docName || 'Anhang' })}
+                    className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl text-xs flex items-center gap-2"
                   >
-                    Zum Protokoll →
+                    <Eye size={16} className="text-orange-500" /> Vorschau
+                  </button>
+                  <button
+                    onClick={() => triggerFileDownload(enlargedPoint.docUrl, enlargedPoint.docName || 'Anhang')}
+                    className="px-4 py-2.5 bg-orange-500 text-gray-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg"
+                  >
+                    <Download size={16} /> Herunterladen
                   </button>
                 </div>
-              );
-            })}
+              )}
+            </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
 
-// --- Protocol Editor (Mit Echtzeit-Live-Sync, Pendenzen-Übernahme & Kalender-Verknüpfung) ---
+// --- Protocol Editor (Mit getrennten Scroll-Bereichen für Anwesenheit und Traktanden) ---
 function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], calItems = [], onSave, onCancel, initialData, notify }) {
   const [form, setForm] = useState(() => {
     if (initialData) return initialData;
@@ -1705,7 +1578,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
   const isRemoteUpdateRef = React.useRef(false);
   const lastLocalEditRef  = React.useRef(0);
 
-  // Empfange Live-Änderungen von anderen Vorstandsmitgliedern in Echtzeit
   useEffect(() => {
     if (!liveSyncEnabled || !liveDraft?.form) return;
     const isFromOtherSession = liveDraft.sessionId && liveDraft.sessionId !== currentUser?.sessionId;
@@ -1717,7 +1589,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
     }
   }, [liveDraft, liveSyncEnabled, currentUser?.sessionId]);
 
-  // Sende eigene Tipp-Eingaben live (mit 250ms Taktung) an Firestore + lokales Backup
   useEffect(() => {
     if (isRemoteUpdateRef.current) {
       isRemoteUpdateRef.current = false;
@@ -1758,7 +1629,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
     }
   };
 
-  // Offene Pendenzen aus früheren Sitzungen mit 1 Klick übernehmen
   const importOpenTasks = () => {
     if (!openTasksList || openTasksList.length === 0) {
       notify("Keine offenen Pendenzen aus früheren Protokollen vorhanden.", "info");
@@ -1795,7 +1665,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
     }
   };
 
-  // Nächste Vorstandssitzung direkt im Kalender eintragen
   const scheduleNextMeeting = async () => {
     if (!nextMeetingDate) {
       notify("Bitte zuerst ein Datum für die nächste Sitzung wählen.", "error");
@@ -1885,7 +1754,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
     });
   };
 
-  // Zuverlässiger Datei-Upload mit automatischem Fallback auf eingebettete Speicherung
   const handleFileUpload = async (e, traktandum, pointId) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1921,7 +1789,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
           setUploading(prev => ({ ...prev, [pointId]: progress || 15 }));
         },
         async (error) => {
-          console.warn("Firebase Storage Upload nicht möglich, nutze Direkt-Speicherung:", error);
           await fallbackToDataUrl();
         },
         async () => {
@@ -1947,7 +1814,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
 
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-8 duration-500">
-      {/* Kopfzeile des Protokoll-Editors */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gray-900 p-5 sm:p-8 rounded-3xl border border-gray-800 shadow-2xl">
         <div className="flex-1 space-y-4 w-full">
           <div className="flex flex-wrap items-center gap-2">
@@ -1962,7 +1828,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                   ? 'bg-orange-500/15 text-orange-400 border-orange-500/40'
                   : 'bg-gray-950 text-gray-500 border-gray-800'
               }`}
-              title="Wenn aktiv, sehen andere Vorstandsmitglieder deine Eingaben live beim Tippen"
             >
               <span className={`w-2 h-2 rounded-full ${liveSyncEnabled ? 'bg-orange-500 animate-ping' : 'bg-gray-600'}`} />
               {liveSyncEnabled ? 'Live-Übertragung aktiv' : 'Live-Übertragung pausiert'}
@@ -2023,7 +1888,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                 type="button"
                 onClick={importOpenTasks}
                 className="text-xs font-black bg-orange-500/10 hover:bg-orange-500 hover:text-gray-950 text-orange-400 border border-orange-500/30 px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 active:scale-95"
-                title="Alle noch offenen Pendenzen aus früheren Sitzungen in dieses Protokoll übernehmen"
               >
                 <Sparkles size={14} /> Offene Pendenzen übernehmen ({openTasksList.length})
               </button>
@@ -2052,7 +1916,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
         </div>
       </div>
 
-      {/* Schnell-Navigation für Traktanden */}
       <div className="bg-gray-900 border border-gray-800 p-3 rounded-2xl flex items-center gap-2 overflow-x-auto scrollbar-hide">
         <button
           type="button"
@@ -2089,9 +1952,10 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
         })}
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-3">
-        {/* Linke Spalte: Anwesenheit & Nächster Termin */}
-        <div className="lg:col-span-1 space-y-6 h-fit lg:sticky top-24">
+      {/* Hauptbereich mit getrennt scrollbaren Spalten */}
+      <div className="grid gap-8 lg:grid-cols-3 items-start">
+        {/* Linke Spalte: Anwesenheit & Nächster Termin (eigenständig scrollbar / sticky) */}
+        <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-24 max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
           <div className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl shadow-xl">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-black text-white flex items-center gap-2.5">
@@ -2134,7 +1998,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
             </div>
           </div>
 
-          {/* Nächste Sitzung direkt in Vereinskalender eintragen */}
           <div className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl shadow-xl space-y-3">
             <h3 className="text-sm font-black uppercase tracking-widest text-orange-500 flex items-center gap-2">
               <CalendarDays size={16} /> Nächste Sitzung planen
@@ -2164,8 +2027,8 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
           </div>
         </div>
 
-        {/* Rechte Spalte: Traktanden-Karten */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* Rechte Spalte: Traktanden-Karten (eigenständig scrollbar) */}
+        <div className="lg:col-span-2 space-y-6 max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
           {visibleTraktanden.map(traktandum => {
             const points = form.traktanden[traktandum] || [];
             return (
@@ -2221,7 +2084,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                           : 'border-gray-800 focus-within:border-orange-500/50'
                       }`}
                     >
-                      {/* Typ-Auswahl (Info / Beschluss / Pendenz) & Verantwortliche Person */}
                       <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-900">
                         <div className="flex items-center gap-1.5">
                           <span className="w-6 h-6 rounded-lg bg-gray-900 border border-gray-800 text-orange-500 font-black text-[11px] flex items-center justify-center shrink-0 mr-1">
@@ -2257,7 +2119,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                             value={point.assignee || ''}
                             onChange={e => updatePoint(traktandum, point.id, 'assignee', e.target.value)}
                             className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1 text-[11px] font-bold text-gray-300 focus:border-orange-500 outline-none"
-                            title="Verantwortliches Vorstandsmitglied zuweisen"
                           >
                             <option value="">Verantwortlich (optional)...</option>
                             {vorstand.map(v => (
@@ -2327,7 +2188,6 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                         />
                       </div>
 
-                      {/* Datei-Anhang Zeile */}
                       <div className="flex flex-col sm:flex-row items-center gap-3 pt-3 border-t border-gray-900">
                         <div className="w-full flex-1 flex items-center gap-3 bg-gray-900 px-4 py-2.5 rounded-xl border border-gray-800 relative overflow-hidden">
                           {uploading[point.id] !== undefined && (
@@ -2374,7 +2234,155 @@ function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], 
                     );
                   })}
 
-// --- Dokument- & Bild-Vorschau Modal (Lightbox) ---
+                  {points.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={() => addPoint(traktandum)}
+                      className="w-full py-6 border-2 border-dashed border-gray-800 hover:border-orange-500/40 rounded-2xl text-gray-600 hover:text-orange-400 text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                    >
+                      <Plus size={16} /> Ersten Eintrag für {traktandum} erfassen
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {enlargedEditPoint && (
+        <div className="fixed inset-0 z-[100] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-3xl flex flex-col shadow-2xl h-[80vh] max-h-[800px]">
+            <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
+              <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedEditPoint.traktandum} – Fokussiertes Schreiben</h3>
+              <button onClick={() => setEnlargedEditPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90"><X size={20} /></button>
+            </div>
+            <div className="p-6 flex-1 flex flex-col">
+              <textarea
+                className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-2xl p-6 text-white focus:border-orange-500 outline-none resize-none leading-relaxed text-lg"
+                value={enlargedEditPoint.text}
+                onChange={e => setEnlargedEditPoint({...enlargedEditPoint, text: e.target.value})}
+                placeholder="Beschluss oder Notiz..."
+                autoFocus
+              />
+            </div>
+            <div className="p-5 border-t border-gray-800 bg-gray-950/50 rounded-b-3xl flex justify-end">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  updatePoint(enlargedEditPoint.traktandum, enlargedEditPoint.id, 'text', enlargedEditPoint.text);
+                  setEnlargedEditPoint(null);
+                }}
+                className="w-full sm:w-auto px-8 py-4 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg"
+              >
+                Text übernehmen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Lesbare & Druckbare Ansicht (PDF Export) ---
+function ReadingViewModal({ minute, users, onClose }) {
+  const presentCount = Object.values(minute.attendance || {}).filter(s => s === 'present').length;
+
+  return (
+    <div className="fixed inset-0 z-[220] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-gray-900 border border-gray-800 rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
+        <div className="px-6 py-4 bg-gray-950 border-b border-gray-800 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Printer size={18} className="text-orange-500 shrink-0" />
+            <h3 className="font-black text-white text-sm sm:text-base truncate">Sitzungsprotokoll (Druckansicht)</h3>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => window.print()}
+              className="px-4 py-2 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 shadow-lg"
+            >
+              <Printer size={14} /> Drucken / PDF speichern
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-8 sm:p-12 flex-1 overflow-auto bg-white text-gray-900 space-y-8 select-text">
+          <div className="border-b-2 border-gray-900 pb-6 flex justify-between items-end">
+            <div>
+              <p className="text-xs font-black uppercase tracking-widest text-orange-600 mb-1">RüssSuuger Ämme • Vorstandsprotokoll</p>
+              <h1 className="text-3xl sm:text-4xl font-black text-gray-950 tracking-tight">{minute.title}</h1>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-bold text-gray-700">{minute.date ? new Date(minute.date).toLocaleDateString('de-CH', { dateStyle: 'long' }) : ''}</p>
+            </div>
+          </div>
+
+          {minute.attendance && Object.keys(minute.attendance).length > 0 && (
+            <div className="bg-gray-100 p-4 rounded-2xl border border-gray-200">
+              <p className="text-xs font-black uppercase tracking-wider text-gray-700 mb-2">Anwesenheit ({presentCount} anwesend)</p>
+              <div className="flex flex-wrap gap-2">
+                {users.filter(u => u.groups?.includes('Vorstand')).map(u => {
+                  const status = minute.attendance?.[u.id];
+                  if (!status) return null;
+                  const label = status === 'present' ? 'Anwesend' : status === 'absent' ? 'Unentschuldigt' : 'Entschuldigt';
+                  return (
+                    <span key={u.id} className="text-xs bg-white border border-gray-300 px-3 py-1 rounded-lg font-medium text-gray-800">
+                      <b>{u.firstName} {u.lastName}</b>: {label}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-6">
+            {TRAKTANDEN.map(t => {
+              const points = minute.traktanden?.[t];
+              if (!points || points.length === 0) return null;
+              return (
+                <div key={t} className="space-y-3">
+                  <h3 className="text-lg font-black text-gray-950 border-b border-gray-300 pb-1">{t}</h3>
+                  <div className="space-y-3 pl-2">
+                    {points.map((p, idx) => (
+                      <div key={p.id} className="space-y-1">
+                        <div className="flex items-start gap-2 text-sm">
+                          <span className="font-bold text-gray-500 shrink-0">{idx + 1}.</span>
+                          <div className="flex-1">
+                            {p.type && p.type !== 'info' && (
+                              <span className="inline-block text-[10px] font-black uppercase bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded mr-2">
+                                {p.type === 'decision' ? 'Beschluss' : 'Pendenz'}
+                              </span>
+                            )}
+                            {p.assignee && <span className="text-xs font-bold text-gray-600 mr-2">(@{p.assignee})</span>}
+                            <span className="whitespace-pre-wrap leading-relaxed">{p.text}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="pt-12 border-t border-gray-300 flex justify-between text-xs text-gray-500 font-medium">
+            <span>Protokoll RüssSuuger Ämme</span>
+            <span>Generiert am {new Date().toLocaleDateString('de-CH')}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- File Preview Modal ---
 function FilePreviewModal({ docItem, onClose }) {
   if (!docItem?.url) return null;
   const lowerName = (docItem.name || '').toLowerCase();
@@ -2446,77 +2454,6 @@ function FilePreviewModal({ docItem, onClose }) {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// --- Files View (Zuverlässige Dateiablage mit globaler Suche & Direkt-Vorschau) ---
-function FilesView({ folders, files, currentUser, notify, askConfirm }) {
-  const [selectedFolder, setSelectedFolder] = useState(null);
-  const [showNewFolder,  setShowNewFolder]  = useState(false);
-  const [folderName,     setFolderName]     = useState('');
-  const [uploading,      setUploading]      = useState({});
-  const [dragOver,       setDragOver]       = useState(false);
-  const [fileSearch,     setFileSearch]     = useState('');
-  const [previewDoc,     setPreviewDoc]     = useState(null);
-
-  const folderFiles = useMemo(() =>
-    selectedFolder ? files.filter(f => f.folderId === selectedFolder.id) : [],
-    [files, selectedFolder]
-  );
-
-  const globalMatchedFiles = useMemo(() => {
-    if (!fileSearch.trim()) return [];
-    const term = fileSearch.toLowerCase();
-    return files.filter(f => f.name?.toLowerCase().includes(term));
-  }, [files, fileSearch]);
-
-                    <button
-                      type="button"
-                      onClick={() => addPoint(traktandum)}
-                      className="w-full py-6 border-2 border-dashed border-gray-800 hover:border-orange-500/40 rounded-2xl text-gray-600 hover:text-orange-400 text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                    >
-                      <Plus size={16} /> Ersten Eintrag für {traktandum} erfassen
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {enlargedEditPoint && (
-        <div className="fixed inset-0 z-[100] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-3xl flex flex-col shadow-2xl h-[80vh] max-h-[800px]">
-            <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
-              <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedEditPoint.traktandum} – Fokussiertes Schreiben</h3>
-              <button onClick={() => setEnlargedEditPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90"><X size={20} /></button>
-            </div>
-            <div className="p-6 flex-1 flex flex-col">
-              <textarea
-                className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-2xl p-6 text-white focus:border-orange-500 outline-none resize-none leading-relaxed text-lg"
-                value={enlargedEditPoint.text}
-                onChange={e => setEnlargedEditPoint({...enlargedEditPoint, text: e.target.value})}
-                placeholder="Beschluss oder Notiz..."
-                autoFocus
-              />
-            </div>
-            <div className="p-5 border-t border-gray-800 bg-gray-950/50 rounded-b-3xl flex justify-end">
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  updatePoint(enlargedEditPoint.traktandum, enlargedEditPoint.id, 'text', enlargedEditPoint.text);
-                  setEnlargedEditPoint(null);
-                }}
-                className="w-full sm:w-auto px-8 py-4 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg"
-              >
-                Text übernehmen
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -2595,7 +2532,7 @@ function EventsView({ events, currentUser, isArchive = false, users, notify, ask
   );
 }
 
-// --- Event Detail (Unveränderte Voting-Logik) ---
+// --- Event Detail ---
 function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, isArchived, notify, askConfirm }) {
   const [showSurveyForm,   setShowSurveyForm]   = useState(false);
   const [editingSurvey,    setEditingSurvey]    = useState(null);
@@ -2959,7 +2896,7 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
   );
 }
 
-// --- Survey Card (Unveränderte Voting-Logik) ---
+// --- Survey Card ---
 function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete, onPresent, onMoveUp, onMoveDown, isEditing, onSaveEdit, onCancelEdit, users }) {
   const [selected, setSelected] = useState([]);
   const [voting,   setVoting]   = useState(false);
@@ -3306,18 +3243,26 @@ function MemberForm({ onSubmit, onCancel, initialData, inline = false }) {
   );
 }
 
-// --- Files View (Zuverlässige Dateiablage mit Storage + Firestore Fallback) ---
+// --- Files View ---
 function FilesView({ folders, files, currentUser, notify, askConfirm }) {
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [showNewFolder,  setShowNewFolder]  = useState(false);
   const [folderName,     setFolderName]     = useState('');
   const [uploading,      setUploading]      = useState({});
   const [dragOver,       setDragOver]       = useState(false);
+  const [fileSearch,     setFileSearch]     = useState('');
+  const [previewDoc,     setPreviewDoc]     = useState(null);
 
   const folderFiles = useMemo(() =>
     selectedFolder ? files.filter(f => f.folderId === selectedFolder.id) : [],
     [files, selectedFolder]
   );
+
+  const globalMatchedFiles = useMemo(() => {
+    if (!fileSearch.trim()) return [];
+    const term = fileSearch.toLowerCase();
+    return files.filter(f => f.name?.toLowerCase().includes(term));
+  }, [files, fileSearch]);
 
   const createFolder = async (e) => {
     e.preventDefault();
@@ -3475,7 +3420,6 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
         </form>
       )}
 
-      {/* Globale Dateisuche über alle Ordner hinweg */}
       {files.length > 0 && (
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
@@ -3644,7 +3588,7 @@ function FilesView({ folders, files, currentUser, notify, askConfirm }) {
   );
 }
 
-// --- Calendar View (Mit .ics Export für Einzeltermine & gesamten Kalender) ---
+// --- Calendar View ---
 function CalendarView({ calItems, currentUser, notify, askConfirm }) {
   const [showAdd,      setShowAdd]      = useState(false);
   const [editing,      setEditing]      = useState(null);
@@ -3738,7 +3682,6 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
       )}
 
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Kalender-Raster */}
         <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-xl">
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-950/40">
             <button onClick={() => setViewMonth(new Date(year, month - 1, 1))} className="p-2 bg-gray-800 rounded-xl hover:text-orange-500 transition-all active:scale-90">
@@ -3821,7 +3764,6 @@ function CalendarView({ calItems, currentUser, notify, askConfirm }) {
           )}
         </div>
 
-        {/* Nächste Termine & Einzel-ICS Download */}
         <div className="space-y-4">
           <h3 className="font-black text-white text-lg flex items-center gap-2">
             <Clock size={18} className="text-orange-500"/> Kommende Termine
