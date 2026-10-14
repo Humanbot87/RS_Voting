@@ -653,31 +653,6 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
     proceedWithUser(u);
   };
 
-  const handleNameSubmit = (e) => {
-    e.preventDefault();
-    const u = users.find(
-      x => x.firstName.trim().toLowerCase() === firstName.trim().toLowerCase() &&
-           x.lastName.trim().toLowerCase()  === lastName.trim().toLowerCase()
-    );
-    if (!u) { setError("Mitglied nicht gefunden."); return; }
-
-    const timeSinceLastSeen = Date.now() - (u.lastSeen || 0);
-    const savedSession = localStorage.getItem('ruesssuuger_sessionId');
-    const isMultiLoginAllowed = u.role === 'admin' || u.groups?.includes('Vorstand');
-    if (!isMultiLoginAllowed && u.isOnline && timeSinceLastSeen < 15000 && u.sessionId !== savedSession) {
-      setError("Dieses Mitglied ist bereits aktiv angemeldet. Bei Verbindungsabbruch bitte ca. 15 Sekunden warten.");
-      return;
-    }
-
-    if (u.groups?.includes('Vorstand')) {
-      setFoundUser(u);
-      setStep(!u.password ? 'setPassword' : 'password');
-      setError('');
-    } else {
-      finalizeLogin(u);
-    }
-  };
-
   const handlePasswordAction = async (e, type) => {
     e.preventDefault();
     setLoading(true);
@@ -2576,115 +2551,39 @@ function ReadingViewModal({ minute, users, onClose }) {
           </div>
         </div>
 
-        <div className="p-6 sm:p-12 flex-1 overflow-auto bg-white text-gray-900 space-y-8 select-text">
-          <div className="border-b-2 border-gray-900 pb-6 flex flex-col sm:flex-row justify-between sm:items-end gap-2">
-            <div>
-              <p className="text-xs font-black uppercase tracking-widest text-orange-600 mb-1">RüssSuuger Ämme • Vorstandsprotokoll</p>
-              <h1 className="text-2xl sm:text-4xl font-black text-gray-950 tracking-tight">{minute.title}</h1>
-            </div>
-            <div className="text-left sm:text-right">
-              <p className="text-sm font-bold text-gray-700">{minute.date ? new Date(minute.date).toLocaleDateString('de-CH', { dateStyle: 'long' }) : ''}</p>
-            </div>
-          </div>
-
-          {minute.attendance && Object.keys(minute.attendance).length > 0 && (
-            <div className="bg-gray-100 p-4 rounded-2xl border border-gray-200">
-              <p className="text-xs font-black uppercase tracking-wider text-gray-700 mb-2">Anwesenheit ({presentCount} anwesend)</p>
-              <div className="flex flex-wrap gap-2">
-                {users.filter(u => u.groups?.includes('Vorstand')).map(u => {
-                  const status = minute.attendance?.[u.id];
-                  if (!status) return null;
-                  const label = status === 'present' ? 'Anwesend' : status === 'absent' ? 'Unentschuldigt' : 'Entschuldigt';
-                  return (
-                    <span key={u.id} className="text-xs bg-white border border-gray-300 px-3 py-1.5 rounded-lg font-medium text-gray-800">
-                      <b>{u.firstName} {u.lastName}</b>: {label}
-                    </span>
-                  );
-                })}
-              </div>
+        <div className="p-6 flex-1 overflow-auto flex items-center justify-center bg-gray-950/60 min-h-[320px]">
+          {isImage ? (
+            <img
+              src={docItem.url}
+              alt={docItem.name}
+              className="max-h-[72vh] max-w-full object-contain rounded-2xl shadow-xl"
+            />
+          ) : isPdf ? (
+            <iframe
+              src={docItem.url}
+              title={docItem.name || 'PDF Vorschau'}
+              className="w-full h-[72vh] rounded-2xl border border-gray-800 bg-white"
+            />
+          ) : (
+            <div className="text-center py-12 space-y-4">
+              <File size={48} className="mx-auto text-orange-500/60" />
+              <p className="text-gray-300 font-bold text-sm">
+                Für diesen Dateityp ist keine direkte Browser-Vorschau verfügbar.
+              </p>
+              <button
+                onClick={() => triggerFileDownload(docItem.url, docItem.name || 'Dokument')}
+                className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-xs inline-flex items-center gap-2 shadow-lg min-h-[44px]"
+              >
+                <Download size={16} /> Datei jetzt herunterladen
+              </button>
             </div>
           )}
-
-          <div className="space-y-6">
-            {TRAKTANDEN.map(t => {
-              const points = minute.traktanden?.[t];
-              if (!points || points.length === 0) return null;
-              return (
-                <div key={t} className="space-y-3">
-                  <h3 className="text-lg font-black text-gray-950 border-b border-gray-300 pb-1">{t}</h3>
-                  <div className="space-y-3 pl-2">
-                    {points.map((p, idx) => (
-                      <div key={p.id} className="space-y-1">
-                        <div className="flex items-start gap-2 text-sm">
-                          <span className="font-bold text-gray-500 shrink-0">{idx + 1}.</span>
-                          <div className="flex-1">
-                            {p.type && p.type !== 'info' && (
-                              <span className="inline-block text-[10px] font-black uppercase bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded mr-2">
-                                {p.type === 'decision' ? 'Beschluss' : 'Pendenz'}
-                              </span>
-                            )}
-                            {p.assignee && <span className="text-xs font-bold text-gray-600 mr-2">(@{p.assignee})</span>}
-                            <span className="whitespace-pre-wrap leading-relaxed">{p.text}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="pt-12 border-t border-gray-300 flex justify-between text-xs text-gray-500 font-medium">
-            <span>Protokoll RüssSuuger Ämme</span>
-            <span>Generiert am {new Date().toLocaleDateString('de-CH')}</span>
-          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function FilePreviewModal({ docItem, onClose }) {
-  if (!docItem?.url) return null;
-  const lowerName = (docItem.name || '').toLowerCase();
-  const isImage =
-    docItem.type?.startsWith('image/') ||
-    /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(lowerName) ||
-    docItem.url.startsWith('data:image/');
-  const isPdf =
-    docItem.type?.includes('pdf') ||
-    /\.pdf$/i.test(lowerName) ||
-    docItem.url.startsWith('data:application/pdf');
-
-  return (
-    <div
-      className="fixed inset-0 z-[220] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
-      onClick={onClose}
-    >
-      <div
-        className="bg-gray-900 border border-gray-800 rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="px-6 py-4 bg-gray-950 border-b border-gray-800 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <FileText size={18} className="text-orange-500 shrink-0" />
-            <h3 className="font-black text-white text-sm sm:text-base truncate">{docItem.name || 'Dokument-Vorschau'}</h3>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => triggerFileDownload(docItem.url, docItem.name || 'Dokument')}
-              className="px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 min-h-[44px]"
-            >
-              <Download size={14} /> Herunterladen
-            </button>
-            <button
-              onClick={onClose}
-              className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
-            >
-              <X size={18} />
-            </button>
-          </div>
 function TabButton({ active, onClick, icon, label, badge = 0 }) {
   return (
     <button onClick={onClick} className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold transition-all whitespace-nowrap active:scale-95 min-h-[44px] ${active ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/20' : 'bg-gray-900 text-gray-500 hover:text-gray-300 hover:bg-gray-800'}`}>
