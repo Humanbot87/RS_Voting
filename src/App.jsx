@@ -7,7 +7,6 @@ import {
   Folder, FolderPlus, FileText, File, CalendarDays, MapPin, Clock,
   Printer, CheckCircle2, AlertTriangle, Info, Filter, Sparkles, Share2, QrCode, Play
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
 import { auth, db, storage, appId } from './firebase';
 import { 
   signInWithCustomToken, 
@@ -958,7 +957,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
 
   return (
     <div className="space-y-6">
-      {}
       {liveDraft && (
         <div className="bg-gradient-to-r from-orange-500/20 via-orange-500/10 to-gray-900 border-2 border-orange-500/60 rounded-3xl p-5 sm:p-6 shadow-2xl animate-in fade-in duration-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start sm:items-center gap-4">
@@ -1005,7 +1003,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         </div>
       )}
 
-      {}
       <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 border border-gray-800 rounded-3xl p-5 sm:p-8 shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -1076,7 +1073,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         )}
       </div>
 
-      {}
       {(onlyOpenTasks || onlyMyTasks) && displayedTasks.length > 0 && (
         <div className="bg-orange-500/5 border border-orange-500/30 rounded-3xl p-5 sm:p-6 space-y-3 animate-in fade-in">
           <div className="flex items-center justify-between">
@@ -1146,7 +1142,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         </div>
       )}
 
-      {}
       {stats.totalMinutes > 0 && (
         <div className="space-y-3 animate-in fade-in">
           <div className="flex flex-col sm:flex-row gap-3">
@@ -1204,7 +1199,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         </div>
       )}
 
-      {}
       <div className="grid gap-4">
         {minutes.length === 0 ? (
           <div className="space-y-4">
@@ -2820,7 +2814,10 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
             </div>
 
             <div className="bg-white p-6 rounded-3xl shadow-2xl inline-block mx-auto border-4 border-orange-500/20">
-              <QRCodeSVG value={currentUrl} size={200} includeMargin={true} />
+              <div className="w-48 h-48 bg-gray-950 rounded-2xl flex flex-col items-center justify-center text-center p-4">
+                <QrCode size={80} className="text-orange-500 mb-2" />
+                <span className="text-[10px] text-gray-400 font-bold break-all">{currentUrl}</span>
+              </div>
               <p className="text-[11px] font-black uppercase tracking-widest text-gray-950 mt-3">Portal öffnen</p>
             </div>
 
