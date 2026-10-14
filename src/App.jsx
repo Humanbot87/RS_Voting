@@ -85,6 +85,24 @@ const triggerFileDownload = (url, fileName = 'Dokument') => {
   document.body.removeChild(link);
 };
 
+// Hilfsfunktion: Text in die Zwischenablage kopieren (kompatibel mit iFrames & allen Browsern)
+const copyTextToClipboard = (text) => {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  let success = false;
+  try {
+    success = document.execCommand('copy');
+  } catch (err) {
+    success = false;
+  }
+  document.body.removeChild(textarea);
+  return success;
+};
+
 // --- ICS Kalender Export Funktionen ---
 const escapeICS = (str = '') =>
   String(str)
@@ -729,6 +747,8 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
   const [showAdd,        setShowAdd]        = useState(false);
   const [searchTerm,     setSearchTerm]     = useState('');
   const [roleFilter,     setRoleFilter]     = useState('Alle');
+  const [yearFilter,     setYearFilter]     = useState('Alle');
+  const [onlyOpenTasks,  setOnlyOpenTasks]  = useState(false);
   const [expandedId,     setExpandedId]     = useState(null);
   const [enlargedPoint,  setEnlargedPoint]  = useState(null);
   const [readingMinute,  setReadingMinute]  = useState(null);
@@ -746,29 +766,70 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
     'Aktuar':        { badge: 'bg-blue-500/15 text-blue-400 border-blue-500/30',       dot: 'bg-blue-500' },
   };
 
-  // Kennzahlen berechnen
-  const stats = useMemo(() => {
+  // Punkt-Typen (Info, Beschluss, Pendenz)
+  const pointTypeMeta = {
+    'info':     { label: 'Info',      style: 'bg-gray-800 text-gray-300 border-gray-700' },
+    'decision': { label: 'Beschluss', style: 'bg-green-500/15 text-green-400 border-green-500/30' },
+    'todo':     { label: 'Pendenz',   style: 'bg-orange-500/15 text-orange-400 border-orange-500/30' },
+    'done':     { label: 'Erledigt',  style: 'bg-emerald-500/10 text-emerald-400/70 border-emerald-500/20' },
+  };
+
+  // Verfügbare Sitzungsjahre ermitteln
+  const availableYears = useMemo(() => {
+    const years = new Set();
+    minutes.forEach(m => {
+      if (m.date) years.add(m.date.slice(0, 4));
+    });
+    return ['Alle', ...Array.from(years).sort((a, b) => b.localeCompare(a))];
+  }, [minutes]);
+
+  // Kennzahlen & Offene Pendenzen berechnen
+  const { stats, openTasksList } = useMemo(() => {
     let totalPoints = 0;
     let totalAttachments = 0;
-    minutes.forEach(m => {
+    let openTodos = 0;
+    const tasks = [];
+
+    const sortedMins = [...minutes].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    sortedMins.forEach(m => {
       if (m.traktanden) {
-        Object.values(m.traktanden).forEach(list => {
-          totalPoints += list?.length || 0;
-          list?.forEach(p => { if (p.docUrl) totalAttachments++; });
+        TRAKTANDEN.forEach(tName => {
+          const list = m.traktanden[tName] || [];
+          totalPoints += list.length;
+          list.forEach(p => {
+            if (p.docUrl) totalAttachments++;
+            if (p.type === 'todo' && !p.done) {
+              openTodos++;
+              tasks.push({
+                minuteId: m.id,
+                minuteTitle: m.title,
+                minuteDate: m.date,
+                traktandum: tName,
+                point: p
+              });
+            }
+          });
         });
       }
     });
     return {
-      totalMinutes: minutes.length,
-      totalPoints,
-      totalAttachments
+      stats: { totalMinutes: minutes.length, totalPoints, totalAttachments, openTodos },
+      openTasksList: tasks
     };
   }, [minutes]);
 
   const filteredMinutes = useMemo(() => {
     let sorted = [...minutes].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    if (yearFilter !== 'Alle') {
+      sorted = sorted.filter(m => (m.date || '').startsWith(yearFilter));
+    }
     if (roleFilter !== 'Alle') {
       sorted = sorted.filter(m => (m.traktanden?.[roleFilter]?.length || 0) > 0);
+    }
+    if (onlyOpenTasks) {
+      sorted = sorted.filter(m =>
+        m.traktanden && Object.values(m.traktanden).some(pts => pts?.some(p => p.type === 'todo' && !p.done))
+      );
     }
     if (!searchTerm.trim()) return sorted;
     const term = searchTerm.toLowerCase();
@@ -776,19 +837,69 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
       if (m.title?.toLowerCase().includes(term)) return true;
       if (m.traktanden) {
         for (const points of Object.values(m.traktanden)) {
-          if (points.some(p => p.text?.toLowerCase().includes(term) || p.docName?.toLowerCase().includes(term))) return true;
+          if (points.some(p =>
+            p.text?.toLowerCase().includes(term) ||
+            p.docName?.toLowerCase().includes(term) ||
+            p.assignee?.toLowerCase().includes(term)
+          )) return true;
         }
       }
       return false;
     });
-  }, [minutes, searchTerm, roleFilter]);
+  }, [minutes, searchTerm, roleFilter, yearFilter, onlyOpenTasks]);
 
   const saveProtocol = async (p) => {
     const id = p.id || Date.now().toString();
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', id), { ...p, id });
+    localStorage.removeItem('ruesssuuger_protocol_draft');
     setShowAdd(false);
     setEditing(null);
     notify("Protokoll erfolgreich gespeichert.", "success");
+  };
+
+  // Direktes Abhaken einer Pendenz in der Leseansicht
+  const toggleTaskDone = async (minute, traktandum, pointId) => {
+    const updatedList = (minute.traktanden?.[traktandum] || []).map(p =>
+      p.id === pointId ? { ...p, done: !p.done } : p
+    );
+    const updatedMinute = {
+      ...minute,
+      traktanden: { ...minute.traktanden, [traktandum]: updatedList }
+    };
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', minute.id), updatedMinute);
+    notify("Pendenzen-Status aktualisiert.", "success");
+  };
+
+  // Kompakte Zusammenfassung für WhatsApp-Vorstandschat oder E-Mail kopieren
+  const copyProtocolSummary = (m) => {
+    const dateStr = m.date ? new Date(m.date).toLocaleDateString('de-CH') : '';
+    const lines = [
+      `📋 *RüssSuuger Ämme – ${m.title}* (${dateStr})`,
+      ''
+    ];
+    const presentNames = users
+      .filter(u => u.groups?.includes('Vorstand') && m.attendance?.[u.id] === 'present')
+      .map(u => u.firstName);
+    if (presentNames.length > 0) {
+      lines.push(`👥 *Anwesend:* ${presentNames.join(', ')}`, '');
+    }
+    TRAKTANDEN.forEach(t => {
+      const pts = m.traktanden?.[t] || [];
+      if (pts.length > 0) {
+        lines.push(`*${t}:*`);
+        pts.forEach((p, idx) => {
+          const prefix = p.type === 'decision' ? '✅ [Beschluss] ' : p.type === 'todo' ? (p.done ? '☑️ [Erledigt] ' : '⏳ [Pendenz] ') : '• ';
+          const who = p.assignee ? ` (@${p.assignee})` : '';
+          lines.push(`${prefix}${p.text}${who}`);
+        });
+        lines.push('');
+      }
+    });
+    if (copyTextToClipboard(lines.join('\n').trim())) {
+      notify("Zusammenfassung für WhatsApp / E-Mail kopiert!", "success");
+    } else {
+      notify("Kopieren fehlgeschlagen.", "error");
+    }
   };
 
   const highlightText = (text = '', highlight = '') => {
@@ -851,7 +962,7 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
               <ClipboardList size={12} /> Vorstands-Dokumentation
             </div>
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Vorstands-Protokolle</h2>
-            <p className="text-gray-400 text-sm mt-1">Strukturierte Sitzungsprotokolle, Traktanden & Beschlüsse</p>
+            <p className="text-gray-400 text-sm mt-1">Strukturierte Sitzungsprotokolle, Beschlüsse & Pendenzen-Tracking</p>
           </div>
           <button
             onClick={() => setShowAdd(true)}
@@ -863,14 +974,29 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
 
         {/* Statistik-Leiste */}
         {minutes.length > 0 && (
-          <div className="grid grid-cols-3 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
             <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Sitzungen</p>
               <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalMinutes}</p>
             </div>
             <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Traktanden-Punkte</p>
-              <p className="text-xl sm:text-2xl font-black text-orange-500 mt-1">{stats.totalPoints}</p>
+              <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalPoints}</p>
+            </div>
+            <div
+              onClick={() => setOnlyOpenTasks(!onlyOpenTasks)}
+              className={`rounded-2xl p-3.5 sm:p-4 border cursor-pointer transition-all ${
+                onlyOpenTasks
+                  ? 'bg-orange-500/15 border-orange-500'
+                  : 'bg-gray-950/70 border-gray-800/80 hover:border-orange-500/40'
+              }`}
+              title="Klicken, um nach offenen Pendenzen zu filtern"
+            >
+              <p className="text-[10px] font-black uppercase tracking-widest text-orange-400 flex items-center justify-between">
+                <span>Offene Pendenzen</span>
+                {onlyOpenTasks && <span className="text-[9px] bg-orange-500 text-gray-950 px-1.5 py-0.5 rounded font-black">Filter aktiv</span>}
+              </p>
+              <p className="text-xl sm:text-2xl font-black text-orange-500 mt-1">{stats.openTodos}</p>
             </div>
             <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Beilagen / Dateien</p>
@@ -880,22 +1006,99 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
         )}
       </div>
 
-      {/* Suchfeld & Ressort-Filter */}
+      {/* Offene Pendenzen Schnell-Übersicht (wenn vorhanden & aktiviert) */}
+      {onlyOpenTasks && openTasksList.length > 0 && (
+        <div className="bg-orange-500/5 border border-orange-500/30 rounded-3xl p-5 sm:p-6 space-y-3 animate-in fade-in">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black uppercase tracking-widest text-orange-400 flex items-center gap-2">
+              <Sparkles size={16} /> Alle offenen Vorstands-Pendenzen ({openTasksList.length})
+            </h3>
+            <button
+              onClick={() => setOnlyOpenTasks(false)}
+              className="text-xs text-gray-400 hover:text-white font-bold"
+            >
+              Filter zurücksetzen
+            </button>
+          </div>
+          <div className="grid gap-2.5">
+            {openTasksList.map(item => {
+              const targetMinute = minutes.find(x => x.id === item.minuteId);
+              return (
+                <div
+                  key={item.point.id}
+                  className="bg-gray-900 border border-gray-800 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <button
+                      onClick={() => targetMinute && toggleTaskDone(targetMinute, item.traktandum, item.point.id)}
+                      title="Als erledigt markieren"
+                      className="mt-0.5 w-5 h-5 rounded-lg border-2 border-orange-500 flex items-center justify-center hover:bg-orange-500/20 shrink-0 transition-all"
+                    />
+                    <div>
+                      <p className="text-sm font-bold text-white leading-snug">{item.point.text}</p>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <span className="text-[10px] font-black uppercase text-orange-400">{item.traktandum}</span>
+                        {item.point.assignee && (
+                          <span className="text-[10px] font-bold bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-300">
+                            Verantwortlich: {item.point.assignee}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-gray-500">
+                          aus «{item.minuteTitle}» ({new Date(item.minuteDate).toLocaleDateString('de-CH')})
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setExpandedId(item.minuteId);
+                      setOnlyOpenTasks(false);
+                    }}
+                    className="text-xs font-bold text-orange-500 hover:underline self-end sm:self-center shrink-0"
+                  >
+                    Zum Protokoll →
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Suchfeld, Jahres- & Ressort-Filter */}
       {minutes.length > 0 && (
         <div className="space-y-3 animate-in fade-in">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
-            <input
-              type="text"
-              placeholder="Protokolle nach Stichworten, Beschlüssen oder Dokumentnamen durchsuchen..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-4 pl-12 pr-12 text-white focus:border-orange-500 outline-none shadow-lg transition-all text-sm"
-            />
-            {searchTerm && (
-              <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white p-1">
-                <X size={18} />
-              </button>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+              <input
+                type="text"
+                placeholder="Nach Stichworten, Beschlüssen, Verantwortlichen oder Dateien suchen..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-4 pl-12 pr-12 text-white focus:border-orange-500 outline-none shadow-lg transition-all text-sm"
+              />
+              {searchTerm && (
+                <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white p-1">
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+
+            {availableYears.length > 2 && (
+              <div className="flex items-center gap-1.5 bg-gray-900 border border-gray-800 rounded-2xl p-1.5 shrink-0 overflow-x-auto">
+                {availableYears.map(yr => (
+                  <button
+                    key={yr}
+                    onClick={() => setYearFilter(yr)}
+                    className={`px-3.5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${
+                      yearFilter === yr ? 'bg-orange-500 text-gray-950' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {yr === 'Alle' ? 'Alle Jahre' : yr}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 
@@ -920,6 +1123,7 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
         </div>
       )}
 
+      {}
       {/* Protokoll-Karten */}
       <div className="grid gap-4">
         {filteredMinutes.map(m => {
@@ -933,6 +1137,10 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
           const totalPointsCount = activeTraktanden.reduce((sum, t) => sum + (m.traktanden?.[t]?.length || 0), 0);
           const totalDocsCount = activeTraktanden.reduce(
             (sum, t) => sum + (m.traktanden?.[t]?.filter(p => p.docUrl)?.length || 0),
+            0
+          );
+          const openTodoCount = activeTraktanden.reduce(
+            (sum, t) => sum + (m.traktanden?.[t]?.filter(p => p.type === 'todo' && !p.done)?.length || 0),
             0
           );
           const presentCount = Object.values(m.attendance || {}).filter(s => s === 'present').length;
@@ -960,9 +1168,14 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
                   {/* Titel & Metadaten */}
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                      <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-md bg-orange-500/10 text-orange-400 border border-orange-500/20">
-                        {totalPointsCount} {totalPointsCount === 1 ? 'Beschluss' : 'Beschlüsse'}
+                      <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-md bg-gray-800 text-gray-300 border border-gray-700">
+                        {totalPointsCount} {totalPointsCount === 1 ? 'Eintrag' : 'Einträge'}
                       </span>
+                      {openTodoCount > 0 && (
+                        <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-md bg-orange-500/15 text-orange-400 border border-orange-500/30">
+                          {openTodoCount} {openTodoCount === 1 ? 'Pendenz offen' : 'Pendenzen offen'}
+                        </span>
+                      )}
                       {presentCount > 0 && (
                         <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-md bg-green-500/10 text-green-400 border border-green-500/20 flex items-center gap-1">
                           <UserCheck size={11} /> {presentCount} Anwesend
@@ -997,6 +1210,13 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
 
                 {/* Aktions-Buttons */}
                 <div className="flex items-center gap-2 shrink-0 justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-800/80" onClick={e => e.stopPropagation()}>
+                  <button
+                    onClick={() => copyProtocolSummary(m)}
+                    title="Zusammenfassung für WhatsApp / E-Mail kopieren"
+                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 hover:border-orange-500/40 rounded-2xl transition-all active:scale-90"
+                  >
+                    <Share2 size={18} />
+                  </button>
                   <button
                     onClick={() => setReadingMinute(m)}
                     title="Lese- & Druckansicht (PDF)"
@@ -1094,37 +1314,80 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
                           </div>
 
                           <div className="p-4 sm:p-6 space-y-3">
-                            {points.map((p, idx) => (
-                              <div
-                                key={p.id}
-                                className="bg-gray-950 p-4 sm:p-5 rounded-2xl border border-gray-800/90 hover:border-gray-700 transition-all relative group flex gap-3.5"
-                              >
-                                <span className="text-xs font-black text-gray-600 bg-gray-900 border border-gray-800 w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
-                                  {idx + 1}
-                                </span>
-                                <div className="flex-1 min-w-0 pr-8">
-                                  <p className="text-gray-200 text-sm sm:text-base whitespace-pre-wrap leading-relaxed break-words">
-                                    {highlightText(p.text, searchTerm)}
-                                  </p>
-                                  {p.docUrl && (
+                            {points.map((p, idx) => {
+                              const pType = p.type === 'todo' && p.done ? 'done' : (p.type || 'info');
+                              const typeBadge = pointTypeMeta[pType] || pointTypeMeta.info;
+
+                              return (
+                                <div
+                                  key={p.id}
+                                  className={`bg-gray-950 p-4 sm:p-5 rounded-2xl border transition-all relative group flex gap-3.5 ${
+                                    p.type === 'todo' && !p.done
+                                      ? 'border-orange-500/40'
+                                      : p.type === 'decision'
+                                      ? 'border-green-500/30'
+                                      : 'border-gray-800/90 hover:border-gray-700'
+                                  }`}
+                                >
+                                  {p.type === 'todo' ? (
                                     <button
                                       type="button"
-                                      onClick={() => triggerFileDownload(p.docUrl, p.docName || 'Protokoll-Anhang')}
-                                      className="mt-3.5 inline-flex items-center gap-2 text-xs font-bold text-orange-400 hover:text-orange-300 bg-orange-500/10 px-3.5 py-2 rounded-xl border border-orange-500/20 transition-all hover:scale-[1.02] active:scale-95"
+                                      onClick={() => toggleTaskDone(m, t, p.id)}
+                                      title={p.done ? 'Als offen markieren' : 'Pendenz als erledigt abhaken'}
+                                      className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all ${
+                                        p.done
+                                          ? 'bg-emerald-500 border-emerald-500 text-gray-950'
+                                          : 'border-orange-500 hover:bg-orange-500/20 text-transparent'
+                                      }`}
                                     >
-                                      <Paperclip size={14} /> {p.docName || 'Dokument herunterladen'}
+                                      <Check size={15} strokeWidth={3.5} />
                                     </button>
+                                  ) : (
+                                    <span className="text-xs font-black text-gray-600 bg-gray-900 border border-gray-800 w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                                      {idx + 1}
+                                    </span>
                                   )}
+
+                                  <div className="flex-1 min-w-0 pr-8">
+                                    {(p.type && p.type !== 'info') || p.assignee ? (
+                                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                                        {p.type && p.type !== 'info' && (
+                                          <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border ${typeBadge.style}`}>
+                                            {typeBadge.label}
+                                          </span>
+                                        )}
+                                        {p.assignee && (
+                                          <span className="text-[10px] font-bold bg-gray-900 border border-gray-800 text-gray-300 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                            <Users size={10} className="text-orange-500" /> {highlightText(p.assignee, searchTerm)}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : null}
+
+                                    <p className={`text-sm sm:text-base whitespace-pre-wrap leading-relaxed break-words ${p.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>
+                                      {highlightText(p.text, searchTerm)}
+                                    </p>
+
+                                    {p.docUrl && (
+                                      <button
+                                        type="button"
+                                        onClick={() => triggerFileDownload(p.docUrl, p.docName || 'Protokoll-Anhang')}
+                                        className="mt-3.5 inline-flex items-center gap-2 text-xs font-bold text-orange-400 hover:text-orange-300 bg-orange-500/10 px-3.5 py-2 rounded-xl border border-orange-500/20 transition-all hover:scale-[1.02] active:scale-95"
+                                      >
+                                        <Paperclip size={14} /> {p.docName || 'Dokument herunterladen'}
+                                      </button>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setEnlargedPoint({ traktandum: t, index: idx + 1, ...p }); }}
+                                    title="Grossansicht"
+                                    className="absolute top-3.5 right-3.5 p-2 bg-gray-900 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100"
+                                  >
+                                    <Maximize2 size={15} />
+                                  </button>
                                 </div>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setEnlargedPoint({ traktandum: t, index: idx + 1, ...p }); }}
-                                  title="Grossansicht"
-                                  className="absolute top-3.5 right-3.5 p-2 bg-gray-900 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100"
-                                >
-                                  <Maximize2 size={15} />
-                                </button>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -1136,7 +1399,7 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
           );
         })}
 
-        {filteredMinutes.length === 0 && (searchTerm || roleFilter !== 'Alle') && (
+        {filteredMinutes.length === 0 && (searchTerm || roleFilter !== 'Alle' || yearFilter !== 'Alle' || onlyOpenTasks) && (
           <div className="text-center py-12 text-gray-500 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
             Keine passenden Protokolle für deine aktuelle Filterauswahl gefunden.
           </div>
@@ -1266,17 +1529,42 @@ function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
   );
 }
 
-// --- Protocol Editor (Redesigned & Aufgewertet) ---
+// --- Protocol Editor (Redesigned & Aufgewertet mit Auto-Save & Pendenzen-Zuweisung) ---
 function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
-  const [form, setForm] = useState(initialData || {
-    title: '',
-    date: new Date().toISOString().split('T')[0],
-    attendance: {},
-    traktanden: TRAKTANDEN.reduce((acc, curr) => ({ ...acc, [curr]: [] }), {})
+  const [form, setForm] = useState(() => {
+    if (initialData) return initialData;
+    const savedDraft = localStorage.getItem('ruesssuuger_protocol_draft');
+    if (savedDraft) {
+      try {
+        const parsed = JSON.parse(savedDraft);
+        if (parsed && (parsed.title || Object.values(parsed.traktanden || {}).some(arr => arr?.length > 0))) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+    return {
+      title: '',
+      date: new Date().toISOString().split('T')[0],
+      attendance: {},
+      traktanden: TRAKTANDEN.reduce((acc, curr) => ({ ...acc, [curr]: [] }), {})
+    };
   });
   const [uploading,         setUploading]         = useState({});
   const [enlargedEditPoint, setEnlargedEditPoint] = useState(null);
   const [activeTraktandum,  setActiveTraktandum]  = useState('Alle');
+  const [draftSavedAt,      setDraftSavedAt]      = useState(null);
+
+  // Automatische Entwurf-Zwischenspeicherung im Browser (Schutz vor Datenverlust während der Sitzung)
+  useEffect(() => {
+    if (initialData) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('ruesssuuger_protocol_draft', JSON.stringify(form));
+        setDraftSavedAt(new Date().toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }));
+      } catch (e) {}
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [form, initialData]);
 
   const updateAttendance = (userId, status) =>
     setForm(prev => ({ ...prev, attendance: { ...prev.attendance, [userId]: status } }));
@@ -1287,11 +1575,17 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
     setForm(prev => ({ ...prev, attendance: next }));
   };
 
-  const addPoint = (traktandum) => {
+  const addPoint = (traktandum, defaultType = 'info') => {
     const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
     setForm(prev => ({
       ...prev,
-      traktanden: { ...prev.traktanden, [traktandum]: [...(prev.traktanden[traktandum] || []), { id, text: '', docUrl: '', docName: '' }] }
+      traktanden: {
+        ...prev.traktanden,
+        [traktandum]: [
+          ...(prev.traktanden[traktandum] || []),
+          { id, text: '', type: defaultType, assignee: '', done: false, docUrl: '', docName: '' }
+        ]
+      }
     }));
   };
 
@@ -1388,16 +1682,36 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
       {/* Kopfzeile des Protokoll-Editors */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gray-900 p-5 sm:p-8 rounded-3xl border border-gray-800 shadow-2xl">
         <div className="flex-1 space-y-4 w-full">
-          <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 inline-block">
-            {initialData ? 'Protokoll bearbeiten' : 'Neues Sitzungsprotokoll'}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 inline-block">
+              {initialData ? 'Protokoll bearbeiten' : 'Neues Sitzungsprotokoll'}
+            </span>
+            {!initialData && draftSavedAt && (
+              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                ✓ Entwurf lokal gesichert ({draftSavedAt})
+              </span>
+            )}
+          </div>
           <input
             className="w-full bg-transparent text-2xl sm:text-4xl font-black text-white border-b-2 border-gray-800 focus:border-orange-500 outline-none pb-2 transition-all placeholder:text-gray-700"
             placeholder="z.B. 4. Vorstandssitzung 2026..."
             value={form.title}
             onChange={e => setForm({...form, title: e.target.value})}
           />
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-black uppercase text-gray-600 mr-1">Schnell-Titel:</span>
+            {['Vorstandssitzung', 'Sujetsitzung', 'Kader- & Musikkommission', 'GV-Vorbereitung'].map(preset => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setForm(prev => ({ ...prev, title: `${preset} vom ${new Date(prev.date || Date.now()).toLocaleDateString('de-CH')}` }))}
+                className="text-[10px] font-bold bg-gray-950 hover:bg-gray-800 text-gray-400 hover:text-white border border-gray-800 px-2.5 py-1 rounded-lg transition-all"
+              >
+                + {preset}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-3 pt-1">
             <Calendar className="text-orange-500 shrink-0" size={18} />
             <span className="text-xs font-bold text-gray-500 uppercase">Sitzungsdatum:</span>
             <input
@@ -1517,7 +1831,7 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
             const points = form.traktanden[traktandum] || [];
             return (
               <div key={traktandum} className="bg-gray-900 border border-gray-800 rounded-3xl shadow-xl overflow-hidden">
-                <div className="px-5 sm:px-7 py-5 bg-gray-950/50 border-b border-gray-800 flex justify-between items-center gap-2">
+                <div className="px-5 sm:px-7 py-5 bg-gray-950/50 border-b border-gray-800 flex flex-wrap justify-between items-center gap-2">
                   <div>
                     <h3 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-2.5">
                       <span className="w-2 h-5 bg-orange-500 rounded-full" />
@@ -1527,25 +1841,114 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
                       {points.length === 0 ? 'Noch keine Einträge' : `${points.length} ${points.length === 1 ? 'Traktandenpunkt' : 'Traktandenpunkte'}`}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => addPoint(traktandum)}
-                    className="px-4 py-2.5 bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 flex items-center gap-1.5 shrink-0"
-                  >
-                    <Plus size={16} /> Punkt hinzufügen
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => addPoint(traktandum, 'info')}
+                      className="px-3.5 py-2 bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 flex items-center gap-1"
+                    >
+                      <Plus size={15} /> Punkt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => addPoint(traktandum, 'decision')}
+                      className="px-3 py-2 bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 hidden sm:flex items-center gap-1"
+                    >
+                      + Beschluss
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => addPoint(traktandum, 'todo')}
+                      className="px-3 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 hidden sm:flex items-center gap-1"
+                    >
+                      + Pendenz
+                    </button>
+                  </div>
                 </div>
 
                 <div className="p-5 sm:p-7 space-y-4">
                   {points.map((point, index) => (
                     <div key={point.id} className="p-4 sm:p-5 bg-gray-950 border border-gray-800 rounded-2xl space-y-4 group focus-within:border-orange-500/50 transition-colors">
+                      {/* Typ-Auswahl (Info / Beschluss / Pendenz) & Verantwortliche Person */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-900">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-6 h-6 rounded-lg bg-gray-900 border border-gray-800 text-orange-500 font-black text-[11px] flex items-center justify-center shrink-0 mr-1">
+                            #{index + 1}
+                          </span>
+                          {[
+                            { id: 'info',     label: 'Info',      activeClass: 'bg-gray-800 text-white border-gray-600' },
+                            { id: 'decision', label: 'Beschluss', activeClass: 'bg-green-500/20 text-green-400 border-green-500/50' },
+                            { id: 'todo',     label: 'Pendenz',   activeClass: 'bg-orange-500/20 text-orange-400 border-orange-500/50' },
+                          ].map(tOpt => (
+                            <button
+                              key={tOpt.id}
+                              type="button"
+                              onClick={() => updatePoint(traktandum, point.id, 'type', tOpt.id)}
+                              className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg border transition-all ${
+                                (point.type || 'info') === tOpt.id
+                                  ? tOpt.activeClass
+                                  : 'bg-gray-900/50 text-gray-600 border-gray-800 hover:text-gray-400'
+                              }`}
+                            >
+                              {tOpt.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={point.assignee || ''}
+                            onChange={e => updatePoint(traktandum, point.id, 'assignee', e.target.value)}
+                            className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1 text-[11px] font-bold text-gray-300 focus:border-orange-500 outline-none"
+                            title="Verantwortliches Vorstandsmitglied zuweisen"
+                          >
+                            <option value="">Verantwortlich (optional)...</option>
+                            {vorstand.map(v => (
+                              <option key={v.id} value={`${v.firstName} ${v.lastName}`}>
+                                {v.firstName} {v.lastName}
+                              </option>
+                            ))}
+                            <option value="Gesamtvorstand">Gesamtvorstand</option>
+                          </select>
+
+                          <button
+                            type="button"
+                            onClick={() => setEnlargedEditPoint({ traktandum, id: point.id, text: point.text })}
+                            title="Im Vollbild bearbeiten"
+                            className="p-1.5 text-gray-500 hover:text-orange-500 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                          >
+                            <Maximize2 size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => movePoint(traktandum, index, -1)}
+                            disabled={index === 0}
+                            className="p-1.5 text-gray-500 hover:text-orange-500 disabled:opacity-30 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                          >
+                            <ArrowUp size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => movePoint(traktandum, index, 1)}
+                            disabled={index === points.length - 1}
+                            className="p-1.5 text-gray-500 hover:text-orange-500 disabled:opacity-30 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                          >
+                            <ArrowDown size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removePoint(traktandum, point.id)}
+                            className="p-1.5 text-gray-500 hover:text-red-500 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+
                       <div className="flex items-start gap-3">
-                        <span className="w-7 h-7 rounded-lg bg-gray-900 border border-gray-800 text-orange-500 font-black text-xs flex items-center justify-center shrink-0 mt-1">
-                          #{index + 1}
-                        </span>
                         <textarea
                           className="w-full flex-1 bg-transparent text-gray-100 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-700 text-sm sm:text-base font-medium leading-relaxed overflow-hidden min-h-[56px]"
-                          placeholder={`Notiz oder Beschluss für ${traktandum} eingeben...`}
+                          placeholder={`Notiz, Beschluss oder Pendenz für ${traktandum} eingeben...`}
                           value={point.text}
                           onChange={e => {
                             e.target.style.height = 'auto';
@@ -1554,39 +1957,6 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
                           }}
                           ref={el => { if (el) { requestAnimationFrame(() => { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }); } }}
                         />
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => setEnlargedEditPoint({ traktandum, id: point.id, text: point.text })}
-                            title="Im Vollbild bearbeiten"
-                            className="p-2 text-gray-500 hover:text-orange-500 transition-colors bg-gray-900 rounded-lg border border-gray-800"
-                          >
-                            <Maximize2 size={15} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => movePoint(traktandum, index, -1)}
-                            disabled={index === 0}
-                            className="p-2 text-gray-500 hover:text-orange-500 disabled:opacity-30 transition-colors bg-gray-900 rounded-lg border border-gray-800"
-                          >
-                            <ArrowUp size={15} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => movePoint(traktandum, index, 1)}
-                            disabled={index === points.length - 1}
-                            className="p-2 text-gray-500 hover:text-orange-500 disabled:opacity-30 transition-colors bg-gray-900 rounded-lg border border-gray-800"
-                          >
-                            <ArrowDown size={15} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removePoint(traktandum, point.id)}
-                            className="p-2 text-gray-500 hover:text-red-500 transition-colors bg-gray-900 rounded-lg border border-gray-800 ml-1"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
                       </div>
 
                       {/* Datei-Anhang Zeile */}
