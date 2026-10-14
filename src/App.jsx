@@ -2747,7 +2747,7 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
         </p>
 
         <div className="w-full space-y-4 mb-12">
-          {survey.status === 'published' || survey.status === undefined ? (
+          {survey.status === 'published' ? (
             survey.options.map(o => {
               const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
               const isLeading = totalVotes > 0 && (o.votes || 0) === Math.max(...survey.options.map(x => x.votes || 0)) && (o.votes || 0) > 0;
@@ -2766,14 +2766,10 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
               );
             })
           ) : (
-            survey.options.map(o => (
-              <div key={o.id} className="h-20 rounded-2xl flex items-center px-6 border-2 border-gray-800 bg-gray-900">
-                <span className="flex-1 font-black text-white text-lg sm:text-xl truncate">{o.text}</span>
-                <div className="w-8 h-8 rounded-full border-2 border-gray-700 flex items-center justify-center">
-                  <div className="w-3 h-3 rounded-full bg-gray-700" />
-                </div>
-              </div>
-            ))
+            <div className="text-center py-12 bg-gray-900 border border-gray-800 rounded-3xl w-full">
+              <p className="text-orange-400 font-bold uppercase tracking-widest text-sm mb-2">Abstimmung läuft noch</p>
+              <p className="text-gray-500 text-xs">Resultate werden nach der Veröffentlichung / Publikation eingeblendet.</p>
+            </div>
           )}
         </div>
 
@@ -2918,6 +2914,8 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
     }
   };
 
+  const isPublished = survey.status === 'published' || isArchived;
+
   return (
     <div className={`bg-gray-900 border rounded-3xl overflow-hidden shadow-xl transition-all ${survey.status === 'active' && !isArchived ? 'border-orange-500/50' : 'border-gray-800 opacity-80'}`}>
       <div className="p-5 sm:p-6 border-b border-gray-800 bg-gray-950/20 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -2946,7 +2944,7 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
         </div>
       </div>
       <div className="p-5 sm:p-6 space-y-3">
-        {(survey.status === 'published' || isArchived) && survey.options.map(o => {
+        {isPublished && survey.options.map(o => {
           const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
           return (
             <div key={o.id} className="relative h-14 bg-gray-950 border border-gray-800 rounded-xl overflow-hidden flex items-center px-4">
@@ -2962,9 +2960,9 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
             </div>
           );
         })}
-        {!survey.status || (survey.status !== 'published' && !isArchived && !hasVoted) ? (
+        {(!isPublished && (!hasVoted || survey.status === 'active')) ? (
           <div className="space-y-3">
-            {survey.options.map(o => (
+            {!hasVoted && survey.options.map(o => (
               <div key={o.id} onClick={() => toggle(o.id)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between min-h-[52px] ${selected.includes(o.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
                 <div className="flex items-center gap-3">
                   <span className="font-bold text-sm sm:text-base">{o.text}</span>
@@ -2975,19 +2973,21 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
                 </div>
               </div>
             ))}
-            <button
-              disabled={selected.length === 0 || voting}
-              onClick={async () => { setVoting(true); await onVote(selected); setVoting(false); }}
-              className="w-full mt-3 bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30 min-h-[48px]"
-            >
-              {voting ? 'Wird gesendet...' : 'Abstimmung senden'}
-            </button>
+            {!hasVoted && (
+              <button
+                disabled={selected.length === 0 || voting}
+                onClick={async () => { setVoting(true); await onVote(selected); setVoting(false); }}
+                className="w-full mt-3 bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30 min-h-[48px]"
+              >
+                {voting ? 'Wird gesendet...' : 'Abstimmung senden'}
+              </button>
+            )}
           </div>
         ) : null}
-        {hasVoted && survey.status !== 'published' && !isArchived && (
+        {hasVoted && !isPublished && (
           <div className="text-center py-8 space-y-2">
             <p className="text-green-500 font-black text-lg">✓ Stimme erfasst</p>
-            <p className="text-gray-500 text-sm">Die Resultate werden nach der Abstimmung publiziert.</p>
+            <p className="text-gray-500 text-sm">Die Resultate werden erst nach der offiziellen Veröffentlichung durch den Vorstand angezeigt.</p>
           </div>
         )}
       </div>
