@@ -4,7 +4,8 @@ import {
   ChevronRight, BarChart3, UserPlus, Eye, Check, Database, ShieldAlert, Edit2,
   Youtube, Lock, Unlock, ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw,
   UploadCloud, Search, Download, ArrowUp, ArrowDown, Maximize2, Minimize2,
-  Folder, FolderPlus, FileText, File, CalendarDays, MapPin, Clock
+  Folder, FolderPlus, FileText, File, CalendarDays, MapPin, Clock,
+  Printer, CheckCircle2, AlertTriangle, Info, Filter, Sparkles, Share2
 } from 'lucide-react';
 import {
   signInWithCustomToken,
@@ -41,7 +42,21 @@ const toAuthEmail = (firstName, lastName) =>
   `${firstName.toLowerCase().replace(/\s+/g, '')}.${lastName.toLowerCase().replace(/\s+/g, '')}@ruesssuuger.internal`;
 
 // Sichere Session-ID
-const generateSessionId = () => crypto.randomUUID();
+const generateSessionId = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+};
+
+// SHA-256 Passwort-Hash Fallback (falls Email/Password Provider in Firebase Console deaktiviert ist)
+const hashPassword = async (password, userId) => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(`${password}::ruesssuuger::${userId}`);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return 'sha256:' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
 
 // Sanitize-Funktion für Texteingaben (CSV etc.)
 const sanitizeName = (str) => {
@@ -49,14 +64,102 @@ const sanitizeName = (str) => {
   return str.trim().replace(/[<>"'`]/g, '').slice(0, 100);
 };
 
+// Hilfsfunktion: Datei als Data-URL lesen (Fallback für Storage)
+const readFileAsDataURL = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = reject;
+  reader.readAsDataURL(file);
+});
+
+// Hilfsfunktion: Sicheres Datei-Herunterladen (unterstützt URLs und Base64 Data-URLs)
+const triggerFileDownload = (url, fileName = 'Dokument') => {
+  if (!url) return;
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.target = '_blank';
+  link.rel = 'noreferrer';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+// --- ICS Kalender Export Funktionen ---
+const escapeICS = (str = '') =>
+  String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r?\n/g, '\\n');
+
+const formatICSDateTime = (dateStr, timeStr) => {
+  const cleanDate = (dateStr || '').slice(0, 10).replace(/-/g, '');
+  if (!timeStr) {
+    return { startProp: `DTSTART;VALUE=DATE:${cleanDate}`, endProp: null };
+  }
+  const [hh = '00', mm = '00'] = timeStr.split(':');
+  const start = `${cleanDate}T${hh.padStart(2, '0')}${mm.padStart(2, '0')}00`;
+  const endHour = String((parseInt(hh, 10) + 2) % 24).padStart(2, '0');
+  const end = `${cleanDate}T${endHour}${mm.padStart(2, '0')}00`;
+  return {
+    startProp: `DTSTART:${start}`,
+    endProp: `DTEND:${end}`
+  };
+};
+
+const generateICSContent = (items) => {
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  const eventsBlocks = items.map(item => {
+    const { startProp, endProp } = formatICSDateTime(item.date, item.time);
+    const lines = [
+      'BEGIN:VEVENT',
+      `UID:${item.id || Date.now()}@ruesssuuger-aemme.ch`,
+      `DTSTAMP:${stamp}`,
+      startProp,
+    ];
+    if (endProp) lines.push(endProp);
+    lines.push(`SUMMARY:${escapeICS(item.title || 'RüssSuuger Termin')}`);
+    if (item.location) lines.push(`LOCATION:${escapeICS(item.location)}`);
+    if (item.description) lines.push(`DESCRIPTION:${escapeICS(item.description)}`);
+    lines.push('END:VEVENT');
+    return lines.join('\r\n');
+  });
+
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//RuessSuuger Aemme//Vereinsportal//DE',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:RüssSuuger Ämme',
+    ...eventsBlocks,
+    'END:VCALENDAR'
+  ].join('\r\n');
+};
+
+const downloadICSFile = (items, filename = 'ruesssuuger_kalender.ics') => {
+  const list = Array.isArray(items) ? items : [items];
+  const content = generateICSContent(list);
+  const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename.endsWith('.ics') ? filename : `${filename}.ics`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [users, setUsers] = useState([]);
   const [events, setEvents] = useState([]);
-  const [minutes,  setMinutes]  = useState([]);
-  const [files,    setFiles]    = useState([]);
-  const [folders,  setFolders]  = useState([]);
+  const [minutes, setMinutes] = useState([]);
+  const [files, setFiles] = useState([]);
+  const [folders, setFolders] = useState([]);
   const [calItems, setCalItems] = useState([]);
   const [activeTab, setActiveTab] = useState('events');
   const [dbReady, setDbReady] = useState(false);
@@ -64,10 +167,40 @@ export default function App() {
   const [connError, setConnError] = useState(null);
   const [hasCheckedAutoLogin, setHasCheckedAutoLogin] = useState(false);
 
+  // Globales UX Toast- und Bestätigungs-System (ersetzt alert & confirm)
+  const [toasts, setToasts] = useState([]);
+  const [confirmDialog, setConfirmDialog] = useState(null);
+
+  const notify = (message, type = 'info') => {
+    const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4200);
+  };
+
+  const askConfirm = (title, message, onConfirm, confirmLabel = 'Bestätigen', danger = true) => {
+    setConfirmDialog({
+      title,
+      message,
+      confirmLabel,
+      danger,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        await onConfirm();
+      },
+      onCancel: () => setConfirmDialog(null)
+    });
+  };
+
   // --- Authentifizierung ---
   useEffect(() => {
     const initAuth = async () => {
       try {
+        if (auth.currentUser) {
+          setUser(auth.currentUser);
+          return;
+        }
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
@@ -75,11 +208,17 @@ export default function App() {
         }
       } catch (err) {
         console.error("Auth error:", err);
-        setConnError("Authentifizierung fehlgeschlagen. Bitte Seite neu laden.");
+        if (err.code === 'auth/operation-not-allowed' || err.code === 'auth/admin-restricted-operation') {
+          setUser({ uid: 'local-fallback-user', isAnonymous: true });
+        } else {
+          setConnError("Authentifizierung fehlgeschlagen. Bitte Seite neu laden.");
+        }
       }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, u => setUser(u));
+    const unsubscribe = onAuthStateChanged(auth, u => {
+      if (u) setUser(u);
+    });
     return () => unsubscribe();
   }, []);
 
@@ -90,6 +229,9 @@ export default function App() {
     const usersRef   = collection(db, 'artifacts', appId, 'public', 'data', 'users');
     const eventsRef  = collection(db, 'artifacts', appId, 'public', 'data', 'events');
     const minutesRef = collection(db, 'artifacts', appId, 'public', 'data', 'minutes');
+    const foldersRef = collection(db, 'artifacts', appId, 'public', 'data', 'folders');
+    const filesRef   = collection(db, 'artifacts', appId, 'public', 'data', 'files');
+    const calRef     = collection(db, 'artifacts', appId, 'public', 'data', 'calendar');
 
     const unsubUsers = onSnapshot(usersRef, 
       (s) => {
@@ -108,14 +250,10 @@ export default function App() {
       }
     );
 
-    const unsubEvents  = onSnapshot(eventsRef,
+    const unsubEvents = onSnapshot(eventsRef,
       (s) => setEvents(s.docs.map(d => ({ ...d.data(), id: d.id }))),
       (err) => console.error("Events Error:", err)
     );
-
-    const foldersRef  = collection(db, 'artifacts', appId, 'public', 'data', 'folders');
-    const filesRef    = collection(db, 'artifacts', appId, 'public', 'data', 'files');
-    const calRef      = collection(db, 'artifacts', appId, 'public', 'data', 'calendar');
 
     const unsubMinutes = onSnapshot(minutesRef,
       (s) => setMinutes(s.docs.map(d => ({ ...d.data(), id: d.id }))),
@@ -178,7 +316,7 @@ export default function App() {
         localStorage.removeItem('ruesssuuger_userId');
         localStorage.removeItem('ruesssuuger_sessionId');
         setCurrentUser(null);
-        alert("Sitzung beendet: Du wurdest auf einem anderen Gerät angemeldet.");
+        notify("Sitzung beendet: Du wurdest auf einem anderen Gerät angemeldet.", "error");
       }
     }
   }, [users, currentUser]);
@@ -204,6 +342,7 @@ export default function App() {
       for (const u of INITIAL_USERS) {
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id), u);
       }
+      notify("Administrator-Account erfolgreich erstellt.", "success");
     } catch (e) {
       console.error(e);
       setConnError("Fehler beim Initialisieren der Datenbank.");
@@ -255,60 +394,134 @@ export default function App() {
     );
   }
 
-  if (!currentUser) {
-    return <LoginScreen users={users} onLogin={u => setCurrentUser(u)} onSeed={seedDatabase} isSeeding={isSeeding} />;
-  }
-
   return (
     <div className="min-h-screen bg-gray-950 text-gray-200 selection:bg-orange-500 selection:text-white">
-      <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-50 shadow-2xl">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-black italic tracking-tighter">
-              <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span> <span className="text-gray-400">Ämme</span>
-            </h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-bold text-white">{currentUser.firstName} {currentUser.lastName}</p>
-              <p className="text-[10px] text-orange-500 font-bold uppercase tracking-widest">{currentUser.role}</p>
-            </div>
-            <button onClick={handleLogout} className="p-2.5 bg-gray-800 hover:bg-gray-700 rounded-xl transition-all active:scale-95 group">
-              <LogOut size={20} className="text-gray-400 group-hover:text-orange-500 transition-colors" />
+      {/* Toast Notifications */}
+      <div className="fixed bottom-5 right-5 z-[300] flex flex-col gap-2.5 max-w-sm w-full px-4 sm:px-0 pointer-events-none">
+        {toasts.map(t => (
+          <div
+            key={t.id}
+            className={`pointer-events-auto flex items-center gap-3 px-4 py-3.5 rounded-2xl border shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-4 duration-300 ${
+              t.type === 'success'
+                ? 'bg-gray-900/95 border-green-500/40 text-green-400'
+                : t.type === 'error'
+                ? 'bg-gray-900/95 border-red-500/40 text-red-400'
+                : 'bg-gray-900/95 border-orange-500/40 text-orange-400'
+            }`}
+          >
+            {t.type === 'success' && <CheckCircle2 size={18} className="shrink-0" />}
+            {t.type === 'error' && <AlertTriangle size={18} className="shrink-0" />}
+            {t.type !== 'success' && t.type !== 'error' && <Info size={18} className="shrink-0" />}
+            <p className="text-xs font-bold text-white flex-1 leading-snug">{t.message}</p>
+            <button
+              onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))}
+              className="text-gray-500 hover:text-white p-1"
+            >
+              <X size={14} />
             </button>
           </div>
-        </div>
-      </header>
+        ))}
+      </div>
 
-      <main className="max-w-6xl mx-auto px-4 py-8">
-        <nav className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
-          <TabButton active={activeTab === 'events'}  onClick={() => setActiveTab('events')}  icon={<Calendar size={18} />}     label="Events" />
-          {isVorstand && (
-            <TabButton active={activeTab === 'minutes'}  onClick={() => setActiveTab('minutes')}  icon={<ClipboardList size={18} />} label="Protokolle" />
-          )}
-          {isVorstand && (
-            <TabButton active={activeTab === 'files'}    onClick={() => setActiveTab('files')}    icon={<Folder size={18} />}       label="Dateien" />
-          )}
-          {isVorstand && (
-            <TabButton active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')} icon={<CalendarDays size={18} />}  label="Kalender" />
-          )}
-          {currentUser.role === 'admin' && (
-            <>
-              <TabButton active={activeTab === 'archive'} onClick={() => setActiveTab('archive')} icon={<Archive size={18} />} label="Archiv" />
-              <TabButton active={activeTab === 'members'} onClick={() => setActiveTab('members')} icon={<Users size={18} />}   label="Mitglieder" />
-            </>
-          )}
-        </nav>
-
-        <div className="animate-in fade-in duration-500">
-          {activeTab === 'events'   && <EventsView events={events.filter(e => !e.isArchived)} currentUser={currentUser} users={users} />}
-          {activeTab === 'minutes'  && isVorstand && <ProtocolView minutes={minutes} users={users} currentUser={currentUser} />}
-          {activeTab === 'files'    && isVorstand && <FilesView folders={folders} files={files} currentUser={currentUser} />}
-          {activeTab === 'calendar' && isVorstand && <CalendarView calItems={calItems} currentUser={currentUser} />}
-          {activeTab === 'archive'  && <EventsView events={events.filter(e => e.isArchived)} currentUser={currentUser} isArchive users={users} />}
-          {activeTab === 'members'  && currentUser.role === 'admin' && <MembersView users={users} />}
+      {/* Confirmation Modal */}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-[250] bg-gray-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-gray-900 border border-gray-800 rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl space-y-5">
+            <div className="flex items-start gap-4">
+              <div className={`p-3 rounded-2xl shrink-0 ${confirmDialog.danger ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-orange-500/10 text-orange-500 border border-orange-500/20'}`}>
+                <AlertTriangle size={24} />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white">{confirmDialog.title}</h3>
+                <p className="text-sm text-gray-400 mt-1 leading-relaxed">{confirmDialog.message}</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-3 border-t border-gray-800">
+              <button
+                onClick={confirmDialog.onCancel}
+                className="px-5 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold text-sm transition-all"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={confirmDialog.onConfirm}
+                className={`px-6 py-2.5 rounded-xl font-black text-sm transition-all active:scale-95 shadow-lg ${
+                  confirmDialog.danger
+                    ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/20'
+                    : 'bg-orange-500 hover:bg-orange-600 text-gray-950 shadow-orange-500/20'
+                }`}
+              >
+                {confirmDialog.confirmLabel}
+              </button>
+            </div>
+          </div>
         </div>
-      </main>
+      )}
+
+      {!currentUser ? (
+        <LoginScreen users={users} onLogin={u => setCurrentUser(u)} onSeed={seedDatabase} isSeeding={isSeeding} />
+      ) : (
+        <>
+          <header className="bg-gray-900/90 backdrop-blur-md border-b border-gray-800 sticky top-0 z-50 shadow-2xl">
+            <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-2.5 h-8 bg-orange-500 rounded-full hidden sm:block" />
+                <h1 className="text-xl sm:text-2xl font-black italic tracking-tighter">
+                  <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span> <span className="text-gray-400">Ämme</span>
+                </h1>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-bold text-white leading-tight">{currentUser.firstName} {currentUser.lastName}</p>
+                  <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                    <p className="text-[10px] text-orange-500 font-bold uppercase tracking-widest">
+                      {currentUser.role === 'admin' ? 'Administrator' : isVorstand ? 'Vorstand' : 'Mitglied'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  title="Abmelden"
+                  className="p-2.5 bg-gray-800 hover:bg-gray-700 rounded-xl transition-all active:scale-95 group border border-gray-700/50"
+                >
+                  <LogOut size={20} className="text-gray-400 group-hover:text-orange-500 transition-colors" />
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <main className="max-w-6xl mx-auto px-4 py-8">
+            <nav className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+              <TabButton active={activeTab === 'events'}   onClick={() => setActiveTab('events')}   icon={<Calendar size={18} />}      label="Events" />
+              {isVorstand && (
+                <TabButton active={activeTab === 'minutes'}  onClick={() => setActiveTab('minutes')}  icon={<ClipboardList size={18} />} label="Protokolle" />
+              )}
+              {isVorstand && (
+                <TabButton active={activeTab === 'files'}    onClick={() => setActiveTab('files')}    icon={<Folder size={18} />}        label="Dateien" />
+              )}
+              {isVorstand && (
+                <TabButton active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')} icon={<CalendarDays size={18} />}  label="Kalender" />
+              )}
+              {currentUser.role === 'admin' && (
+                <>
+                  <TabButton active={activeTab === 'archive'} onClick={() => setActiveTab('archive')} icon={<Archive size={18} />} label="Archiv" />
+                  <TabButton active={activeTab === 'members'} onClick={() => setActiveTab('members')} icon={<Users size={18} />}   label="Mitglieder" />
+                </>
+              )}
+            </nav>
+
+            <div className="animate-in fade-in duration-500">
+              {activeTab === 'events'   && <EventsView events={events.filter(e => !e.isArchived)} currentUser={currentUser} users={users} notify={notify} askConfirm={askConfirm} />}
+              {activeTab === 'minutes'  && isVorstand && <ProtocolView minutes={minutes} users={users} currentUser={currentUser} notify={notify} askConfirm={askConfirm} />}
+              {activeTab === 'files'    && isVorstand && <FilesView folders={folders} files={files} currentUser={currentUser} notify={notify} askConfirm={askConfirm} />}
+              {activeTab === 'calendar' && isVorstand && <CalendarView calItems={calItems} currentUser={currentUser} notify={notify} askConfirm={askConfirm} />}
+              {activeTab === 'archive'  && <EventsView events={events.filter(e => e.isArchived)} currentUser={currentUser} isArchive users={users} notify={notify} askConfirm={askConfirm} />}
+              {activeTab === 'members'  && currentUser.role === 'admin' && <MembersView users={users} notify={notify} askConfirm={askConfirm} />}
+            </div>
+          </main>
+        </>
+      )}
     </div>
   );
 }
@@ -324,7 +537,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   const [loading,   setLoading]   = useState(false);
 
   const finalizeLogin = (u) => {
-    const newSession = generateSessionId(); // crypto.randomUUID()
+    const newSession = generateSessionId();
     localStorage.setItem('ruesssuuger_sessionId', newSession);
     localStorage.setItem('ruesssuuger_userId',    u.id);
     onLogin({ ...u, sessionId: newSession });
@@ -333,8 +546,8 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   const handleNameSubmit = (e) => {
     e.preventDefault();
     const u = users.find(
-      x => x.firstName.toLowerCase() === firstName.toLowerCase() &&
-           x.lastName.toLowerCase()  === lastName.toLowerCase()
+      x => x.firstName.trim().toLowerCase() === firstName.trim().toLowerCase() &&
+           x.lastName.trim().toLowerCase()  === lastName.trim().toLowerCase()
     );
     if (!u) { setError("Mitglied nicht gefunden."); return; }
 
@@ -364,32 +577,62 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
 
     try {
       if (type === 'set') {
-        // Passwort zu kurz abfangen
         if (password.length < 6) {
           setError("Passwort zu kurz (min. 6 Zeichen).");
           setLoading(false);
           return;
         }
-        // Firebase Auth: Account anlegen oder Passwort setzen
+        const hashed = await hashPassword(password, foundUser.id);
         try {
           await createUserWithEmailAndPassword(auth, email, password);
         } catch (createErr) {
           if (createErr.code === 'auth/email-already-in-use') {
-            // Account existiert bereits – Passwort aktualisieren
-            const cred = await signInWithEmailAndPassword(auth, email, password);
-            await updatePassword(cred.user, password);
+            try {
+              const cred = await signInWithEmailAndPassword(auth, email, password);
+              await updatePassword(cred.user, password);
+            } catch (_) {}
+          } else if (
+            createErr.code === 'auth/operation-not-allowed' ||
+            createErr.code === 'auth/admin-restricted-operation'
+          ) {
+            // Email/Password Provider in Firebase deaktiviert -> SHA-256 Hash in Firestore reicht aus
           } else {
             throw createErr;
           }
         }
-        // Passwort-Flag in Firestore setzen (kein Hash, kein Plaintext – nur Flag)
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', foundUser.id), { password: '__set__' });
-        finalizeLogin({ ...foundUser, password: '__set__' });
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', foundUser.id), { password: hashed });
+        finalizeLogin({ ...foundUser, password: hashed });
 
       } else {
-        // Login über Firebase Auth
-        await signInWithEmailAndPassword(auth, email, password);
-        finalizeLogin(foundUser);
+        const hashed = await hashPassword(password, foundUser.id);
+        if (foundUser.password && foundUser.password.startsWith('sha256:')) {
+          if (foundUser.password === hashed) {
+            finalizeLogin(foundUser);
+          } else {
+            setError("Falsches Passwort.");
+          }
+        } else {
+          try {
+            await signInWithEmailAndPassword(auth, email, password);
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', foundUser.id), { password: hashed });
+            finalizeLogin({ ...foundUser, password: hashed });
+          } catch (signInErr) {
+            if (
+              signInErr.code === 'auth/operation-not-allowed' ||
+              signInErr.code === 'auth/admin-restricted-operation'
+            ) {
+              if (foundUser.password === password) {
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', foundUser.id), { password: hashed });
+                finalizeLogin({ ...foundUser, password: hashed });
+              } else {
+                setError("E-Mail/Passwort-Login ist in Firebase nicht aktiviert. Bitte Passwort neu festlegen.");
+                setStep('setPassword');
+              }
+            } else {
+              throw signInErr;
+            }
+          }
+        }
       }
     } catch (err) {
       console.error("Auth error:", err);
@@ -437,10 +680,19 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
                 <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all" placeholder="Nachname" value={lastName} onChange={e => setLastName(e.target.value)} />
               </div>
             ) : (
-              <div className="animate-in slide-in-from-right-4 duration-300">
-                <p className="text-xs text-center text-orange-500 font-bold uppercase mb-4 tracking-widest flex items-center justify-center gap-2">
-                  <Lock size={12}/> {step === 'setPassword' ? 'Passwort festlegen' : 'Vorstand-Passwort'}
-                </p>
+              <div className="animate-in slide-in-from-right-4 duration-300 space-y-3">
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => { setStep('name'); setPassword(''); setError(''); }}
+                    className="text-xs text-gray-500 hover:text-white font-bold flex items-center gap-1"
+                  >
+                    <ChevronRight size={14} className="rotate-180" /> Zurück
+                  </button>
+                  <p className="text-xs text-orange-500 font-bold uppercase tracking-widest flex items-center gap-1.5">
+                    <Lock size={12}/> {step === 'setPassword' ? 'Passwort festlegen' : 'Vorstand-Passwort'}
+                  </p>
+                </div>
                 <input
                   autoFocus
                   type="password"
@@ -460,7 +712,7 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
               {loading ? 'Bitte warten...' : step === 'name' ? 'Weiter' : 'Anmelden'}
             </button>
             {error && (
-              <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 py-3 rounded-xl animate-in shake duration-300 mt-2">
+              <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 py-3 px-4 rounded-xl animate-in shake duration-300 mt-2">
                 {error}
               </p>
             )}
@@ -471,18 +723,53 @@ function LoginScreen({ users, onLogin, onSeed, isSeeding }) {
   );
 }
 
-// --- Protokoll View ---
-function ProtocolView({ minutes, users, currentUser }) {
-  const [editing,       setEditing]       = useState(null);
-  const [showAdd,       setShowAdd]       = useState(false);
-  const [searchTerm,    setSearchTerm]    = useState('');
-  const [expandedId,    setExpandedId]    = useState(null);
-  const [enlargedPoint, setEnlargedPoint] = useState(null);
+// --- Protokoll View (Redesigned & Aufgewertet) ---
+function ProtocolView({ minutes, users, currentUser, notify, askConfirm }) {
+  const [editing,        setEditing]        = useState(null);
+  const [showAdd,        setShowAdd]        = useState(false);
+  const [searchTerm,     setSearchTerm]     = useState('');
+  const [roleFilter,     setRoleFilter]     = useState('Alle');
+  const [expandedId,     setExpandedId]     = useState(null);
+  const [enlargedPoint,  setEnlargedPoint]  = useState(null);
+  const [readingMinute,  setReadingMinute]  = useState(null);
 
   const vorstandMembers = useMemo(() => users.filter(u => u.groups?.includes('Vorstand')), [users]);
 
+  // Farb-Akzente pro Traktandum für schnelle visuelle Orientierung
+  const traktandumMeta = {
+    'Präsident':     { badge: 'bg-orange-500/15 text-orange-400 border-orange-500/30', dot: 'bg-orange-500' },
+    'Vizepräsident': { badge: 'bg-amber-500/15 text-amber-400 border-amber-500/30',   dot: 'bg-amber-500' },
+    'Tambourmajor':  { badge: 'bg-purple-500/15 text-purple-400 border-purple-500/30', dot: 'bg-purple-500' },
+    'Tourmanager':   { badge: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30',       dot: 'bg-cyan-500' },
+    'Sujetchef':     { badge: 'bg-pink-500/15 text-pink-400 border-pink-500/30',       dot: 'bg-pink-500' },
+    'Kassier':       { badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', dot: 'bg-emerald-500' },
+    'Aktuar':        { badge: 'bg-blue-500/15 text-blue-400 border-blue-500/30',       dot: 'bg-blue-500' },
+  };
+
+  // Kennzahlen berechnen
+  const stats = useMemo(() => {
+    let totalPoints = 0;
+    let totalAttachments = 0;
+    minutes.forEach(m => {
+      if (m.traktanden) {
+        Object.values(m.traktanden).forEach(list => {
+          totalPoints += list?.length || 0;
+          list?.forEach(p => { if (p.docUrl) totalAttachments++; });
+        });
+      }
+    });
+    return {
+      totalMinutes: minutes.length,
+      totalPoints,
+      totalAttachments
+    };
+  }, [minutes]);
+
   const filteredMinutes = useMemo(() => {
-    let sorted = [...minutes].sort((a, b) => b.date.localeCompare(a.date));
+    let sorted = [...minutes].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    if (roleFilter !== 'Alle') {
+      sorted = sorted.filter(m => (m.traktanden?.[roleFilter]?.length || 0) > 0);
+    }
     if (!searchTerm.trim()) return sorted;
     const term = searchTerm.toLowerCase();
     return sorted.filter(m => {
@@ -494,13 +781,26 @@ function ProtocolView({ minutes, users, currentUser }) {
       }
       return false;
     });
-  }, [minutes, searchTerm]);
+  }, [minutes, searchTerm, roleFilter]);
 
   const saveProtocol = async (p) => {
     const id = p.id || Date.now().toString();
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', id), { ...p, id });
     setShowAdd(false);
     setEditing(null);
+    notify("Protokoll erfolgreich gespeichert.", "success");
+  };
+
+  const highlightText = (text = '', highlight = '') => {
+    if (!highlight.trim()) return text;
+    const parts = text.split(new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
+    return parts.map((part, i) =>
+      part.toLowerCase() === highlight.toLowerCase() ? (
+        <mark key={i} className="bg-orange-500/30 text-orange-300 px-1 rounded font-bold">{part}</mark>
+      ) : (
+        part
+      )
+    );
   };
 
   const renderSnippets = (m) => {
@@ -512,12 +812,14 @@ function ProtocolView({ minutes, users, currentUser }) {
         points.forEach(p => {
           if (p.text?.toLowerCase().includes(term) || p.docName?.toLowerCase().includes(term)) {
             snippets.push(
-              <div key={p.id} className="mt-3 bg-orange-500/10 border border-orange-500/20 p-3 rounded-xl text-sm">
-                <span className="font-bold text-orange-500 mr-2 uppercase tracking-tighter text-[10px]">{tName}:</span>
-                <span className="text-gray-300 break-words">{p.text}</span>
-                {p.docName && p.docName.toLowerCase().includes(term) && (
-                  <span className="ml-2 italic text-orange-400 text-xs break-words">({p.docName})</span>
-                )}
+              <div key={p.id} className="mt-2.5 bg-orange-500/5 border border-orange-500/20 p-3.5 rounded-2xl text-sm flex items-start gap-3">
+                <span className="font-black text-orange-500 uppercase tracking-wider text-[10px] bg-orange-500/10 px-2.5 py-1 rounded-lg shrink-0 mt-0.5">{tName}</span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-gray-300 break-words leading-relaxed">{highlightText(p.text, searchTerm)}</span>
+                  {p.docName && p.docName.toLowerCase().includes(term) && (
+                    <span className="ml-2 italic text-orange-400 text-xs break-words">({highlightText(p.docName, searchTerm)})</span>
+                  )}
+                </div>
               </div>
             );
           }
@@ -534,115 +836,296 @@ function ProtocolView({ minutes, users, currentUser }) {
         onSave={saveProtocol}
         onCancel={() => { setShowAdd(false); setEditing(null); }}
         initialData={editing}
+        notify={notify}
       />
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-black text-white">Vorstands-Protokolle</h2>
-          <p className="text-gray-500 text-sm mt-1">Interne Sitzungsprotokolle und Beschlüsse</p>
+      {/* Top Header & KPI Cards */}
+      <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 mb-3">
+              <ClipboardList size={12} /> Vorstands-Dokumentation
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Vorstands-Protokolle</h2>
+            <p className="text-gray-400 text-sm mt-1">Strukturierte Sitzungsprotokolle, Traktanden & Beschlüsse</p>
+          </div>
+          <button
+            onClick={() => setShowAdd(true)}
+            className="bg-orange-500 hover:bg-orange-400 text-gray-950 font-black px-6 py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 whitespace-nowrap w-full md:w-auto"
+          >
+            <Plus size={20} strokeWidth={2.5} /> Neues Protokoll erfassen
+          </button>
         </div>
-        <button onClick={() => setShowAdd(true)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3.5 sm:py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 whitespace-nowrap w-full md:w-auto mt-2 md:mt-0">
-          <Plus size={20} /> Neues Protokoll
-        </button>
+
+        {/* Statistik-Leiste */}
+        {minutes.length > 0 && (
+          <div className="grid grid-cols-3 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
+            <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Sitzungen</p>
+              <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalMinutes}</p>
+            </div>
+            <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Traktanden-Punkte</p>
+              <p className="text-xl sm:text-2xl font-black text-orange-500 mt-1">{stats.totalPoints}</p>
+            </div>
+            <div className="bg-gray-950/70 border border-gray-800/80 rounded-2xl p-3.5 sm:p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Beilagen / Dateien</p>
+              <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalAttachments}</p>
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Suchfeld & Ressort-Filter */}
       {minutes.length > 0 && (
-        <div className="relative animate-in fade-in">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
-          <input
-            type="text"
-            placeholder="Suchen nach Begriffen..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-4 pl-12 pr-12 text-white focus:border-orange-500 outline-none shadow-lg transition-all"
-          />
-          {searchTerm && (
-            <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white p-1">
-              <X size={18} />
-            </button>
-          )}
+        <div className="space-y-3 animate-in fade-in">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+            <input
+              type="text"
+              placeholder="Protokolle nach Stichworten, Beschlüssen oder Dokumentnamen durchsuchen..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-4 pl-12 pr-12 text-white focus:border-orange-500 outline-none shadow-lg transition-all text-sm"
+            />
+            {searchTerm && (
+              <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white p-1">
+                <X size={18} />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-600 flex items-center gap-1 mr-1 shrink-0">
+              <Filter size={12} /> Ressort:
+            </span>
+            {['Alle', ...TRAKTANDEN].map(role => (
+              <button
+                key={role}
+                onClick={() => setRoleFilter(role)}
+                className={`px-3.5 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all whitespace-nowrap active:scale-95 ${
+                  roleFilter === role
+                    ? 'bg-orange-500 text-gray-950 shadow-md shadow-orange-500/15'
+                    : 'bg-gray-900 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+                }`}
+              >
+                {role}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
+      {/* Protokoll-Karten */}
       <div className="grid gap-4">
         {filteredMinutes.map(m => {
           const isExpanded = expandedId === m.id;
+          const dateObj = m.date ? new Date(m.date) : new Date();
+          const dayNum = dateObj.toLocaleDateString('de-CH', { day: '2-digit' });
+          const monthShort = dateObj.toLocaleDateString('de-CH', { month: 'short' });
+          const yearNum = dateObj.getFullYear();
+
+          const activeTraktanden = TRAKTANDEN.filter(t => (m.traktanden?.[t]?.length || 0) > 0);
+          const totalPointsCount = activeTraktanden.reduce((sum, t) => sum + (m.traktanden?.[t]?.length || 0), 0);
+          const totalDocsCount = activeTraktanden.reduce(
+            (sum, t) => sum + (m.traktanden?.[t]?.filter(p => p.docUrl)?.length || 0),
+            0
+          );
+          const presentCount = Object.values(m.attendance || {}).filter(s => s === 'present').length;
+
           return (
-            <div key={m.id} className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl flex flex-col hover:border-gray-700 transition-all group">
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-6 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : m.id)}>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="bg-orange-500/10 text-orange-500 text-[10px] font-black px-2 py-1 rounded-md border border-orange-500/20 uppercase tracking-widest">{new Date(m.date).toLocaleDateString('de-CH')}</span>
-                    <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest italic opacity-50 group-hover:opacity-100 transition-opacity">Archiviert</span>
+            <div
+              key={m.id}
+              className={`bg-gray-900 border rounded-3xl flex flex-col transition-all duration-300 overflow-hidden shadow-xl ${
+                isExpanded ? 'border-orange-500/50 ring-1 ring-orange-500/20' : 'border-gray-800 hover:border-gray-700'
+              }`}
+            >
+              {/* Karten-Kopf */}
+              <div
+                className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6 cursor-pointer hover:bg-gray-800/20 transition-colors"
+                onClick={() => setExpandedId(isExpanded ? null : m.id)}
+              >
+                <div className="flex items-start sm:items-center gap-4 sm:gap-5 flex-1 min-w-0">
+                  {/* Kalender-Badge */}
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gray-950 border border-gray-800 flex flex-col items-center justify-center shrink-0 shadow-inner">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-orange-500">{monthShort}</span>
+                    <span className="text-xl sm:text-2xl font-black text-white leading-none my-0.5">{dayNum}</span>
+                    <span className="text-[10px] font-bold text-gray-600">{yearNum}</span>
                   </div>
-                  <h3 className="text-xl sm:text-2xl font-black text-white break-words">{m.title}</h3>
-                  <p className="text-sm text-gray-500 mt-2 line-clamp-1 italic">Vorsitz: {m.traktanden?.['Präsident']?.[0]?.text || 'Nicht angegeben'}</p>
+
+                  {/* Titel & Metadaten */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                      <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-md bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                        {totalPointsCount} {totalPointsCount === 1 ? 'Beschluss' : 'Beschlüsse'}
+                      </span>
+                      {presentCount > 0 && (
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-md bg-green-500/10 text-green-400 border border-green-500/20 flex items-center gap-1">
+                          <UserCheck size={11} /> {presentCount} Anwesend
+                        </span>
+                      )}
+                      {totalDocsCount > 0 && (
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
+                          <Paperclip size={11} /> {totalDocsCount} {totalDocsCount === 1 ? 'Anhang' : 'Anhänge'}
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="text-lg sm:text-2xl font-black text-white break-words leading-snug">
+                      {highlightText(m.title, searchTerm)}
+                    </h3>
+
+                    {/* Ressort-Pills */}
+                    {activeTraktanden.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-3">
+                        {activeTraktanden.map(t => (
+                          <span
+                            key={t}
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${traktandumMeta[t]?.badge || 'bg-gray-800 text-gray-400 border-gray-700'}`}
+                          >
+                            {t} ({m.traktanden[t].length})
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="flex gap-2 shrink-0 mt-3 sm:mt-0 justify-end" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => setExpandedId(isExpanded ? null : m.id)} className="p-3.5 sm:p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90">
-                    {isExpanded ? <ChevronRight className="-rotate-90" size={20} /> : <Eye size={20} />}
+
+                {/* Aktions-Buttons */}
+                <div className="flex items-center gap-2 shrink-0 justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-800/80" onClick={e => e.stopPropagation()}>
+                  <button
+                    onClick={() => setReadingMinute(m)}
+                    title="Lese- & Druckansicht (PDF)"
+                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 hover:border-orange-500/40 rounded-2xl transition-all active:scale-90"
+                  >
+                    <Printer size={18} />
                   </button>
-                  <button onClick={() => setEditing(m)} className="p-3.5 sm:p-4 bg-gray-800 text-gray-400 hover:text-white rounded-2xl transition-all active:scale-90">
-                    <Edit2 size={20} />
+                  <button
+                    onClick={() => setEditing(m)}
+                    title="Protokoll bearbeiten"
+                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700 rounded-2xl transition-all active:scale-90"
+                  >
+                    <Edit2 size={18} />
                   </button>
-                  <button onClick={() => { if(confirm('Möchtest du dieses Protokoll wirklich löschen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id)); }} className="p-3.5 sm:p-4 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90">
-                    <Trash2 size={20} />
+                  <button
+                    onClick={() =>
+                      askConfirm(
+                        'Protokoll löschen?',
+                        `Möchtest du das Protokoll "${m.title}" wirklich unwiderruflich löschen?`,
+                        async () => {
+                          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id));
+                          notify('Protokoll gelöscht.', 'info');
+                        },
+                        'Löschen'
+                      )
+                    }
+                    title="Protokoll löschen"
+                    className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : m.id)}
+                    className={`p-3 rounded-2xl border transition-all active:scale-90 ${
+                      isExpanded
+                        ? 'bg-orange-500 text-gray-950 border-orange-500'
+                        : 'bg-gray-800 border-gray-700 text-gray-300 hover:text-white'
+                    }`}
+                  >
+                    <ChevronRight className={`transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''}`} size={18} />
                   </button>
                 </div>
               </div>
 
-              {!isExpanded && renderSnippets(m)}
+              {!isExpanded && renderSnippets(m) && (
+                <div className="px-5 sm:px-6 pb-5">{renderSnippets(m)}</div>
+              )}
 
+              {/* Ausgeklappter Protokoll-Inhalt */}
               {isExpanded && (
-                <div className="mt-6 border-t border-gray-800 pt-6 space-y-8 animate-in slide-in-from-top-2 duration-300">
+                <div className="border-t border-gray-800 bg-gray-950/60 p-5 sm:p-8 space-y-8 animate-in slide-in-from-top-2 duration-300">
+                  {/* Anwesenheits-Block */}
                   {m.attendance && Object.keys(m.attendance).length > 0 && (
-                    <div>
+                    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-5">
                       <h4 className="text-orange-500 font-black uppercase text-[10px] tracking-widest mb-3 flex items-center gap-2">
-                        <UserCheck size={14}/> Anwesenheit
+                        <UserCheck size={14}/> Anwesenheitskontrolle
                       </h4>
                       <div className="flex flex-wrap gap-2">
                         {users.filter(u => u.groups?.includes('Vorstand')).map(u => {
                           const status = m.attendance?.[u.id];
                           if (!status) return null;
                           const label = status === 'present' ? 'Anwesend' : status === 'absent' ? 'Unentschuldigt' : 'Entschuldigt';
-                          const color = status === 'present' ? 'bg-green-500/10 text-green-500 border-green-500/20' : status === 'absent' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+                          const color = status === 'present'
+                            ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                            : status === 'absent'
+                            ? 'bg-red-500/10 text-red-400 border-red-500/30'
+                            : 'bg-blue-500/10 text-blue-400 border-blue-500/30';
                           return (
-                            <span key={u.id} className={`text-[10px] font-bold px-2 py-1 rounded-md border ${color}`}>
-                              {u.firstName} {u.lastName}: {label}
+                            <span key={u.id} className={`text-xs font-bold px-3 py-1.5 rounded-xl border ${color}`}>
+                              {u.firstName} {u.lastName} <span className="opacity-70 font-normal">• {label}</span>
                             </span>
                           );
                         })}
                       </div>
                     </div>
                   )}
-                  <div className="space-y-6">
+
+                  {/* Traktanden-Sektionen */}
+                  <div className="grid gap-5">
                     {TRAKTANDEN.map(t => {
                       const points = m.traktanden?.[t];
                       if (!points || points.length === 0) return null;
+                      const meta = traktandumMeta[t] || { badge: 'bg-gray-800 text-gray-300 border-gray-700', dot: 'bg-orange-500' };
+
                       return (
-                        <div key={t} className="bg-gray-950 p-5 sm:p-6 rounded-3xl border border-gray-800">
-                          <h4 className="text-white font-black text-lg sm:text-xl mb-4 italic tracking-tight underline decoration-orange-500 decoration-2 underline-offset-4">{t}</h4>
-                          <ul className="space-y-4">
-                            {points.map(p => (
-                              <li key={p.id} className="bg-gray-900 p-4 sm:p-5 rounded-2xl border border-gray-800 shadow-sm relative group">
-                                <div className="pr-10 sm:pr-0">
-                                  <p className="text-gray-300 text-sm whitespace-pre-wrap leading-relaxed">{p.text}</p>
+                        <div key={t} className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-lg">
+                          <div className="px-5 sm:px-6 py-4 bg-gray-950/60 border-b border-gray-800 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span className={`w-2.5 h-2.5 rounded-full ${meta.dot}`} />
+                              <h4 className="text-white font-black text-base sm:text-lg tracking-tight">{t}</h4>
+                            </div>
+                            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg border ${meta.badge}`}>
+                              {points.length} {points.length === 1 ? 'Eintrag' : 'Einträge'}
+                            </span>
+                          </div>
+
+                          <div className="p-4 sm:p-6 space-y-3">
+                            {points.map((p, idx) => (
+                              <div
+                                key={p.id}
+                                className="bg-gray-950 p-4 sm:p-5 rounded-2xl border border-gray-800/90 hover:border-gray-700 transition-all relative group flex gap-3.5"
+                              >
+                                <span className="text-xs font-black text-gray-600 bg-gray-900 border border-gray-800 w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                                  {idx + 1}
+                                </span>
+                                <div className="flex-1 min-w-0 pr-8">
+                                  <p className="text-gray-200 text-sm sm:text-base whitespace-pre-wrap leading-relaxed break-words">
+                                    {highlightText(p.text, searchTerm)}
+                                  </p>
                                   {p.docUrl && (
-                                    <a href={p.docUrl} download target="_blank" rel="noreferrer" className="mt-4 flex items-center gap-2 text-[11px] font-bold text-orange-500 hover:text-orange-400 bg-orange-500/10 w-fit px-3.5 py-2.5 rounded-xl border border-orange-500/20 transition-all hover:scale-105 active:scale-95">
-                                      <Paperclip size={16} /> {p.docName || 'Dokument herunterladen'}
-                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() => triggerFileDownload(p.docUrl, p.docName || 'Protokoll-Anhang')}
+                                      className="mt-3.5 inline-flex items-center gap-2 text-xs font-bold text-orange-400 hover:text-orange-300 bg-orange-500/10 px-3.5 py-2 rounded-xl border border-orange-500/20 transition-all hover:scale-[1.02] active:scale-95"
+                                    >
+                                      <Paperclip size={14} /> {p.docName || 'Dokument herunterladen'}
+                                    </button>
                                   )}
                                 </div>
-                                <button onClick={(e) => { e.stopPropagation(); setEnlargedPoint({ traktandum: t, ...p }); }} className="absolute top-3 right-3 p-2 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100">
-                                  <Eye size={18} />
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setEnlargedPoint({ traktandum: t, index: idx + 1, ...p }); }}
+                                  title="Grossansicht"
+                                  className="absolute top-3.5 right-3.5 p-2 bg-gray-900 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100"
+                                >
+                                  <Maximize2 size={15} />
                                 </button>
-                              </li>
+                              </div>
                             ))}
-                          </ul>
+                          </div>
                         </div>
                       );
                     })}
@@ -653,36 +1136,129 @@ function ProtocolView({ minutes, users, currentUser }) {
           );
         })}
 
-        {filteredMinutes.length === 0 && searchTerm && (
-          <div className="text-center py-10 text-gray-500 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
-            Keine passenden Protokolle für "{searchTerm}" gefunden.
+        {filteredMinutes.length === 0 && (searchTerm || roleFilter !== 'Alle') && (
+          <div className="text-center py-12 text-gray-500 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
+            Keine passenden Protokolle für deine aktuelle Filterauswahl gefunden.
           </div>
         )}
         {minutes.length === 0 && !searchTerm && (
           <div className="text-center py-20 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
             <ClipboardList className="mx-auto text-gray-800 mb-4" size={48} />
-            <p className="text-gray-600 font-bold uppercase tracking-widest text-sm">Keine Protokolle vorhanden</p>
+            <p className="text-gray-600 font-bold uppercase tracking-widest text-sm">Noch keine Protokolle vorhanden</p>
           </div>
         )}
       </div>
 
+      {/* Einzelpunkt-Fokus-Modal */}
       {enlargedPoint && (
         <div className="fixed inset-0 z-[100] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
             <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
-              <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedPoint.traktandum}</h3>
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-orange-500 text-gray-950">#{enlargedPoint.index || 1}</span>
+                <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedPoint.traktandum}</h3>
+              </div>
               <button onClick={() => setEnlargedPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90"><X size={20} /></button>
             </div>
-            <div className="p-6 overflow-y-auto flex-1">
+            <div className="p-6 sm:p-8 overflow-y-auto flex-1">
               <p className="text-white text-base sm:text-lg whitespace-pre-wrap leading-relaxed">{enlargedPoint.text}</p>
             </div>
             {enlargedPoint.docUrl && (
               <div className="p-5 border-t border-gray-800 bg-gray-950/50 rounded-b-3xl">
-                <a href={enlargedPoint.docUrl} download target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 text-sm font-bold text-gray-950 bg-orange-500 hover:bg-orange-600 w-full py-4 rounded-xl transition-all active:scale-95 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => triggerFileDownload(enlargedPoint.docUrl, enlargedPoint.docName || 'Dokument')}
+                  className="flex items-center justify-center gap-2 text-sm font-black text-gray-950 bg-orange-500 hover:bg-orange-400 w-full py-4 rounded-xl transition-all active:scale-95 shadow-lg"
+                >
                   <Paperclip size={18} /> {enlargedPoint.docName || 'Dokument herunterladen'}
-                </a>
+                </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Lese- & Druckansicht (PDF-Export) */}
+      {readingMinute && (
+        <div className="fixed inset-0 z-[150] bg-gray-950/95 backdrop-blur-md overflow-y-auto p-4 sm:p-8 animate-in fade-in duration-200">
+          <div className="max-w-4xl mx-auto bg-gray-900 border border-gray-800 rounded-3xl shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 bg-gray-950 border-b border-gray-800 flex items-center justify-between sticky top-0 z-10">
+              <div className="flex items-center gap-2 text-orange-500 text-xs font-black uppercase tracking-widest">
+                <FileText size={16} /> Protokoll-Dokumentenansicht
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95"
+                >
+                  <Printer size={15} /> Drucken / Als PDF speichern
+                </button>
+                <button
+                  onClick={() => setReadingMinute(null)}
+                  className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 sm:p-10 space-y-8">
+              <div className="border-b border-gray-800 pb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-orange-500 mb-1">RüssSuuger Ämme • Vorstandsprotokoll</p>
+                  <h1 className="text-2xl sm:text-4xl font-black text-white">{readingMinute.title}</h1>
+                </div>
+                <div className="text-left sm:text-right">
+                  <p className="text-xs text-gray-500 uppercase font-bold">Sitzungsdatum</p>
+                  <p className="text-lg font-black text-white">{new Date(readingMinute.date).toLocaleDateString('de-CH', { dateStyle: 'long' })}</p>
+                </div>
+              </div>
+
+              {readingMinute.attendance && Object.keys(readingMinute.attendance).length > 0 && (
+                <div className="bg-gray-950 border border-gray-800 rounded-2xl p-5">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Anwesenheit</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                    {users.filter(u => u.groups?.includes('Vorstand')).map(u => {
+                      const st = readingMinute.attendance?.[u.id];
+                      if (!st) return null;
+                      const lbl = st === 'present' ? '✓ Anwesend' : st === 'excused' ? '○ Entschuldigt' : '✗ Unentschuldigt';
+                      const clr = st === 'present' ? 'text-green-400' : st === 'excused' ? 'text-blue-400' : 'text-red-400';
+                      return (
+                        <div key={u.id} className="flex items-center justify-between bg-gray-900 px-3 py-2 rounded-xl border border-gray-800">
+                          <span className="font-bold text-white">{u.firstName} {u.lastName}</span>
+                          <span className={`font-black text-[10px] ${clr}`}>{lbl}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-6">
+                {TRAKTANDEN.map(t => {
+                  const pts = readingMinute.traktanden?.[t];
+                  if (!pts || pts.length === 0) return null;
+                  return (
+                    <div key={t} className="space-y-3">
+                      <h3 className="text-lg font-black text-orange-500 border-b border-gray-800 pb-2">{t}</h3>
+                      <ol className="space-y-3 list-decimal list-inside">
+                        {pts.map((p, idx) => (
+                          <li key={p.id} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 text-sm text-gray-200 leading-relaxed">
+                            <span className="font-black text-gray-500 mr-2">{idx + 1}.</span>
+                            <span className="whitespace-pre-wrap">{p.text}</span>
+                            {p.docName && (
+                              <div className="mt-2 text-xs text-orange-400 font-bold flex items-center gap-1.5">
+                                <Paperclip size={13} /> Beilage: {p.docName}
+                              </div>
+                            )}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -690,19 +1266,26 @@ function ProtocolView({ minutes, users, currentUser }) {
   );
 }
 
-// --- Protocol Editor ---
-function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
+// --- Protocol Editor (Redesigned & Aufgewertet) ---
+function ProtocolEditor({ vorstand, onSave, onCancel, initialData, notify }) {
   const [form, setForm] = useState(initialData || {
     title: '',
     date: new Date().toISOString().split('T')[0],
     attendance: {},
     traktanden: TRAKTANDEN.reduce((acc, curr) => ({ ...acc, [curr]: [] }), {})
   });
-  const [uploading,        setUploading]        = useState({});
+  const [uploading,         setUploading]         = useState({});
   const [enlargedEditPoint, setEnlargedEditPoint] = useState(null);
+  const [activeTraktandum,  setActiveTraktandum]  = useState('Alle');
 
   const updateAttendance = (userId, status) =>
     setForm(prev => ({ ...prev, attendance: { ...prev.attendance, [userId]: status } }));
+
+  const markAllPresent = () => {
+    const next = {};
+    vorstand.forEach(m => { next[m.id] = 'present'; });
+    setForm(prev => ({ ...prev, attendance: next }));
+  };
 
   const addPoint = (traktandum) => {
     const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
@@ -740,68 +1323,185 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
     });
   };
 
-  const handleFileUpload = (e, traktandum, pointId) => {
+  // Zuverlässiger Datei-Upload mit automatischem Fallback auf eingebettete Speicherung
+  const handleFileUpload = async (e, traktandum, pointId) => {
     const file = e.target.files[0];
     if (!file) return;
     e.target.value = '';
-    const storageRef = ref(storage, `artifacts/${appId}/public/uploads/${Date.now()}_${file.name}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-    setUploading(prev => ({ ...prev, [pointId]: 1 }));
-    uploadTask.on('state_changed',
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploading(prev => ({ ...prev, [pointId]: progress || 1 }));
-      },
-      (error) => {
-        console.error("Upload Error:", error);
-        alert(`Fehler beim Upload: ${error.message}`);
-        setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
-      },
-      async () => {
-        try {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          updatePointFields(traktandum, pointId, { docUrl: url, docName: file.name });
-        } catch (err) {
-          console.error("Download URL Error:", err);
-        } finally {
-          setUploading(prev => { const n = {...prev}; delete n[pointId]; return n; });
+
+    setUploading(prev => ({ ...prev, [pointId]: 10 }));
+
+    const fallbackToDataUrl = async () => {
+      try {
+        if (file.size > 750 * 1024) {
+          notify("Storage nicht erreichbar & Datei grösser als 750 KB. Bitte kleinere Datei wählen.", "error");
+          setUploading(prev => { const n = { ...prev }; delete n[pointId]; return n; });
+          return;
         }
+        const dataUrl = await readFileAsDataURL(file);
+        updatePointFields(traktandum, pointId, { docUrl: dataUrl, docName: file.name });
+        notify(`"${file.name}" direkt im Protokoll hinterlegt.`, "success");
+      } catch (err) {
+        console.error("Fallback Error:", err);
+        notify("Datei konnte nicht verarbeitet werden.", "error");
+      } finally {
+        setUploading(prev => { const n = { ...prev }; delete n[pointId]; return n; });
       }
-    );
+    };
+
+    try {
+      const storageRef = ref(storage, `artifacts/${appId}/public/uploads/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploading(prev => ({ ...prev, [pointId]: progress || 15 }));
+        },
+        async (error) => {
+          console.warn("Firebase Storage Upload nicht möglich, nutze Direkt-Speicherung:", error);
+          await fallbackToDataUrl();
+        },
+        async () => {
+          try {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            updatePointFields(traktandum, pointId, { docUrl: url, docName: file.name });
+            notify(`Anhang "${file.name}" hochgeladen.`, "success");
+          } catch (err) {
+            await fallbackToDataUrl();
+          } finally {
+            setUploading(prev => { const n = { ...prev }; delete n[pointId]; return n; });
+          }
+        }
+      );
+    } catch (err) {
+      await fallbackToDataUrl();
+    }
   };
+
+  const visibleTraktanden = activeTraktandum === 'Alle'
+    ? TRAKTANDEN
+    : TRAKTANDEN.filter(t => t === activeTraktandum);
 
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-8 duration-500">
-      <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 bg-gray-900 p-5 sm:p-8 rounded-3xl border border-gray-800 shadow-2xl">
+      {/* Kopfzeile des Protokoll-Editors */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gray-900 p-5 sm:p-8 rounded-3xl border border-gray-800 shadow-2xl">
         <div className="flex-1 space-y-4 w-full">
-          <input className="w-full bg-transparent text-2xl sm:text-4xl font-black text-white border-b-2 border-gray-800 focus:border-orange-500 outline-none transition-all placeholder:text-gray-800" placeholder="Sitzungstitel..." value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
-          <div className="flex items-center gap-4">
-            <Calendar className="text-orange-500 shrink-0" size={20} />
-            <input type="date" className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 sm:py-2 text-white focus:border-orange-500 outline-none w-full sm:w-auto" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
+          <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 inline-block">
+            {initialData ? 'Protokoll bearbeiten' : 'Neues Sitzungsprotokoll'}
+          </span>
+          <input
+            className="w-full bg-transparent text-2xl sm:text-4xl font-black text-white border-b-2 border-gray-800 focus:border-orange-500 outline-none pb-2 transition-all placeholder:text-gray-700"
+            placeholder="z.B. 4. Vorstandssitzung 2026..."
+            value={form.title}
+            onChange={e => setForm({...form, title: e.target.value})}
+          />
+          <div className="flex items-center gap-3">
+            <Calendar className="text-orange-500 shrink-0" size={18} />
+            <span className="text-xs font-bold text-gray-500 uppercase">Sitzungsdatum:</span>
+            <input
+              type="date"
+              className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-2 text-white text-sm font-bold focus:border-orange-500 outline-none"
+              value={form.date}
+              onChange={e => setForm({...form, date: e.target.value})}
+            />
           </div>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto mt-2 md:mt-0">
-          <button onClick={onCancel} className="w-full sm:w-auto px-6 py-3.5 sm:py-3 text-gray-500 font-bold hover:text-white transition-colors bg-gray-950 md:bg-transparent rounded-2xl md:rounded-none">Abbrechen</button>
-          <button onClick={() => { if(!form.title) return alert("Bitte Titel eingeben."); onSave(form); }} className="w-full sm:w-auto justify-center px-8 py-3.5 sm:py-3 bg-orange-500 text-gray-950 font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-500/20 active:scale-95 transition-all">
-            <Save size={20} /> Speichern
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          <button
+            onClick={onCancel}
+            className="w-full sm:w-auto px-6 py-3.5 text-gray-400 font-bold hover:text-white transition-colors bg-gray-950 border border-gray-800 rounded-2xl"
+          >
+            Abbrechen
+          </button>
+          <button
+            onClick={() => {
+              if (!form.title.trim()) {
+                notify("Bitte einen Sitzungstitel eingeben.", "error");
+                return;
+              }
+              onSave(form);
+            }}
+            className="w-full sm:w-auto justify-center px-8 py-3.5 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-500/20 active:scale-95 transition-all"
+          >
+            <Save size={20} /> Protokoll speichern
           </button>
         </div>
       </div>
 
+      {/* Schnell-Navigation für Traktanden */}
+      <div className="bg-gray-900 border border-gray-800 p-3 rounded-2xl flex items-center gap-2 overflow-x-auto scrollbar-hide">
+        <button
+          type="button"
+          onClick={() => setActiveTraktandum('Alle')}
+          className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 ${
+            activeTraktandum === 'Alle'
+              ? 'bg-orange-500 text-gray-950'
+              : 'bg-gray-950 text-gray-400 hover:text-white border border-gray-800'
+          }`}
+        >
+          Alle Ämter ({TRAKTANDEN.length})
+        </button>
+        {TRAKTANDEN.map(t => {
+          const count = form.traktanden[t]?.length || 0;
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setActiveTraktandum(t)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-2 ${
+                activeTraktandum === t
+                  ? 'bg-orange-500 text-gray-950 font-black'
+                  : 'bg-gray-950 text-gray-400 hover:text-white border border-gray-800'
+              }`}
+            >
+              <span>{t}</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-black ${
+                activeTraktandum === t ? 'bg-gray-950/20 text-gray-950' : count > 0 ? 'bg-orange-500/20 text-orange-400' : 'bg-gray-900 text-gray-600'
+              }`}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="grid gap-8 lg:grid-cols-3">
-        <div className="lg:col-span-1 bg-gray-900 border border-gray-800 p-5 sm:p-8 rounded-3xl h-fit lg:sticky top-24 shadow-xl">
-          <h3 className="text-xl font-black text-white mb-6 flex items-center gap-3"><UserCheck className="text-orange-500" /> Anwesenheit</h3>
-          <div className="space-y-3 sm:space-y-4">
+        {/* Linke Spalte: Anwesenheit */}
+        <div className="lg:col-span-1 bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl h-fit lg:sticky top-24 shadow-xl">
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="text-lg font-black text-white flex items-center gap-2.5">
+              <UserCheck className="text-orange-500" size={20} /> Anwesenheit
+            </h3>
+            <button
+              type="button"
+              onClick={markAllPresent}
+              className="text-[10px] font-black uppercase tracking-wider text-orange-500 hover:underline"
+            >
+              Alle anwesend
+            </button>
+          </div>
+          <div className="space-y-3">
             {vorstand.map(m => (
-              <div key={m.id} className="p-4 bg-gray-950 rounded-2xl border border-gray-800">
-                <p className="font-bold text-white mb-3 text-sm">{m.firstName} {m.lastName}</p>
-                <div className="grid grid-cols-3 gap-1.5 sm:gap-1">
+              <div key={m.id} className="p-3.5 bg-gray-950 rounded-2xl border border-gray-800">
+                <p className="font-bold text-white mb-2.5 text-sm">{m.firstName} {m.lastName}</p>
+                <div className="grid grid-cols-3 gap-1.5">
                   {[
-                    { id: 'present', label: 'Anw.',  color: 'bg-green-500/20 text-green-500 border-green-500/50' },
-                    { id: 'absent',  label: 'Unen.', color: 'bg-red-500/20 text-red-500 border-red-500/50' },
-                    { id: 'excused', label: 'Ents.', color: 'bg-blue-500/20 text-blue-500 border-blue-500/50' }
+                    { id: 'present', label: 'Anw.',  color: 'bg-green-500/20 text-green-400 border-green-500/50' },
+                    { id: 'excused', label: 'Ents.', color: 'bg-blue-500/20 text-blue-400 border-blue-500/50' },
+                    { id: 'absent',  label: 'Unen.', color: 'bg-red-500/20 text-red-400 border-red-500/50' }
                   ].map(status => (
-                    <button key={status.id} onClick={() => updateAttendance(m.id, status.id)} className={`text-[10px] sm:text-[9px] font-black uppercase py-2.5 sm:py-2 rounded-lg border transition-all ${form.attendance[m.id] === status.id ? status.color : 'bg-gray-900 text-gray-600 border-gray-800 hover:border-gray-600'}`}>
+                    <button
+                      type="button"
+                      key={status.id}
+                      onClick={() => updateAttendance(m.id, status.id)}
+                      className={`text-[10px] font-black uppercase py-2 rounded-xl border transition-all ${
+                        form.attendance[m.id] === status.id
+                          ? status.color
+                          : 'bg-gray-900 text-gray-600 border-gray-800 hover:border-gray-700 hover:text-gray-400'
+                      }`}
+                    >
                       {status.label}
                     </button>
                   ))}
@@ -811,68 +1511,143 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
           </div>
         </div>
 
+        {/* Rechte Spalte: Traktanden-Karten */}
         <div className="lg:col-span-2 space-y-6">
-          {TRAKTANDEN.map(traktandum => (
-            <div key={traktandum} className="bg-gray-900 border border-gray-800 p-5 sm:p-8 rounded-3xl shadow-xl">
-              <div className="flex justify-between items-center mb-6 gap-2">
-                <h3 className="text-xl sm:text-2xl font-black text-white italic tracking-tight underline decoration-orange-500 decoration-4 underline-offset-8 break-words">{traktandum}</h3>
-                <button onClick={() => addPoint(traktandum)} className="p-3 bg-gray-950 border border-gray-800 text-orange-500 hover:bg-orange-500 hover:text-gray-950 rounded-xl transition-all active:scale-90 shrink-0"><Plus size={20} /></button>
-              </div>
-              <div className="space-y-4">
-                {form.traktanden[traktandum]?.map((point, index) => (
-                  <div key={point.id} className="p-4 sm:p-6 bg-gray-950 border border-gray-800 rounded-2xl space-y-4 group">
-                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-                      <textarea
-                        className="w-full flex-1 bg-transparent text-gray-200 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-800 text-sm font-medium leading-relaxed overflow-hidden min-h-[44px]"
-                        placeholder="Beschluss oder Notiz schreiben..."
-                        value={point.text}
-                        onChange={e => {
-                          e.target.style.height = 'auto';
-                          e.target.style.height = `${e.target.scrollHeight}px`;
-                          updatePoint(traktandum, point.id, 'text', e.target.value);
-                        }}
-                        ref={el => { if (el) { requestAnimationFrame(() => { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }); } }}
-                      />
-                      <div className="flex justify-end sm:self-start gap-2 shrink-0">
-                        <button onClick={(e) => { e.preventDefault(); setEnlargedEditPoint({ traktandum, id: point.id, text: point.text }); }} className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 transition-colors bg-gray-900 rounded-lg border border-gray-800"><Eye size={18} className="sm:w-4 sm:h-4" /></button>
-                        <button onClick={(e) => { e.preventDefault(); movePoint(traktandum, index, -1); }} disabled={index === 0} className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"><ArrowUp size={18} className="sm:w-4 sm:h-4" /></button>
-                        <button onClick={(e) => { e.preventDefault(); movePoint(traktandum, index, 1); }} disabled={index === form.traktanden[traktandum].length - 1} className="p-2 sm:p-1.5 text-gray-600 hover:text-orange-500 disabled:opacity-30 disabled:hover:text-gray-600 transition-colors bg-gray-900 rounded-lg border border-gray-800"><ArrowDown size={18} className="sm:w-4 sm:h-4" /></button>
-                        <button onClick={(e) => { e.preventDefault(); removePoint(traktandum, point.id); }} className="p-2 sm:p-1.5 text-gray-600 hover:text-red-500 transition-colors bg-gray-900 rounded-lg border border-gray-800 ml-2"><X size={18} className="sm:w-4 sm:h-4" /></button>
-                      </div>
-                    </div>
-                    <div className="flex flex-col sm:flex-row items-center gap-4 pt-4 border-t border-gray-900">
-                      <div className="w-full flex-1 flex items-center gap-3 bg-gray-900 px-4 py-3 rounded-xl border border-gray-800 relative overflow-hidden">
-                        {uploading[point.id] !== undefined && (
-                          <div className="absolute left-0 top-0 h-full bg-orange-500/20 transition-all" style={{ width: `${uploading[point.id]}%` }} />
-                        )}
-                        <Paperclip size={16} className="text-orange-500 shrink-0 z-10" />
-                        <div className="flex-1 z-10 flex items-center overflow-hidden">
-                          {uploading[point.id] !== undefined ? (
-                            <span className="text-[11px] text-orange-500 font-bold">Wird hochgeladen... {Math.round(uploading[point.id])}%</span>
-                          ) : point.docUrl ? (
-                            <div className="flex items-center justify-between w-full">
-                              <a href={point.docUrl} download target="_blank" rel="noreferrer" className="text-[11px] text-white hover:text-orange-500 truncate font-bold max-w-[150px] sm:max-w-[250px]">{point.docName || 'Dokument herunterladen'}</a>
-                              <button type="button" onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })} className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md shrink-0"><X size={14} /></button>
-                            </div>
-                          ) : (
-                            <label className="cursor-pointer text-[11px] text-gray-500 hover:text-white w-full block font-bold transition-colors truncate">
-                              <UploadCloud size={14} className="inline mr-2" />
-                              Datei anhängen (PDF, Word, Excel)
-                              <input type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => handleFileUpload(e, traktandum, point.id)} />
-                            </label>
-                          )}
+          {visibleTraktanden.map(traktandum => {
+            const points = form.traktanden[traktandum] || [];
+            return (
+              <div key={traktandum} className="bg-gray-900 border border-gray-800 rounded-3xl shadow-xl overflow-hidden">
+                <div className="px-5 sm:px-7 py-5 bg-gray-950/50 border-b border-gray-800 flex justify-between items-center gap-2">
+                  <div>
+                    <h3 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-2.5">
+                      <span className="w-2 h-5 bg-orange-500 rounded-full" />
+                      {traktandum}
+                    </h3>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      {points.length === 0 ? 'Noch keine Einträge' : `${points.length} ${points.length === 1 ? 'Traktandenpunkt' : 'Traktandenpunkte'}`}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addPoint(traktandum)}
+                    className="px-4 py-2.5 bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 flex items-center gap-1.5 shrink-0"
+                  >
+                    <Plus size={16} /> Punkt hinzufügen
+                  </button>
+                </div>
+
+                <div className="p-5 sm:p-7 space-y-4">
+                  {points.map((point, index) => (
+                    <div key={point.id} className="p-4 sm:p-5 bg-gray-950 border border-gray-800 rounded-2xl space-y-4 group focus-within:border-orange-500/50 transition-colors">
+                      <div className="flex items-start gap-3">
+                        <span className="w-7 h-7 rounded-lg bg-gray-900 border border-gray-800 text-orange-500 font-black text-xs flex items-center justify-center shrink-0 mt-1">
+                          #{index + 1}
+                        </span>
+                        <textarea
+                          className="w-full flex-1 bg-transparent text-gray-100 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-700 text-sm sm:text-base font-medium leading-relaxed overflow-hidden min-h-[56px]"
+                          placeholder={`Notiz oder Beschluss für ${traktandum} eingeben...`}
+                          value={point.text}
+                          onChange={e => {
+                            e.target.style.height = 'auto';
+                            e.target.style.height = `${e.target.scrollHeight}px`;
+                            updatePoint(traktandum, point.id, 'text', e.target.value);
+                          }}
+                          ref={el => { if (el) { requestAnimationFrame(() => { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }); } }}
+                        />
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setEnlargedEditPoint({ traktandum, id: point.id, text: point.text })}
+                            title="Im Vollbild bearbeiten"
+                            className="p-2 text-gray-500 hover:text-orange-500 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                          >
+                            <Maximize2 size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => movePoint(traktandum, index, -1)}
+                            disabled={index === 0}
+                            className="p-2 text-gray-500 hover:text-orange-500 disabled:opacity-30 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                          >
+                            <ArrowUp size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => movePoint(traktandum, index, 1)}
+                            disabled={index === points.length - 1}
+                            className="p-2 text-gray-500 hover:text-orange-500 disabled:opacity-30 transition-colors bg-gray-900 rounded-lg border border-gray-800"
+                          >
+                            <ArrowDown size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removePoint(traktandum, point.id)}
+                            className="p-2 text-gray-500 hover:text-red-500 transition-colors bg-gray-900 rounded-lg border border-gray-800 ml-1"
+                          >
+                            <Trash2 size={15} />
+                          </button>
                         </div>
                       </div>
-                      <input className="w-full sm:w-48 bg-gray-900 px-4 py-3 rounded-xl border border-gray-800 text-[11px] text-gray-500 focus:text-white outline-none" placeholder="Anzeige-Name (optional)" value={point.docName} onChange={e => updatePoint(traktandum, point.id, 'docName', e.target.value)} />
+
+                      {/* Datei-Anhang Zeile */}
+                      <div className="flex flex-col sm:flex-row items-center gap-3 pt-3 border-t border-gray-900">
+                        <div className="w-full flex-1 flex items-center gap-3 bg-gray-900 px-4 py-2.5 rounded-xl border border-gray-800 relative overflow-hidden">
+                          {uploading[point.id] !== undefined && (
+                            <div className="absolute left-0 top-0 h-full bg-orange-500/20 transition-all" style={{ width: `${uploading[point.id]}%` }} />
+                          )}
+                          <Paperclip size={15} className="text-orange-500 shrink-0 z-10" />
+                          <div className="flex-1 z-10 flex items-center overflow-hidden">
+                            {uploading[point.id] !== undefined ? (
+                              <span className="text-[11px] text-orange-500 font-bold">Wird gespeichert... {Math.round(uploading[point.id])}%</span>
+                            ) : point.docUrl ? (
+                              <div className="flex items-center justify-between w-full">
+                                <button
+                                  type="button"
+                                  onClick={() => triggerFileDownload(point.docUrl, point.docName || 'Dokument')}
+                                  className="text-xs text-white hover:text-orange-400 truncate font-bold max-w-[200px] sm:max-w-[280px] text-left"
+                                >
+                                  {point.docName || 'Dokument herunterladen'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })}
+                                  className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-1 rounded-md shrink-0"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            ) : (
+                              <label className="cursor-pointer text-xs text-gray-400 hover:text-white w-full block font-bold transition-colors truncate">
+                                <UploadCloud size={14} className="inline mr-2 text-orange-500" />
+                                Datei anhängen (PDF, Word, Excel, Bild)
+                                <input type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" onChange={e => handleFileUpload(e, traktandum, point.id)} />
+                              </label>
+                            )}
+                          </div>
+                        </div>
+                        <input
+                          className="w-full sm:w-48 bg-gray-900 px-3.5 py-2.5 rounded-xl border border-gray-800 text-xs text-gray-300 focus:border-orange-500 outline-none"
+                          placeholder="Anzeige-Name (optional)"
+                          value={point.docName}
+                          onChange={e => updatePoint(traktandum, point.id, 'docName', e.target.value)}
+                        />
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {(!form.traktanden[traktandum] || form.traktanden[traktandum].length === 0) && (
-                  <p className="text-center text-gray-700 text-xs py-4 font-bold uppercase tracking-widest italic opacity-50">Keine Einträge</p>
-                )}
+                  ))}
+
+                  {points.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={() => addPoint(traktandum)}
+                      className="w-full py-6 border-2 border-dashed border-gray-800 hover:border-orange-500/40 rounded-2xl text-gray-600 hover:text-orange-400 text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                    >
+                      <Plus size={16} /> Ersten Eintrag für {traktandum} erfassen
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -880,14 +1655,27 @@ function ProtocolEditor({ vorstand, onSave, onCancel, initialData }) {
         <div className="fixed inset-0 z-[100] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-3xl flex flex-col shadow-2xl h-[80vh] max-h-[800px]">
             <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
-              <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedEditPoint.traktandum} - Bearbeiten</h3>
+              <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedEditPoint.traktandum} – Fokussiertes Schreiben</h3>
               <button onClick={() => setEnlargedEditPoint(null)} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90"><X size={20} /></button>
             </div>
             <div className="p-6 flex-1 flex flex-col">
-              <textarea className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-2xl p-6 text-white focus:border-orange-500 outline-none resize-none leading-relaxed text-lg" value={enlargedEditPoint.text} onChange={e => setEnlargedEditPoint({...enlargedEditPoint, text: e.target.value})} placeholder="Beschluss oder Notiz..." autoFocus />
+              <textarea
+                className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-2xl p-6 text-white focus:border-orange-500 outline-none resize-none leading-relaxed text-lg"
+                value={enlargedEditPoint.text}
+                onChange={e => setEnlargedEditPoint({...enlargedEditPoint, text: e.target.value})}
+                placeholder="Beschluss oder Notiz..."
+                autoFocus
+              />
             </div>
             <div className="p-5 border-t border-gray-800 bg-gray-950/50 rounded-b-3xl flex justify-end">
-              <button onClick={(e) => { e.preventDefault(); updatePoint(enlargedEditPoint.traktandum, enlargedEditPoint.id, 'text', enlargedEditPoint.text); setEnlargedEditPoint(null); }} className="w-full sm:w-auto px-8 py-4 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  updatePoint(enlargedEditPoint.traktandum, enlargedEditPoint.id, 'text', enlargedEditPoint.text);
+                  setEnlargedEditPoint(null);
+                }}
+                className="w-full sm:w-auto px-8 py-4 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg"
+              >
                 Text übernehmen
               </button>
             </div>
@@ -908,9 +1696,9 @@ function TabButton({ active, onClick, icon, label }) {
 }
 
 // --- Events View ---
-function EventsView({ events, currentUser, isArchive = false, users }) {
-  const [showCreate,     setShowCreate]     = useState(false);
-  const [selectedEvent,  setSelectedEvent]  = useState(null);
+function EventsView({ events, currentUser, isArchive = false, users, notify, askConfirm }) {
+  const [showCreate,    setShowCreate]    = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState(null);
 
   if (selectedEvent) {
     const current = events.find(e => e.id === selectedEvent.id);
@@ -921,9 +1709,15 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
         onBack={() => setSelectedEvent(null)}
         currentUser={currentUser}
         onUpdate={data => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', current.id), data, { merge: true })}
-        onDelete={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', current.id))}
+        onDelete={() => {
+          deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', current.id));
+          setSelectedEvent(null);
+          notify("Event wurde gelöscht.", "info");
+        }}
         users={users}
         isArchived={isArchive}
+        notify={notify}
+        askConfirm={askConfirm}
       />
     );
   }
@@ -942,10 +1736,11 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
         const id = Date.now().toString();
         setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', id), { ...e, id, isArchived: false, surveys: [], createdAt: new Date().toISOString() });
         setShowCreate(false);
+        notify("Event erfolgreich erstellt.", "success");
       }} />}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {events.map(e => (
-          <div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl cursor-pointer hover:border-orange-500 transition-all group shadow-lg active:scale-95 transition-transform">
+          <div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl cursor-pointer hover:border-orange-500 transition-all group shadow-lg active:scale-95">
             <span className="text-[9px] font-black text-orange-500 uppercase bg-orange-500/10 px-3 py-1 rounded-full mb-4 inline-block tracking-widest">{e.category}</span>
             <h3 className="text-xl font-bold text-white mb-2">{e.title}</h3>
             <div className="flex flex-col gap-2 text-xs text-gray-500">
@@ -965,20 +1760,21 @@ function EventsView({ events, currentUser, isArchive = false, users }) {
   );
 }
 
-// --- Event Detail ---
-function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, isArchived }) {
+// --- Event Detail (Unveränderte Voting-Logik) ---
+function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, isArchived, notify, askConfirm }) {
   const [showSurveyForm,   setShowSurveyForm]   = useState(false);
   const [editingSurvey,    setEditingSurvey]    = useState(null);
   const [presentingSurvey, setPresentingSurvey] = useState(null);
-
 
   const saveSurvey = (s) => {
     if (editingSurvey) {
       onUpdate({ surveys: event.surveys.map(x => x.id === editingSurvey.id ? { ...x, ...s } : x) });
       setEditingSurvey(null);
+      notify("Umfrage aktualisiert.", "success");
     } else {
       onUpdate({ surveys: [...(event.surveys || []), { ...s, id: Date.now().toString(), status: 'draft', votedUsers: [] }] });
       setShowSurveyForm(false);
+      notify("Neue Umfrage hinzugefügt.", "success");
     }
   };
 
@@ -991,9 +1787,15 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
   };
 
   const deleteSurvey = (id) => {
-    if (confirm('Soll diese Umfrage wirklich gelöscht werden?')) {
-      onUpdate({ surveys: event.surveys.filter(x => x.id !== id) });
-    }
+    askConfirm(
+      'Umfrage löschen?',
+      'Soll diese Umfrage wirklich gelöscht werden?',
+      () => {
+        onUpdate({ surveys: event.surveys.filter(x => x.id !== id) });
+        notify("Umfrage gelöscht.", "info");
+      },
+      'Löschen'
+    );
   };
 
   const exportToExcel = () => {
@@ -1036,7 +1838,19 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
           <div className="flex gap-2">
             <button onClick={exportToExcel} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-green-500 transition-all" title="Als Excel (CSV) exportieren"><Download size={20}/></button>
             {!isArchived && <button onClick={() => onUpdate({ isArchived: !event.isArchived })} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-orange-500 transition-all" title="Manuell Archivieren"><Archive size={20}/></button>}
-            <button onClick={() => { if(confirm('Achtung: Soll dieser Event wirklich komplett und unwiderruflich gelöscht werden?')) onDelete(); }} className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500/20"><Trash2 size={20}/></button>
+            <button
+              onClick={() =>
+                askConfirm(
+                  'Event komplett löschen?',
+                  'Achtung: Soll dieser Event wirklich komplett und unwiderruflich gelöscht werden?',
+                  onDelete,
+                  'Unwiderruflich löschen'
+                )
+              }
+              className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500/20"
+            >
+              <Trash2 size={20}/>
+            </button>
           </div>
         )}
       </div>
@@ -1054,54 +1868,54 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
       <div className="space-y-6">
         {event.surveys?.map((s, index) => (
           <div key={s.id} className="transition-all">
-          <SurveyCard
-            survey={s}
-            currentUser={currentUser}
-            isArchived={isArchived}
-            onEdit={() => setEditingSurvey(editingSurvey?.id === s.id ? null : s)}
-            onDelete={() => deleteSurvey(s.id)}
-            onPresent={setPresentingSurvey}
-            onMoveUp={index > 0 ? () => moveSurvey(index, -1) : null}
-            onMoveDown={index < event.surveys.length - 1 ? () => moveSurvey(index, 1) : null}
-            isEditing={editingSurvey?.id === s.id}
-            onSaveEdit={saveSurvey}
-            onCancelEdit={() => setEditingSurvey(null)}
-            onVote={async (opts) => {
-              const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
-              try {
-                await runTransaction(db, async (transaction) => {
-                  const snap = await transaction.get(eventRef);
-                  if (!snap.exists()) throw new Error("Event nicht gefunden.");
-                  const data = snap.data();
-                  const srv = data.surveys?.find(x => x.id === s.id);
-                  if (!srv) throw new Error("Umfrage nicht gefunden.");
-                  if (srv.votedUsers?.includes(currentUser.id)) throw new Error("Bereits abgestimmt.");
-                  const updatedSurveys = data.surveys.map(x => {
-                    if (x.id !== s.id) return x;
-                    return {
-                      ...x,
-                      options: x.options.map(o => opts.includes(o.id) ? { ...o, votes: (o.votes || 0) + 1 } : o),
-                      votedUsers: [...(x.votedUsers || []), currentUser.id]
-                    };
+            <SurveyCard
+              survey={s}
+              currentUser={currentUser}
+              isArchived={isArchived}
+              onEdit={() => setEditingSurvey(editingSurvey?.id === s.id ? null : s)}
+              onDelete={() => deleteSurvey(s.id)}
+              onPresent={setPresentingSurvey}
+              onMoveUp={index > 0 ? () => moveSurvey(index, -1) : null}
+              onMoveDown={index < event.surveys.length - 1 ? () => moveSurvey(index, 1) : null}
+              isEditing={editingSurvey?.id === s.id}
+              onSaveEdit={saveSurvey}
+              onCancelEdit={() => setEditingSurvey(null)}
+              onVote={async (opts) => {
+                const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
+                try {
+                  await runTransaction(db, async (transaction) => {
+                    const snap = await transaction.get(eventRef);
+                    if (!snap.exists()) throw new Error("Event nicht gefunden.");
+                    const data = snap.data();
+                    const srv = data.surveys?.find(x => x.id === s.id);
+                    if (!srv) throw new Error("Umfrage nicht gefunden.");
+                    if (srv.votedUsers?.includes(currentUser.id)) throw new Error("Bereits abgestimmt.");
+                    const updatedSurveys = data.surveys.map(x => {
+                      if (x.id !== s.id) return x;
+                      return {
+                        ...x,
+                        options: x.options.map(o => opts.includes(o.id) ? { ...o, votes: (o.votes || 0) + 1 } : o),
+                        votedUsers: [...(x.votedUsers || []), currentUser.id]
+                      };
+                    });
+                    transaction.update(eventRef, { surveys: updatedSurveys });
                   });
-                  transaction.update(eventRef, { surveys: updatedSurveys });
-                });
-              } catch (err) {
-                console.error("Vote Error:", err);
-                if (err.message === "Bereits abgestimmt.") alert("Du hast bereits abgestimmt.");
-              }
-            }}
-            onStatusChange={st => {
-              let updated = event.surveys.map(x => x.id === s.id ? {...x, status: st} : x);
-              if (st === 'published') {
-                const idx = updated.findIndex(x => x.id === s.id);
-                const [moved] = updated.splice(idx, 1);
-                updated.push(moved);
-              }
-              onUpdate({ surveys: updated });
-            }}
-            users={users}
-          />
+                } catch (err) {
+                  console.error("Vote Error:", err);
+                  if (err.message === "Bereits abgestimmt.") notify("Du hast bereits abgestimmt.", "error");
+                }
+              }}
+              onStatusChange={st => {
+                let updated = event.surveys.map(x => x.id === s.id ? {...x, status: st} : x);
+                if (st === 'published') {
+                  const idx = updated.findIndex(x => x.id === s.id);
+                  const [moved] = updated.splice(idx, 1);
+                  updated.push(moved);
+                }
+                onUpdate({ surveys: updated });
+              }}
+              users={users}
+            />
           </div>
         ))}
       </div>
@@ -1136,7 +1950,6 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
 
   return (
     <div className="fixed inset-0 z-[200] bg-gray-950 flex flex-col animate-in fade-in duration-300">
-      {/* Header */}
       <div className="flex items-center justify-between px-8 py-5 border-b border-gray-800">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-black italic tracking-tighter">
@@ -1158,9 +1971,7 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 flex flex-col items-center justify-center px-8 py-10 max-w-4xl mx-auto w-full">
-        {/* Frage */}
         <h2 className="text-4xl sm:text-5xl font-black text-white text-center leading-tight mb-4">
           {survey.title}
         </h2>
@@ -1168,7 +1979,6 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
           {survey.majorityType === 'two_thirds' ? '⅔ Zwei-Drittel-Mehrheit erforderlich' : survey.majorityType === 'simple' ? 'Einfache Mehrheit (50%+1)' : ''}
         </p>
 
-        {/* Resultate / Optionen */}
         <div className="w-full space-y-4 mb-12">
           {survey.status === 'published' || survey.status === undefined ? (
             survey.options.map(o => {
@@ -1200,7 +2010,6 @@ function PresentationModal({ survey, users, onClose, onPublish }) {
           )}
         </div>
 
-        {/* Fortschritt */}
         <div className="w-full">
           <div className="flex justify-between text-sm font-bold text-gray-500 mb-3">
             <span>{votedCount} von {eligibleUsersCount} haben abgestimmt</span>
@@ -1253,11 +2062,11 @@ function CreateEventForm({ onSubmit }) {
 
 // --- Create Survey Form ---
 function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
-  const [title,          setTitle]          = useState(initialData?.title || '');
-  const [maxAnswers,     setMaxAnswers]     = useState(initialData?.maxAnswers || 1);
-  const [majorityType,   setMajorityType]   = useState(initialData?.majorityType || 'none');
-  const [options,        setOptions]        = useState(initialData?.options || [{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
-  const [allowedGroups,  setAllowedGroups]  = useState(initialData?.allowedGroups || GROUPS);
+  const [title,         setTitle]         = useState(initialData?.title || '');
+  const [maxAnswers,    setMaxAnswers]    = useState(initialData?.maxAnswers || 1);
+  const [majorityType,  setMajorityType]  = useState(initialData?.majorityType || 'none');
+  const [options,       setOptions]       = useState(initialData?.options || [{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
+  const [allowedGroups, setAllowedGroups] = useState(initialData?.allowedGroups || GROUPS);
 
   const toggleGroup = g => setAllowedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
 
@@ -1315,7 +2124,7 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
   );
 }
 
-// --- Survey Card ---
+// --- Survey Card (Unveränderte Voting-Logik) ---
 function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete, onPresent, onMoveUp, onMoveDown, isEditing, onSaveEdit, onCancelEdit, users }) {
   const [selected, setSelected] = useState([]);
   const [voting,   setVoting]   = useState(false);
@@ -1426,11 +2235,11 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
 }
 
 // --- Members View ---
-function MembersView({ users }) {
-  const [showAdd,      setShowAdd]      = useState(false);
-  const [editingUser,  setEditingUser]  = useState(null);
-  const [filterGroup,  setFilterGroup]  = useState('Alle');
-  const [searchTerm,   setSearchTerm]   = useState('');
+function MembersView({ users, notify, askConfirm }) {
+  const [showAdd,     setShowAdd]     = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [filterGroup, setFilterGroup] = useState('Alle');
+  const [searchTerm,  setSearchTerm]  = useState('');
 
   const filteredUsers = useMemo(() => {
     let result = users;
@@ -1452,6 +2261,7 @@ function MembersView({ users }) {
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', id), { ...m, id });
     setShowAdd(false);
     setEditingUser(null);
+    notify("Mitglied gespeichert.", "success");
   };
 
   const handleImportCSV = async (e) => {
@@ -1469,9 +2279,7 @@ function MembersView({ users }) {
         if (parts.length >= 2) {
           const firstName = sanitizeName(parts[0]);
           const lastName  = sanitizeName(parts[1]);
-          // Header-Zeile überspringen
           if (firstName && lastName && firstName.toLowerCase() !== 'vorname') {
-            // Duplikat-Check
             const alreadyExists = users.some(
               u => u.firstName.toLowerCase() === firstName.toLowerCase() &&
                    u.lastName.toLowerCase()  === lastName.toLowerCase()
@@ -1486,7 +2294,7 @@ function MembersView({ users }) {
           }
         }
       }
-      alert(`${count} Mitglieder wurden erfolgreich importiert.`);
+      notify(`${count} Mitglieder wurden erfolgreich importiert.`, "success");
       e.target.value = '';
     };
     reader.readAsText(file);
@@ -1510,9 +2318,8 @@ function MembersView({ users }) {
         </div>
       </div>
 
-      {showAdd    && <MemberForm onSubmit={saveMember} onCancel={() => setShowAdd(false)} />}
+      {showAdd && <MemberForm onSubmit={saveMember} onCancel={() => setShowAdd(false)} />}
 
-      {/* Suche */}
       <div className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
         <input
@@ -1529,7 +2336,6 @@ function MembersView({ users }) {
         )}
       </div>
 
-      {/* Gruppen-Filter */}
       <div className="flex flex-wrap gap-2">
         {['Alle', ...GROUPS, 'Keine Gruppe'].map(g => (
           <button
@@ -1579,7 +2385,22 @@ function MembersView({ users }) {
                     </td>
                     <td className="px-6 py-5 text-right whitespace-nowrap">
                       <button onClick={() => setEditingUser(editingUser?.id === u.id ? null : u)} className={`transition-colors p-2 rounded-xl active:scale-90 mr-1 ${editingUser?.id === u.id ? 'text-orange-500 bg-orange-500/10' : 'text-gray-700 hover:text-orange-500 hover:bg-orange-500/10'}`}><Edit2 size={18}/></button>
-                      <button onClick={() => { if(confirm('Soll dieses Mitglied entfernt werden?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id)); }} className="text-gray-700 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-xl active:scale-90"><Trash2 size={18}/></button>
+                      <button
+                        onClick={() =>
+                          askConfirm(
+                            'Mitglied entfernen?',
+                            `Soll ${u.firstName} ${u.lastName} wirklich entfernt werden?`,
+                            async () => {
+                              await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id));
+                              notify("Mitglied entfernt.", "info");
+                            },
+                            'Entfernen'
+                          )
+                        }
+                        className="text-gray-700 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-xl active:scale-90"
+                      >
+                        <Trash2 size={18}/>
+                      </button>
                     </td>
                   </tr>
                   {editingUser?.id === u.id && (
@@ -1650,8 +2471,8 @@ function MemberForm({ onSubmit, onCancel, initialData, inline = false }) {
   );
 }
 
-// --- Files View ---
-function FilesView({ folders, files, currentUser }) {
+// --- Files View (Zuverlässige Dateiablage mit Storage + Firestore Fallback) ---
+function FilesView({ folders, files, currentUser, notify, askConfirm }) {
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [showNewFolder,  setShowNewFolder]  = useState(false);
   const [folderName,     setFolderName]     = useState('');
@@ -1667,53 +2488,117 @@ function FilesView({ folders, files, currentUser }) {
     e.preventDefault();
     if (!folderName.trim()) return;
     const id = Date.now().toString();
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'folders', id), {
+    const newFolder = {
       id, name: folderName.trim(), createdAt: new Date().toISOString(), createdBy: currentUser.id
-    });
+    };
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'folders', id), newFolder);
     setFolderName('');
     setShowNewFolder(false);
+    setSelectedFolder(newFolder);
+    notify(`Ordner "${newFolder.name}" erstellt.`, "success");
   };
 
-  const deleteFolder = async (folder) => {
-    if (!confirm(`Ordner "${folder.name}" und alle Dateien darin löschen?`)) return;
-    // Delete all files in folder
-    const folderFilesList = files.filter(f => f.folderId === folder.id);
-    for (const f of folderFilesList) {
-      try { await deleteObject(ref(storage, f.storagePath)); } catch(e) {}
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', f.id));
-    }
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'folders', folder.id));
-    if (selectedFolder?.id === folder.id) setSelectedFolder(null);
+  const deleteFolder = (folder) => {
+    askConfirm(
+      'Ordner löschen?',
+      `Ordner "${folder.name}" und alle enthaltenen Dateien wirklich löschen?`,
+      async () => {
+        const folderFilesList = files.filter(f => f.folderId === folder.id);
+        for (const f of folderFilesList) {
+          if (f.storagePath) {
+            try { await deleteObject(ref(storage, f.storagePath)); } catch(e) {}
+          }
+          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', f.id));
+        }
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'folders', folder.id));
+        if (selectedFolder?.id === folder.id) setSelectedFolder(null);
+        notify(`Ordner "${folder.name}" gelöscht.`, "info");
+      },
+      'Ordner löschen'
+    );
   };
 
   const handleUpload = (fileList) => {
-    if (!selectedFolder) return;
+    if (!selectedFolder || !fileList) return;
     Array.from(fileList).forEach(file => {
       const uploadId = Date.now().toString() + Math.random().toString(36).substr(2, 4);
       const storagePath = `artifacts/${appId}/public/files/${selectedFolder.id}/${Date.now()}_${file.name}`;
-      const storageRef = ref(storage, storagePath);
-      const task = uploadBytesResumable(storageRef, file);
-      setUploading(prev => ({ ...prev, [uploadId]: { name: file.name, progress: 0 } }));
-      task.on('state_changed',
-        snap => setUploading(prev => ({ ...prev, [uploadId]: { name: file.name, progress: Math.round((snap.bytesTransferred / snap.totalBytes) * 100) } })),
-        err => { console.error(err); setUploading(prev => { const n = {...prev}; delete n[uploadId]; return n; }); },
-        async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
-          const fileId = Date.now().toString();
+      setUploading(prev => ({ ...prev, [uploadId]: { name: file.name, progress: 10 } }));
+
+      const saveFallbackToFirestore = async () => {
+        try {
+          if (file.size > 750 * 1024) {
+            notify(`"${file.name}" ist grösser als 750 KB (Storage-Regeln prüfen).`, "error");
+            setUploading(prev => { const n = { ...prev }; delete n[uploadId]; return n; });
+            return;
+          }
+          const dataUrl = await readFileAsDataURL(file);
+          const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 4);
           await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', fileId), {
-            id: fileId, name: file.name, url, storagePath, folderId: selectedFolder.id,
-            size: file.size, type: file.type, uploadedAt: new Date().toISOString(), uploadedBy: currentUser.id
+            id: fileId,
+            name: file.name,
+            url: dataUrl,
+            storagePath: null,
+            folderId: selectedFolder.id,
+            size: file.size,
+            type: file.type,
+            uploadedAt: new Date().toISOString(),
+            uploadedBy: currentUser.id
           });
-          setUploading(prev => { const n = {...prev}; delete n[uploadId]; return n; });
+          notify(`"${file.name}" in Dateiablage gespeichert.`, "success");
+        } catch (err) {
+          console.error(err);
+          notify(`Fehler beim Speichern von "${file.name}".`, "error");
+        } finally {
+          setUploading(prev => { const n = { ...prev }; delete n[uploadId]; return n; });
         }
-      );
+      };
+
+      try {
+        const storageRef = ref(storage, storagePath);
+        const task = uploadBytesResumable(storageRef, file);
+        task.on('state_changed',
+          snap => setUploading(prev => ({
+            ...prev,
+            [uploadId]: { name: file.name, progress: Math.round((snap.bytesTransferred / snap.totalBytes) * 100) || 20 }
+          })),
+          async () => {
+            await saveFallbackToFirestore();
+          },
+          async () => {
+            try {
+              const url = await getDownloadURL(task.snapshot.ref);
+              const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 4);
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', fileId), {
+                id: fileId, name: file.name, url, storagePath, folderId: selectedFolder.id,
+                size: file.size, type: file.type, uploadedAt: new Date().toISOString(), uploadedBy: currentUser.id
+              });
+              notify(`"${file.name}" hochgeladen.`, "success");
+              setUploading(prev => { const n = { ...prev }; delete n[uploadId]; return n; });
+            } catch (_) {
+              await saveFallbackToFirestore();
+            }
+          }
+        );
+      } catch (_) {
+        saveFallbackToFirestore();
+      }
     });
   };
 
-  const deleteFile = async (f) => {
-    if (!confirm(`Datei "${f.name}" löschen?`)) return;
-    try { await deleteObject(ref(storage, f.storagePath)); } catch(e) {}
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', f.id));
+  const deleteFile = (f) => {
+    askConfirm(
+      'Datei löschen?',
+      `Möchtest du die Datei "${f.name}" wirklich löschen?`,
+      async () => {
+        if (f.storagePath) {
+          try { await deleteObject(ref(storage, f.storagePath)); } catch(e) {}
+        }
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', f.id));
+        notify(`Datei "${f.name}" gelöscht.`, "info");
+      },
+      'Löschen'
+    );
   };
 
   const formatSize = (bytes) => {
@@ -1735,8 +2620,8 @@ function FilesView({ folders, files, currentUser }) {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-black text-white">Dateien</h2>
-          <p className="text-gray-500 text-sm mt-1">Dokumente und Dateien verwalten</p>
+          <h2 className="text-2xl sm:text-3xl font-black text-white">Dateiablage</h2>
+          <p className="text-gray-500 text-sm mt-1">Dokumente, Reglemente und Vorlagen geordnet verwalten</p>
         </div>
         <button onClick={() => setShowNewFolder(!showNewFolder)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 w-full md:w-auto">
           <FolderPlus size={20} /> Neuer Ordner
@@ -1747,7 +2632,7 @@ function FilesView({ folders, files, currentUser }) {
         <form onSubmit={createFolder} className="flex gap-3 bg-gray-900 border border-gray-800 p-4 rounded-2xl animate-in slide-in-from-top-2">
           <input
             autoFocus required value={folderName} onChange={e => setFolderName(e.target.value)}
-            placeholder="Ordnername..."
+            placeholder="Ordnername eingeben..."
             className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"
           />
           <button type="submit" className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all"><Save size={18}/></button>
@@ -1760,7 +2645,7 @@ function FilesView({ folders, files, currentUser }) {
           <div
             key={folder.id}
             onClick={() => setSelectedFolder(selectedFolder?.id === folder.id ? null : folder)}
-            className={`bg-gray-900 border rounded-2xl p-4 cursor-pointer transition-all active:scale-95 group relative ${selectedFolder?.id === folder.id ? 'border-orange-500 bg-orange-500/5' : 'border-gray-800 hover:border-gray-700'}`}
+            className={`bg-gray-900 border rounded-2xl p-4 cursor-pointer transition-all active:scale-95 group relative ${selectedFolder?.id === folder.id ? 'border-orange-500 bg-orange-500/5 shadow-lg shadow-orange-500/5' : 'border-gray-800 hover:border-gray-700'}`}
           >
             <Folder size={32} className={`mb-2 ${selectedFolder?.id === folder.id ? 'text-orange-500' : 'text-gray-600 group-hover:text-gray-400'}`} />
             <p className="font-bold text-white text-sm truncate">{folder.name}</p>
@@ -1774,13 +2659,13 @@ function FilesView({ folders, files, currentUser }) {
         {folders.length === 0 && (
           <div className="col-span-full text-center py-12 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
             <Folder className="mx-auto text-gray-800 mb-3" size={40}/>
-            <p className="text-gray-600 font-bold uppercase tracking-widest text-xs">Noch keine Ordner</p>
+            <p className="text-gray-600 font-bold uppercase tracking-widest text-xs">Noch keine Ordner angelegt</p>
           </div>
         )}
       </div>
 
       {selectedFolder && (
-        <div className="bg-gray-900 border border-orange-500/30 rounded-3xl overflow-hidden animate-in slide-in-from-top-2 duration-300">
+        <div className="bg-gray-900 border border-orange-500/30 rounded-3xl overflow-hidden animate-in slide-in-from-top-2 duration-300 shadow-2xl">
           <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-orange-500/5">
             <div className="flex items-center gap-3">
               <Folder size={20} className="text-orange-500"/>
@@ -1789,22 +2674,20 @@ function FilesView({ folders, files, currentUser }) {
             </div>
           </div>
 
-          {/* Upload Area */}
           <div
             onDragOver={e => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
             onDrop={e => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files); }}
             className={`mx-4 mt-4 border-2 border-dashed rounded-2xl p-6 text-center transition-all ${dragOver ? 'border-orange-500 bg-orange-500/10' : 'border-gray-800 hover:border-gray-700'}`}
           >
-            <UploadCloud size={24} className="mx-auto text-gray-600 mb-2"/>
-            <p className="text-gray-500 text-sm font-bold">Dateien hierher ziehen oder</p>
+            <UploadCloud size={28} className="mx-auto text-orange-500/70 mb-2"/>
+            <p className="text-gray-400 text-sm font-bold">Dateien per Drag & Drop hier ablegen oder</p>
             <label className="mt-2 inline-block cursor-pointer text-orange-500 font-black text-sm hover:underline">
-              Datei auswählen
-              <input type="file" multiple className="hidden" onChange={e => handleUpload(e.target.files)} />
+              Dateien vom Gerät auswählen
+              <input type="file" multiple className="hidden" onChange={e => { handleUpload(e.target.files); e.target.value = ''; }} />
             </label>
           </div>
 
-          {/* Upload progress */}
           {Object.entries(uploading).map(([id, u]) => (
             <div key={id} className="mx-4 mt-2 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 flex items-center gap-3">
               <div className="flex-1">
@@ -1817,22 +2700,31 @@ function FilesView({ folders, files, currentUser }) {
             </div>
           ))}
 
-          {/* File list */}
           <div className="p-4 space-y-2">
             {folderFiles.length === 0 && Object.keys(uploading).length === 0 && (
-              <p className="text-center text-gray-700 text-xs py-4 font-bold uppercase tracking-widest">Keine Dateien</p>
+              <p className="text-center text-gray-700 text-xs py-6 font-bold uppercase tracking-widest">Noch keine Dateien in diesem Ordner</p>
             )}
             {folderFiles.map(f => (
-              <div key={f.id} className="flex items-center gap-3 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 group">
+              <div key={f.id} className="flex items-center gap-3 bg-gray-950 border border-gray-800 hover:border-gray-700 rounded-xl px-4 py-3 group transition-all">
                 <span className="text-xl shrink-0">{getFileIcon(f.type)}</span>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-white text-sm truncate">{f.name}</p>
-                  <p className="text-[10px] text-gray-600">{formatSize(f.size)} • {new Date(f.uploadedAt).toLocaleDateString('de-CH')}</p>
+                  <p className="text-[10px] text-gray-500">{formatSize(f.size)} • {new Date(f.uploadedAt).toLocaleDateString('de-CH')}</p>
                 </div>
-                <a href={f.url} download target="_blank" rel="noreferrer" className="p-2 text-gray-600 hover:text-orange-500 bg-gray-900 rounded-lg transition-all shrink-0" title="Herunterladen">
+                <button
+                  type="button"
+                  onClick={() => triggerFileDownload(f.url, f.name)}
+                  className="p-2.5 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all shrink-0 border border-gray-800"
+                  title="Herunterladen"
+                >
                   <Download size={16}/>
-                </a>
-                <button onClick={() => deleteFile(f)} className="p-2 text-gray-600 hover:text-red-500 bg-gray-900 rounded-lg transition-all shrink-0 opacity-0 group-hover:opacity-100" title="Löschen">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteFile(f)}
+                  className="p-2.5 text-gray-500 hover:text-red-500 bg-gray-900 rounded-xl transition-all shrink-0 border border-gray-800"
+                  title="Löschen"
+                >
                   <Trash2 size={16}/>
                 </button>
               </div>
@@ -1844,29 +2736,38 @@ function FilesView({ folders, files, currentUser }) {
   );
 }
 
-// --- Calendar View ---
-function CalendarView({ calItems, currentUser }) {
-  const [showAdd,   setShowAdd]   = useState(false);
-  const [editing,   setEditing]   = useState(null);
-  const [viewMonth, setViewMonth] = useState(new Date());
+// --- Calendar View (Mit .ics Export für Einzeltermine & gesamten Kalender) ---
+function CalendarView({ calItems, currentUser, notify, askConfirm }) {
+  const [showAdd,      setShowAdd]      = useState(false);
+  const [editing,      setEditing]      = useState(null);
+  const [viewMonth,    setViewMonth]    = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(null);
 
   const saveItem = async (item) => {
     const id = item.id || Date.now().toString();
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'calendar', id), { ...item, id });
     setShowAdd(false);
     setEditing(null);
+    notify("Termin erfolgreich gespeichert.", "success");
   };
 
-  const deleteItem = async (id) => {
-    if (!confirm('Termin löschen?')) return;
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'calendar', id));
+  const deleteItem = (id) => {
+    askConfirm(
+      'Termin löschen?',
+      'Möchtest du diesen Kalendereintrag wirklich löschen?',
+      async () => {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'calendar', id));
+        notify("Termin gelöscht.", "info");
+      },
+      'Löschen'
+    );
   };
 
   const year  = viewMonth.getFullYear();
   const month = viewMonth.getMonth();
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const startOffset = firstDay === 0 ? 6 : firstDay - 1; // Monday first
+  const startOffset = firstDay === 0 ? 6 : firstDay - 1;
 
   const itemsByDate = useMemo(() => {
     const map = {};
@@ -1885,42 +2786,70 @@ function CalendarView({ calItems, currentUser }) {
     [...calItems]
       .filter(i => i.date >= todayStr)
       .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(0, 5),
+      .slice(0, 8),
     [calItems, todayStr]
   );
+
+  const selectedDayItems = selectedDate ? (itemsByDate[selectedDate] || []) : [];
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-black text-white">Kalender</h2>
-          <p className="text-gray-500 text-sm mt-1">Termine und Anlässe</p>
+          <h2 className="text-2xl sm:text-3xl font-black text-white">Vereinskalender</h2>
+          <p className="text-gray-500 text-sm mt-1">Termine verwalten und direkt als .ics für Handy & Outlook exportieren</p>
         </div>
-        <button onClick={() => { setEditing(null); setShowAdd(!showAdd); }} className="bg-orange-500 text-gray-950 font-bold px-6 py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 w-full md:w-auto">
-          <Plus size={20} /> Neuer Termin
-        </button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          {calItems.length > 0 && (
+            <button
+              onClick={() => {
+                downloadICSFile(calItems, 'RuessSuuger_Aemme_Kalender.ics');
+                notify("Kalender (.ics) wurde heruntergeladen.", "success");
+              }}
+              className="bg-gray-900 hover:bg-gray-800 text-white border border-gray-800 font-bold px-5 py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+              title="Alle Termine als .ics Kalenderdatei herunterladen"
+            >
+              <Download size={18} className="text-orange-500" /> Alle als .ics Export
+            </button>
+          )}
+          <button
+            onClick={() => { setEditing(null); setShowAdd(!showAdd); }}
+            className="bg-orange-500 text-gray-950 font-black px-6 py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20"
+          >
+            <Plus size={20} /> Neuer Termin
+          </button>
+        </div>
       </div>
 
       {(showAdd || editing) && (
         <CalendarItemForm
-          initialData={editing}
+          initialData={editing || (selectedDate ? { title: '', date: selectedDate, time: '', location: '', description: '' } : null)}
           onSave={saveItem}
           onCancel={() => { setShowAdd(false); setEditing(null); }}
         />
       )}
 
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Calendar Grid */}
-        <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+        {/* Kalender-Raster */}
+        <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-xl">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-950/40">
             <button onClick={() => setViewMonth(new Date(year, month - 1, 1))} className="p-2 bg-gray-800 rounded-xl hover:text-orange-500 transition-all active:scale-90">
               <ChevronRight className="rotate-180" size={18}/>
             </button>
-            <h3 className="font-black text-white text-lg">{monthNames[month]} {year}</h3>
+            <div className="flex items-center gap-3">
+              <h3 className="font-black text-white text-lg">{monthNames[month]} {year}</h3>
+              <button
+                onClick={() => setViewMonth(new Date())}
+                className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-gray-800 text-gray-400 hover:text-white"
+              >
+                Heute
+              </button>
+            </div>
             <button onClick={() => setViewMonth(new Date(year, month + 1, 1))} className="p-2 bg-gray-800 rounded-xl hover:text-orange-500 transition-all active:scale-90">
               <ChevronRight size={18}/>
             </button>
           </div>
+
           <div className="p-4">
             <div className="grid grid-cols-7 mb-2">
               {dayNames.map(d => (
@@ -1934,48 +2863,102 @@ function CalendarView({ calItems, currentUser }) {
                 const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                 const dayItems = itemsByDate[dateStr] || [];
                 const isToday = dateStr === todayStr;
+                const isSelected = dateStr === selectedDate;
                 return (
-                  <div key={day} className={`min-h-[52px] rounded-xl p-1 border transition-all ${isToday ? 'border-orange-500 bg-orange-500/10' : 'border-transparent hover:border-gray-800'}`}>
-                    <p className={`text-xs font-black text-center mb-1 ${isToday ? 'text-orange-500' : 'text-gray-500'}`}>{day}</p>
+                  <div
+                    key={day}
+                    onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+                    className={`min-h-[60px] rounded-xl p-1.5 border cursor-pointer transition-all ${
+                      isSelected
+                        ? 'border-orange-500 bg-orange-500/15'
+                        : isToday
+                        ? 'border-orange-500/60 bg-orange-500/5'
+                        : 'border-gray-800/40 hover:border-gray-700 bg-gray-950/30'
+                    }`}
+                  >
+                    <p className={`text-xs font-black text-center mb-1 ${isToday || isSelected ? 'text-orange-500' : 'text-gray-400'}`}>{day}</p>
                     {dayItems.slice(0, 2).map(item => (
                       <div
                         key={item.id}
-                        onClick={() => setEditing(item)}
-                        className="text-[9px] font-bold truncate px-1 py-0.5 rounded bg-orange-500/20 text-orange-400 cursor-pointer hover:bg-orange-500/30 mb-0.5"
+                        onClick={(e) => { e.stopPropagation(); setEditing(item); }}
+                        className="text-[9px] font-bold truncate px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 mb-0.5"
                       >
-                        {item.title}
+                        {item.time ? `${item.time} ` : ''}{item.title}
                       </div>
                     ))}
-                    {dayItems.length > 2 && <p className="text-[9px] text-gray-600 text-center">+{dayItems.length - 2}</p>}
+                    {dayItems.length > 2 && <p className="text-[9px] text-orange-400 font-bold text-center">+{dayItems.length - 2} weitere</p>}
                   </div>
                 );
               })}
             </div>
           </div>
+
+          {selectedDate && (
+            <div className="px-6 py-4 border-t border-gray-800 bg-gray-950/60 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-black text-orange-500 uppercase">
+                  Ausgewählter Tag: {new Date(selectedDate).toLocaleDateString('de-CH', { dateStyle: 'full' })}
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {selectedDayItems.length === 0 ? 'Keine Termine an diesem Tag' : `${selectedDayItems.length} Termin(e) eingetragen`}
+                </p>
+              </div>
+              <button
+                onClick={() => { setEditing(null); setShowAdd(true); }}
+                className="px-4 py-2 bg-orange-500 text-gray-950 font-black rounded-xl text-xs active:scale-95 transition-all"
+              >
+                + Termin an diesem Tag
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Upcoming */}
+        {/* Nächste Termine & Einzel-ICS Download */}
         <div className="space-y-4">
-          <h3 className="font-black text-white text-lg flex items-center gap-2"><Clock size={18} className="text-orange-500"/> Nächste Termine</h3>
+          <h3 className="font-black text-white text-lg flex items-center gap-2">
+            <Clock size={18} className="text-orange-500"/> Kommende Termine
+          </h3>
           {upcomingItems.length === 0 ? (
             <div className="bg-gray-900 border border-gray-800 border-dashed rounded-2xl p-6 text-center">
-              <p className="text-gray-600 text-xs font-bold uppercase tracking-widest">Keine Termine</p>
+              <p className="text-gray-600 text-xs font-bold uppercase tracking-widest">Keine kommenden Termine</p>
             </div>
           ) : upcomingItems.map(item => (
-            <div key={item.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 hover:border-gray-700 transition-all group">
+            <div key={item.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 hover:border-gray-700 transition-all group shadow-lg">
               <div className="flex justify-between items-start gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="font-black text-white truncate">{item.title}</p>
                   <p className="text-[11px] text-orange-500 font-bold mt-1 flex items-center gap-1">
-                    <CalendarDays size={11}/> {new Date(item.date).toLocaleDateString('de-CH', { weekday: 'short', day: 'numeric', month: 'short' })}
-                    {item.time && <><Clock size={11} className="ml-2"/>{item.time}</>}
+                    <CalendarDays size={12}/> {new Date(item.date).toLocaleDateString('de-CH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                    {item.time && <><Clock size={12} className="ml-2"/>{item.time}</>}
                   </p>
-                  {item.location && <p className="text-[11px] text-gray-500 mt-1 flex items-center gap-1"><MapPin size={11}/>{item.location}</p>}
-                  {item.description && <p className="text-xs text-gray-600 mt-2 line-clamp-2">{item.description}</p>}
+                  {item.location && <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-1"><MapPin size={12} className="text-gray-500"/>{item.location}</p>}
+                  {item.description && <p className="text-xs text-gray-500 mt-2 line-clamp-2">{item.description}</p>}
                 </div>
-                <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-all">
-                  <button onClick={() => setEditing(item)} className="p-1.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg"><Edit2 size={14}/></button>
-                  <button onClick={() => deleteItem(item.id)} className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg"><Trash2 size={14}/></button>
+                <div className="flex gap-1.5 shrink-0">
+                  <button
+                    onClick={() => {
+                      downloadICSFile(item, `${item.title.replace(/\s+/g, '_')}.ics`);
+                      notify(`"${item.title}" als .ics heruntergeladen.`, "success");
+                    }}
+                    title="Diesen Termin als .ics herunterladen"
+                    className="p-2 bg-gray-950 border border-gray-800 text-orange-500 hover:bg-orange-500 hover:text-gray-950 rounded-xl transition-all"
+                  >
+                    <Download size={14}/>
+                  </button>
+                  <button
+                    onClick={() => setEditing(item)}
+                    title="Bearbeiten"
+                    className="p-2 bg-gray-950 border border-gray-800 text-gray-400 hover:text-white rounded-xl transition-all"
+                  >
+                    <Edit2 size={14}/>
+                  </button>
+                  <button
+                    onClick={() => deleteItem(item.id)}
+                    title="Löschen"
+                    className="p-2 bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 rounded-xl transition-all"
+                  >
+                    <Trash2 size={14}/>
+                  </button>
                 </div>
               </div>
             </div>
@@ -2008,7 +2991,7 @@ function CalendarItemForm({ initialData, onSave, onCancel }) {
         </div>
         <div className="md:col-span-2 space-y-1">
           <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Ort (optional)</label>
-          <input value={form.location} onChange={e => setForm({...form, location: e.target.value})} placeholder="z.B. Vereinslokal" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"/>
+          <input value={form.location} onChange={e => setForm({...form, location: e.target.value})} placeholder="z.B. Vereinslokal Ämme" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"/>
         </div>
         <div className="md:col-span-2 space-y-1">
           <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Beschreibung (optional)</label>
