@@ -3260,11 +3260,9 @@ function PresentationModal({ survey, allSurveys = [], users, onClose, onSelectSu
             <div className="space-y-4 max-w-2xl mx-auto w-full">
               {survey.options.map(o => {
                 const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
-                const maxV = Math.max(...survey.options.map(x => x.votes || 0));
-                const isWinner = survey.status === 'published' && totalVotes > 0 && (o.votes || 0) === maxV && maxV > 0;
 
                 return (
-                  <div key={o.id} className={`relative h-16 bg-gray-900 border rounded-2xl overflow-hidden flex items-center px-5 ${isWinner ? 'border-orange-500 ring-1 ring-orange-500/30' : 'border-gray-800'}`}>
+                  <div key={o.id} className="relative h-16 bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden flex items-center px-5">
                     <div className="absolute left-0 top-0 h-full bg-orange-500/20 transition-all duration-1000 ease-out" style={{ width: `${survey.status === 'published' ? pct : Math.round(((o.votes || 0) / (eligibleUsersCount || 1)) * 100)}%` }} />
                     <div className="flex-1 font-black text-white text-base sm:text-lg z-10 truncate mr-3">
                       {o.text}
