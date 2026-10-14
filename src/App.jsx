@@ -958,6 +958,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
 
   return (
     <div className="space-y-6">
+      {}
       {liveDraft && (
         <div className="bg-gradient-to-r from-orange-500/20 via-orange-500/10 to-gray-900 border-2 border-orange-500/60 rounded-3xl p-5 sm:p-6 shadow-2xl animate-in fade-in duration-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start sm:items-center gap-4">
@@ -1004,6 +1005,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         </div>
       )}
 
+      {}
       <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 border border-gray-800 rounded-3xl p-5 sm:p-8 shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -1074,6 +1076,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         )}
       </div>
 
+      {}
       {(onlyOpenTasks || onlyMyTasks) && displayedTasks.length > 0 && (
         <div className="bg-orange-500/5 border border-orange-500/30 rounded-3xl p-5 sm:p-6 space-y-3 animate-in fade-in">
           <div className="flex items-center justify-between">
@@ -1143,6 +1146,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         </div>
       )}
 
+      {}
       {stats.totalMinutes > 0 && (
         <div className="space-y-3 animate-in fade-in">
           <div className="flex flex-col sm:flex-row gap-3">
@@ -1200,6 +1204,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         </div>
       )}
 
+      {}
       <div className="grid gap-4">
         {minutes.length === 0 ? (
           <div className="space-y-4">
