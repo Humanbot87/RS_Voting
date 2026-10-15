@@ -3426,29 +3426,60 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
           Anonyme Abstimmung (Es wird nur gezählt, wer abgestimmt hat, aber nicht welche Stimme von wem stammt)
         </label>
       </div>
-                  {survey.majorityType && survey.majorityType !== 'none' && (
-                    <div className={`p-4 rounded-2xl border text-center font-bold text-sm ${quorumReached ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-                      {quorumReached ? '✓ Quorum / Mehrheit erfolgreich erreicht!' : '⚠ Erforderliche Mehrheit noch nicht erreicht'}
-                    </div>
-                  )}
-                  {nextSurvey && onSelectSurvey && (
-                    <div className="pt-4 flex justify-center">
-                      <button
-                        onClick={() => onSelectSurvey(nextSurvey, true)}
-                        className="px-8 py-4 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl text-base shadow-xl shadow-orange-500/20 active:scale-95 transition-all flex items-center gap-2"
-                      >
-                        Weiter zur nächsten Abstimmung: «{nextSurvey.title}» →
-                      </button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-center py-12 bg-gray-900 border border-gray-800 rounded-3xl w-full">
-                  <p className="text-orange-400 font-bold uppercase tracking-widest text-sm mb-2">Abstimmung läuft noch</p>
-                  <p className="text-gray-500 text-xs">Resultate werden nach der Veröffentlichung eingeblendet.</p>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold text-gray-500 uppercase ml-1">Antwort-Optionen & YouTube-Links (optional)</label>
+          <button
+            type="button"
+            onClick={() => setOptions([...options, { id: Date.now().toString() + Math.random().toString(36).slice(2, 5), text: '', youtubeUrl: '' }])}
+            className="text-xs font-black text-orange-500 hover:text-orange-400 flex items-center gap-1 min-h-[36px]"
+          >
+            <Plus size={14} /> Option hinzufügen
+          </button>
+        </div>
+        <div className="space-y-2.5">
+          {options.map((opt, idx) => (
+            <div key={opt.id || idx} className="flex flex-col sm:flex-row gap-2 bg-gray-950 p-3 rounded-2xl border border-gray-800">
+              <input
+                required={idx < 2}
+                className="flex-1 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:border-orange-500 outline-none min-h-[44px]"
+                placeholder={`Option ${idx + 1}`}
+                value={opt.text}
+                onChange={e => setOptions(options.map((x, i) => i === idx ? { ...x, text: e.target.value } : x))}
+              />
+              <div className="flex items-center gap-2 sm:w-72">
+                <div className="relative flex-1">
+                  <Youtube size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-10 pr-3 py-3 text-white text-xs focus:border-orange-500 outline-none min-h-[44px]"
+                    placeholder="YouTube-Link (optional)"
+                    value={opt.youtubeUrl || ''}
+                    onChange={e => setOptions(options.map((x, i) => i === idx ? { ...x, youtubeUrl: e.target.value } : x))}
+                  />
                 </div>
-              )}
+                {options.length > 2 && (
+                  <button
+                    type="button"
+                    onClick={() => setOptions(options.filter((_, i) => i !== idx))}
+                    className="p-3 bg-gray-900 text-gray-500 hover:text-red-500 rounded-xl border border-gray-800 min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
             </div>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-3">
+        <label className="text-xs font-bold text-gray-500 uppercase ml-1">Stimmberechtigte Gruppen</label>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+          {GROUPS.map(g => (
+            <label key={g} className={`flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all min-h-[44px] ${allowedGroups.includes(g) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
+              <input type="checkbox" className="hidden" checked={allowedGroups.includes(g)} onChange={() => toggleGroup(g)} />
+              <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${allowedGroups.includes(g) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'}`}>
+                {allowedGroups.includes(g) && <Check size={12} className="text-gray-950" strokeWidth={4} />}
+              </div>
               <span className="text-[10px] font-black uppercase tracking-tighter truncate">{g}</span>
             </label>
           ))}
