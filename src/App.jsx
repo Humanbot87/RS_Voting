@@ -5,7 +5,8 @@ import {
   Youtube, Lock, Unlock, ClipboardList, UserCheck, Paperclip, Save, X, RefreshCw,
   UploadCloud, Search, Download, ArrowUp, ArrowDown, Maximize2, Minimize2,
   Folder, FolderPlus, FileText, File, CalendarDays, MapPin, Clock,
-  Printer, CheckCircle2, AlertTriangle, Info, Filter, Sparkles, Share2, QrCode, Play
+  Printer, CheckCircle2, AlertTriangle, Info, Filter, Sparkles, Share2, QrCode, Play,
+  Zap, Lightbulb
 } from 'lucide-react';
 import { 
   signInWithCustomToken, 
@@ -2823,9 +2824,107 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
       setEditingSurvey(null);
       notify("Umfrage aktualisiert.", "success");
     } else {
-      onUpdate({ surveys: [...(event.surveys || []), { ...s, id: Date.now().toString(), status: 'draft', votedUsers: [] }] });
+      const initialStatus = s.openForSuggestions ? 'suggestions' : 'draft';
+      onUpdate({ surveys: [...(event.surveys || []), { ...s, id: Date.now().toString(), status: initialStatus, votedUsers: [] }] });
       setShowSurveyForm(false);
-      notify("Neue Umfrage hinzugefügt.", "success");
+      notify(initialStatus === 'suggestions' ? "Ideen-Box geöffnet! Mitglieder können nun Vorschläge einreichen." : "Neue Umfrage hinzugefügt.", "success");
+    }
+  };
+
+  const createRunoffSurvey = (sourceSurvey) => {
+    const sorted = [...(sourceSurvey.options || [])].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+    if (sorted.length < 2) {
+      notify("Für eine Stichwahl braucht es mindestens 2 Optionen.", "error");
+      return;
+    }
+    const cutoffVotes = sorted[1]?.votes || 0;
+    let topOptions = sorted.filter(o => (o.votes || 0) >= cutoffVotes && (o.votes || 0) > 0);
+    if (topOptions.length < 2) {
+      topOptions = sorted.slice(0, 2);
+    }
+
+    const runoffSurvey = {
+      id: Date.now().toString(),
+      title: `⚡ Stichwahl: ${sourceSurvey.title.replace(/^⚡ Stichwahl:\s*/i, '')}`,
+      maxAnswers: 1,
+      majorityType: sourceSurvey.majorityType || 'simple',
+      allowedGroups: sourceSurvey.allowedGroups || GROUPS,
+      isAnonymous: sourceSurvey.isAnonymous ?? false,
+      status: 'active',
+      votedUsers: [],
+      options: topOptions.map((o, idx) => ({
+        id: `${Date.now()}_${idx}`,
+        text: o.text,
+        youtubeUrl: o.youtubeUrl || '',
+        suggestedBy: o.suggestedBy || '',
+        votes: 0
+      }))
+    };
+
+    const updatedSurveys = (event.surveys || []).map(x =>
+      x.status === 'active' ? { ...x, status: 'published' } : x
+    );
+    onUpdate({ surveys: [...updatedSurveys, runoffSurvey] });
+    if (presentingSurvey) {
+      setPresentingSurvey(runoffSurvey);
+    }
+    notify(`Stichwahl mit ${topOptions.length} Optionen direkt gestartet!`, "success");
+  };
+
+  const handleAddSuggestion = async (surveyId, text, youtubeUrl) => {
+    const cleanText = text.trim();
+    if (!cleanText) return;
+    const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
+    try {
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(eventRef);
+        if (!snap.exists()) throw new Error("Event nicht gefunden.");
+        const data = snap.data();
+        const srv = data.surveys?.find(x => x.id === surveyId);
+        if (!srv) throw new Error("Umfrage nicht gefunden.");
+        if (srv.status !== 'suggestions' && currentUser.role !== 'admin') {
+          throw new Error("Vorschlagsphase ist bereits geschlossen.");
+        }
+        const exists = (srv.options || []).some(o => o.text.trim().toLowerCase() === cleanText.toLowerCase());
+        if (exists) throw new Error("Dieser Vorschlag existiert bereits.");
+
+        const newOption = {
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          text: cleanText,
+          youtubeUrl: (youtubeUrl || '').trim(),
+          suggestedBy: `${currentUser.firstName} ${currentUser.lastName}`.trim(),
+          suggestedById: currentUser.id,
+          votes: 0
+        };
+
+        const updatedSurveys = data.surveys.map(x => {
+          if (x.id !== surveyId) return x;
+          return { ...x, options: [...(x.options || []), newOption] };
+        });
+        transaction.update(eventRef, { surveys: updatedSurveys });
+      });
+      notify("Dein Vorschlag wurde in die Ideen-Box aufgenommen!", "success");
+    } catch (err) {
+      notify(err.message || "Vorschlag konnte nicht gespeichert werden.", "error");
+    }
+  };
+
+  const handleDeleteSuggestion = async (surveyId, optionId) => {
+    const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
+    try {
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(eventRef);
+        if (!snap.exists()) return;
+        const data = snap.data();
+        const updatedSurveys = (data.surveys || []).map(x => {
+          if (x.id !== surveyId) return x;
+          return { ...x, options: (x.options || []).filter(o => o.id !== optionId) };
+        });
+        transaction.update(eventRef, { surveys: updatedSurveys });
+      });
+      notify("Vorschlag entfernt.", "info");
+    } catch (err) {
+      notify("Fehler beim Entfernen.", "error");
     }
   };
 
@@ -2933,6 +3032,7 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
         {(() => {
           const allSurveys = event.surveys || [];
           const activeSurveys = allSurveys.filter(s => s.status === 'active');
+          const suggestionSurveys = allSurveys.filter(s => s.status === 'suggestions');
           const finishedSurveys = allSurveys.filter(s => s.status === 'published');
 
           const handleVoteForSurvey = async (s, opts) => {
@@ -2992,13 +3092,16 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
                   onCancelEdit={() => setEditingSurvey(null)}
                   onVote={(opts) => handleVoteForSurvey(s, opts)}
                   onStatusChange={(st) => handleStatusChangeForSurvey(s, st)}
+                  onCreateRunoff={() => createRunoffSurvey(s)}
+                  onAddSuggestion={(text, yt) => handleAddSuggestion(s.id, text, yt)}
+                  onDeleteSuggestion={(optId) => handleDeleteSuggestion(s.id, optId)}
                   users={users}
                 />
               </div>
             ));
           }
 
-          // Mitglieder-Ansicht: Fokus auf die EINE aktuelle Abstimmung, beendete Abstimmungen darunter im Event belassen
+          // Mitglieder-Ansicht: Fokus auf die EINE aktuelle Abstimmung, offene Ideen-Boxen & beendete Abstimmungen darunter
           return (
             <>
               {activeSurveys.length > 0 && (
@@ -3016,6 +3119,32 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
                         currentUser={currentUser}
                         isArchived={false}
                         onVote={(opts) => handleVoteForSurvey(s, opts)}
+                        onAddSuggestion={(text, yt) => handleAddSuggestion(s.id, text, yt)}
+                        onDeleteSuggestion={(optId) => handleDeleteSuggestion(s.id, optId)}
+                        users={users}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {suggestionSurveys.length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 px-1">
+                    <Lightbulb size={15} className="text-amber-400 animate-pulse" />
+                    <span className="text-xs font-black uppercase tracking-widest text-amber-400">
+                      Ideen-Box offen – Reiche deine Vorschläge ein
+                    </span>
+                  </div>
+                  {suggestionSurveys.map(s => (
+                    <div key={s.id} id={`survey-card-${s.id}`} className="transition-all">
+                      <SurveyCard
+                        survey={s}
+                        currentUser={currentUser}
+                        isArchived={false}
+                        onVote={(opts) => handleVoteForSurvey(s, opts)}
+                        onAddSuggestion={(text, yt) => handleAddSuggestion(s.id, text, yt)}
+                        onDeleteSuggestion={(optId) => handleDeleteSuggestion(s.id, optId)}
                         users={users}
                       />
                     </div>
@@ -3082,13 +3211,17 @@ function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, is
             triggerCelebration();
             onUpdate({ surveys: updated });
           }}
+          onCreateRunoff={() => {
+            const s = event.surveys.find(x => x.id === presentingSurvey.id) || presentingSurvey;
+            if (s) createRunoffSurvey(s);
+          }}
         />
       )}
     </div>
   );
 }
 
-function PresentationModal({ survey, allSurveys = [], users, onClose, onSelectSurvey, onStart, onPublish }) {
+function PresentationModal({ survey, allSurveys = [], users, onClose, onSelectSurvey, onStart, onPublish, onCreateRunoff }) {
   const [step, setStep] = useState('welcome'); // 'welcome' | 'voting'
 
   const currentIndex = allSurveys.findIndex(x => x.id === survey.id);
@@ -3163,7 +3296,7 @@ function PresentationModal({ survey, allSurveys = [], users, onClose, onSelectSu
         <div className="flex items-center gap-3">
           {step === 'welcome' ? (
             <button onClick={() => {
-              if (survey.status === 'draft' && onStart) {
+              if ((survey.status === 'draft' || survey.status === 'suggestions') && onStart) {
                 onStart();
               }
               setStep('voting');
@@ -3172,7 +3305,7 @@ function PresentationModal({ survey, allSurveys = [], users, onClose, onSelectSu
             </button>
           ) : (
             <>
-              {survey.status === 'draft' && onStart && (
+              {(survey.status === 'draft' || survey.status === 'suggestions') && onStart && (
                 <button onClick={onStart} className="px-5 py-3 bg-green-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg min-h-[44px]">
                   Abstimmung freigeben
                 </button>
@@ -3180,6 +3313,14 @@ function PresentationModal({ survey, allSurveys = [], users, onClose, onSelectSu
               {survey.status === 'active' && onPublish && (
                 <button onClick={onPublish} className="px-5 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[44px]">
                   Resultate publizieren
+                </button>
+              )}
+              {survey.status === 'published' && survey.options?.length >= 2 && onCreateRunoff && (
+                <button
+                  onClick={onCreateRunoff}
+                  className="px-5 py-3 bg-amber-500 hover:bg-amber-400 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-amber-500/20 min-h-[44px] flex items-center gap-1.5"
+                >
+                  <Zap size={16} /> Stichwahl starten
                 </button>
               )}
               {nextSurvey && onSelectSurvey && (
@@ -3225,7 +3366,7 @@ function PresentationModal({ survey, allSurveys = [], users, onClose, onSelectSu
 
             <button
               onClick={() => {
-                if (survey.status === 'draft' && onStart) {
+                if ((survey.status === 'draft' || survey.status === 'suggestions') && onStart) {
                   onStart();
                 }
                 setStep('voting');
@@ -3239,7 +3380,11 @@ function PresentationModal({ survey, allSurveys = [], users, onClose, onSelectSu
           <div className="space-y-8 w-full animate-in fade-in duration-300">
             <div className="text-center space-y-2">
               <span className="text-xs font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3.5 py-1.5 rounded-full border border-orange-500/20">
-                {survey.status === 'published' ? 'Abstimmung Beendet & Resultate' : 'Live-Abstimmung läuft'}
+                {survey.status === 'published'
+                  ? 'Abstimmung Beendet & Resultate'
+                  : survey.status === 'suggestions'
+                  ? '💡 Ideen-Box offen – Live-Vorschläge'
+                  : 'Live-Abstimmung läuft'}
               </span>
               <h2 className="text-2xl sm:text-4xl font-black text-white">{survey.title}</h2>
             </div>
@@ -3285,6 +3430,17 @@ function PresentationModal({ survey, allSurveys = [], users, onClose, onSelectSu
             {survey.status === 'published' && survey.majorityType && survey.majorityType !== 'none' && (
               <div className={`p-4 rounded-2xl border text-center font-bold text-sm max-w-2xl mx-auto ${quorumReached ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
                 {quorumReached ? '✓ Erforderliche Mehrheit erreicht / Antrag angenommen!' : '⚠ Erforderliche Mehrheit nicht erreicht'}
+              </div>
+            )}
+
+            {survey.status === 'published' && survey.options?.length >= 2 && onCreateRunoff && (
+              <div className="flex justify-center pt-1">
+                <button
+                  onClick={onCreateRunoff}
+                  className="px-7 py-4 bg-amber-500 hover:bg-amber-400 text-gray-950 font-black rounded-2xl text-sm active:scale-95 transition-all shadow-xl shadow-amber-500/20 flex items-center gap-2"
+                >
+                  <Zap size={18} /> ⚡ Stichwahl mit den Bestplatzierten starten
+                </button>
               </div>
             )}
 
@@ -3362,6 +3518,7 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
   const [options,       setOptions]       = useState(initialData?.options || [{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
   const [allowedGroups, setAllowedGroups] = useState(initialData?.allowedGroups || GROUPS);
   const [isAnonymous,   setIsAnonymous]   = useState(initialData?.isAnonymous || false);
+  const [openForSuggestions, setOpenForSuggestions] = useState(initialData?.status === 'suggestions' || false);
 
   const toggleGroup = g => setAllowedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
 
@@ -3369,6 +3526,7 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
     if (tpl === 'yes_no') {
       setMaxAnswers(1);
       setMajorityType('simple');
+      setOpenForSuggestions(false);
       setOptions([
         { id: '1', text: 'Ja', youtubeUrl: '' },
         { id: '2', text: 'Nein', youtubeUrl: '' },
@@ -3377,6 +3535,7 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
     } else if (tpl === 'unanimous') {
       setMaxAnswers(1);
       setMajorityType('two_thirds');
+      setOpenForSuggestions(false);
       setOptions([
         { id: '1', text: 'Annahme (Zustimmung)', youtubeUrl: '' },
         { id: '2', text: 'Ablehnung (Gegenstimme)', youtubeUrl: '' }
@@ -3386,11 +3545,33 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
       setMaxAnswers(3);
       setMajorityType('none');
       setAllowedGroups(['Vorstand', 'Aktiv Musig', 'Neumitglied Musig']);
+    } else if (tpl === 'ideabox') {
+      if (!title) setTitle('Sujet- & Lieder-Ideen – Was sind eure Vorschläge?');
+      setMaxAnswers(3);
+      setMajorityType('none');
+      setOpenForSuggestions(true);
+      setOptions([]);
     }
   };
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit({ title, maxAnswers, majorityType, allowedGroups, isAnonymous, options: options.filter(o => o.text.trim()) }); }} className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-2" : "bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl"}`}>
+    <form
+      onSubmit={e => {
+        e.preventDefault();
+        const cleanedOptions = options.filter(o => o.text.trim());
+        onSubmit({
+          title,
+          maxAnswers,
+          majorityType,
+          allowedGroups,
+          isAnonymous,
+          openForSuggestions,
+          ...(initialData ? { status: openForSuggestions ? 'suggestions' : (initialData.status === 'suggestions' ? 'draft' : initialData.status) } : {}),
+          options: cleanedOptions
+        });
+      }}
+      className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-2" : "bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl"}`}
+    >
       <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-gray-800">
         <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 mr-1">1-Klick-Vorlagen:</span>
         <button type="button" onClick={() => applyTemplate('yes_no')} className="text-[11px] font-bold bg-gray-950 hover:bg-orange-500/15 text-gray-300 hover:text-orange-400 border border-gray-800 px-3 py-1.5 rounded-xl transition-all">
@@ -3402,6 +3583,9 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
         <button type="button" onClick={() => applyTemplate('songs3')} className="text-[11px] font-bold bg-gray-950 hover:bg-orange-500/15 text-gray-300 hover:text-orange-400 border border-gray-800 px-3 py-1.5 rounded-xl transition-all">
           + Liederwahl (3 Stimmen Musig)
         </button>
+        <button type="button" onClick={() => applyTemplate('ideabox')} className="text-[11px] font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1">
+          <Lightbulb size={12} /> + Ideen-Box (Mitglieder-Vorschläge)
+        </button>
       </div>
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
@@ -3409,26 +3593,26 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
         </div>
         <div className="flex items-center gap-3 bg-gray-950 border border-gray-800 px-4 py-3 rounded-xl shrink-0">
           <label className="text-xs font-bold text-gray-500 uppercase">Max. Stimmen:</label>
-          <input type="number" min="1" max="10" className="w-16 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none text-center font-bold min-h-[40px]" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value) || 1)} />
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-4 py-3 rounded-xl">
+          <input type="checkbox" id="anonCheck" checked={isAnonymous} onChange={e => setIsAnonymous(e.target.checked)} className="accent-orange-500 w-4 h-4 shrink-0" />
+          <label htmlFor="anonCheck" className="text-xs font-bold text-gray-300 cursor-pointer">
+            🔒 Anonyme Abstimmung (Stimmen werden ohne Zuordnung gezählt)
+          </label>
         </div>
-        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-4 py-3 rounded-xl shrink-0">
-          <label className="text-xs font-bold text-gray-500 uppercase">Mehrheit:</label>
-          <select className="bg-transparent text-white text-xs font-bold outline-none min-h-[36px]" value={majorityType} onChange={e => setMajorityType(e.target.value)}>
-            <option value="none" className="bg-gray-900">Keine Angabe</option>
-            <option value="simple" className="bg-gray-900">Einfach (50%+1)</option>
-            <option value="two_thirds" className="bg-gray-900">Zwei Drittel (⅔)</option>
-          </select>
+        <div className="flex items-center gap-2 bg-amber-500/5 border border-amber-500/30 px-4 py-3 rounded-xl">
+          <input type="checkbox" id="suggestCheck" checked={openForSuggestions} onChange={e => setOpenForSuggestions(e.target.checked)} className="accent-amber-500 w-4 h-4 shrink-0" />
+          <label htmlFor="suggestCheck" className="text-xs font-bold text-amber-300 cursor-pointer flex items-center gap-1.5">
+            <Lightbulb size={14} className="text-amber-400 shrink-0" />
+            💡 Ideen-Box öffnen (Mitglieder können eigene Vorschläge einreichen)
+          </label>
         </div>
-      </div>
-      <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-4 py-3 rounded-xl">
-        <input type="checkbox" id="anonCheck" checked={isAnonymous} onChange={e => setIsAnonymous(e.target.checked)} className="accent-orange-500 w-4 h-4" />
-        <label htmlFor="anonCheck" className="text-xs font-bold text-gray-300 cursor-pointer">
-          Anonyme Abstimmung (Es wird nur gezählt, wer abgestimmt hat, aber nicht welche Stimme von wem stammt)
-        </label>
       </div>
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-gray-500 uppercase ml-1">Antwort-Optionen & YouTube-Links (optional)</label>
+          <label className="text-xs font-bold text-gray-500 uppercase ml-1">
+            {openForSuggestions ? 'Start-Optionen (optional – Mitglieder fügen weitere hinzu)' : 'Antwort-Optionen & YouTube-Links (optional)'}
+          </label>
           <button
             type="button"
             onClick={() => setOptions([...options, { id: Date.now().toString() + Math.random().toString(36).slice(2, 5), text: '', youtubeUrl: '' }])}
@@ -3441,7 +3625,7 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
           {options.map((opt, idx) => (
             <div key={opt.id || idx} className="flex flex-col sm:flex-row gap-2 bg-gray-950 p-3 rounded-2xl border border-gray-800">
               <input
-                required={idx < 2}
+                required={!openForSuggestions && idx < 2}
                 className="flex-1 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:border-orange-500 outline-none min-h-[44px]"
                 placeholder={`Option ${idx + 1}`}
                 value={opt.text}
@@ -3457,7 +3641,7 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
                     onChange={e => setOptions(options.map((x, i) => i === idx ? { ...x, youtubeUrl: e.target.value } : x))}
                   />
                 </div>
-                {options.length > 2 && (
+                {(openForSuggestions || options.length > 2) && (
                   <button
                     type="button"
                     onClick={() => setOptions(options.filter((_, i) => i !== idx))}
@@ -3493,13 +3677,16 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
   );
 }
 
-function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, onEdit, onDelete, onPresent, onMoveUp, onMoveDown, isEditing, onSaveEdit, onCancelEdit, users }) {
+function SurveyCard({ survey, currentUser, onVote, onStatusChange, onCreateRunoff, onAddSuggestion, onDeleteSuggestion, isArchived, onEdit, onDelete, onPresent, onMoveUp, onMoveDown, isEditing, onSaveEdit, onCancelEdit, users }) {
   const [selected, setSelected] = useState([]);
   const [voting,   setVoting]   = useState(false);
   const [activePlayerUrl, setActivePlayerUrl] = useState(null);
+  const [newSuggestionText, setNewSuggestionText] = useState('');
+  const [newSuggestionYt,   setNewSuggestionYt]   = useState('');
+  const [submittingIdea,    setSubmittingIdea]    = useState(false);
 
   const hasVoted = survey.votedUsers?.includes(currentUser.id);
-  const totalVotes = survey.options.reduce((sum, o) => sum + (o.votes || 0), 0);
+  const totalVotes = (survey.options || []).reduce((sum, o) => sum + (o.votes || 0), 0);
   const surveyAllowedGroups = survey.allowedGroups || GROUPS;
   const isEligible = currentUser.role === 'admin' || surveyAllowedGroups.some(g => currentUser.groups?.includes(g));
   const eligibleUsersCount = users.filter(u => surveyAllowedGroups.some(g => u.groups?.includes(g))).length;
@@ -3528,26 +3715,89 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
     return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1` : null;
   };
 
+  const handleIdeaSubmit = async (e) => {
+    e.preventDefault();
+    if (!newSuggestionText.trim() || !onAddSuggestion) return;
+    setSubmittingIdea(true);
+    await onAddSuggestion(newSuggestionText, newSuggestionYt);
+    setNewSuggestionText('');
+    setNewSuggestionYt('');
+    setSubmittingIdea(false);
+  };
+
   const isPublished = survey.status === 'published' || isArchived;
+  const isSuggestionsOpen = survey.status === 'suggestions' && !isArchived;
 
   return (
-    <div className={`bg-gray-900 border rounded-3xl overflow-hidden shadow-xl transition-all ${survey.status === 'active' && !isArchived ? 'border-orange-500/50' : 'border-gray-800 opacity-80'}`}>
+    <div className={`bg-gray-900 border rounded-3xl overflow-hidden shadow-xl transition-all ${
+      survey.status === 'active' && !isArchived
+        ? 'border-orange-500/50'
+        : isSuggestionsOpen
+        ? 'border-amber-500/50'
+        : 'border-gray-800 opacity-85'
+    }`}>
       <div className="p-5 sm:p-6 border-b border-gray-800 bg-gray-950/20 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
-          <span className="text-[10px] font-black uppercase text-orange-500 block mb-1">
-            {isArchived || survey.status === 'published' ? 'Abstimmung Beendet' : survey.status === 'active' ? 'Live-Abstimmung' : 'Entwurf'} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'} • {survey.majorityType === 'two_thirds' ? '⅔ Mehrheit' : survey.majorityType === 'simple' ? 'Einfache Mehrheit' : ''} {survey.isAnonymous ? '• 🔒 Anonym' : ''}
+          <span className={`text-[10px] font-black uppercase block mb-1 ${isSuggestionsOpen ? 'text-amber-400' : 'text-orange-500'}`}>
+            {isArchived || survey.status === 'published'
+              ? 'Abstimmung Beendet'
+              : survey.status === 'active'
+              ? 'Live-Abstimmung'
+              : isSuggestionsOpen
+              ? '💡 Ideen-Box offen (Vorschläge willkommen)'
+              : 'Entwurf'} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'} {survey.majorityType === 'two_thirds' ? '• ⅔ Mehrheit' : survey.majorityType === 'simple' ? '• Einfache Mehrheit' : ''} {survey.isAnonymous ? '• 🔒 Anonym' : ''}
           </span>
           <h4 className="text-lg sm:text-xl font-bold text-white leading-tight">{survey.title}</h4>
         </div>
         <div className="flex flex-col sm:items-end gap-3 shrink-0">
           <div className="text-[10px] font-bold text-gray-400 bg-gray-950 px-3 py-1.5 rounded-lg border border-gray-800 flex items-center w-fit shadow-inner">
-            <Users size={12} className="mr-1.5 text-orange-500" />
-            {survey.votedUsers?.length || 0} / {eligibleUsersCount} haben abgestimmt
+            {isSuggestionsOpen ? (
+              <>
+                <Lightbulb size={12} className="mr-1.5 text-amber-400" />
+                {(survey.options || []).length} {(survey.options || []).length === 1 ? 'Vorschlag eingereicht' : 'Vorschläge eingereicht'}
+              </>
+            ) : (
+              <>
+                <Users size={12} className="mr-1.5 text-orange-500" />
+                {survey.votedUsers?.length || 0} / {eligibleUsersCount} haben abgestimmt
+              </>
+            )}
           </div>
           {currentUser.role === 'admin' && !isArchived && (
             <div className="flex gap-1.5 sm:gap-2 items-center flex-wrap">
-              {survey.status === 'draft'  && <button onClick={() => onStatusChange('active')}    className="bg-green-500 text-gray-950 text-[10px] font-bold px-4 py-2.5 rounded-xl active:scale-95 transition-all min-h-[38px]">Starten</button>}
-              {survey.status === 'active' && <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-bold px-4 py-2.5 rounded-xl active:scale-95 transition-all min-h-[38px]">Publizieren</button>}
+              {survey.status === 'draft' && (
+                <button
+                  onClick={() => onStatusChange('suggestions')}
+                  className="bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-gray-950 border border-amber-500/40 text-[10px] font-black px-3.5 py-2.5 rounded-xl active:scale-95 transition-all min-h-[38px] flex items-center gap-1"
+                  title="Für Mitglieder-Vorschläge öffnen"
+                >
+                  <Lightbulb size={13} /> Ideen-Box öffnen
+                </button>
+              )}
+              {(survey.status === 'draft' || survey.status === 'suggestions') && (
+                <button
+                  onClick={() => onStatusChange('active')}
+                  disabled={(survey.options || []).length < 2}
+                  title={(survey.options || []).length < 2 ? 'Mindestens 2 Optionen erforderlich' : 'Abstimmung jetzt starten'}
+                  className="bg-green-500 text-gray-950 text-[10px] font-black px-4 py-2.5 rounded-xl active:scale-95 transition-all min-h-[38px] disabled:opacity-40"
+                >
+                  {survey.status === 'suggestions' ? 'Ideen schliessen & Voting starten' : 'Starten'}
+                </button>
+              )}
+              {survey.status === 'active' && (
+                <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-black px-4 py-2.5 rounded-xl active:scale-95 transition-all min-h-[38px]">
+                  Publizieren
+                </button>
+              )}
+              {survey.status === 'published' && (survey.options || []).length >= 2 && onCreateRunoff && (
+                <button
+                  onClick={onCreateRunoff}
+                  className="bg-amber-500 hover:bg-amber-400 text-gray-950 text-[10px] font-black px-3.5 py-2.5 rounded-xl active:scale-95 transition-all min-h-[38px] flex items-center gap-1 shadow-lg shadow-amber-500/15"
+                  title="Erstellt sofort eine neue Live-Abstimmung mit den bestplatzierten Optionen"
+                >
+                  <Zap size={13} /> Stichwahl (Top 2)
+                </button>
+              )}
               <button onClick={() => onPresent(survey)} className="p-2.5 bg-gray-800 text-gray-400 hover:text-orange-500 rounded-lg transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center" title="Präsentationsmodus"><Maximize2 size={16}/></button>
               <button onClick={onMoveUp} disabled={!onMoveUp} className="p-2.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors disabled:opacity-30 min-h-[38px] min-w-[38px] flex items-center justify-center" title="Nach oben"><ArrowUp size={16}/></button>
               <button onClick={onMoveDown} disabled={!onMoveDown} className="p-2.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors disabled:opacity-30 min-h-[38px] min-w-[38px] flex items-center justify-center" title="Nach unten"><ArrowDown size={16}/></button>
@@ -3576,15 +3826,102 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
           </div>
         )}
 
-        {isPublished && survey.options.map(o => {
+        {isSuggestionsOpen && (
+          <div className="space-y-4">
+            <form onSubmit={handleIdeaSubmit} className="bg-amber-500/5 border border-amber-500/30 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-400">
+                <Lightbulb size={15} /> Eigenen Vorschlag / Liedwunsch einreichen
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2.5">
+                <input
+                  required
+                  value={newSuggestionText}
+                  onChange={e => setNewSuggestionText(e.target.value)}
+                  placeholder="z.B. Sujet-Idee oder Songtitel & Interpret..."
+                  className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white focus:border-amber-500 outline-none min-h-[44px]"
+                />
+                <div className="relative sm:w-64">
+                  <Youtube size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    value={newSuggestionYt}
+                    onChange={e => setNewSuggestionYt(e.target.value)}
+                    placeholder="YouTube-Link (optional)"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-3 py-3 text-xs text-white focus:border-amber-500 outline-none min-h-[44px]"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={submittingIdea || !newSuggestionText.trim()}
+                  className="px-5 py-3 bg-amber-500 hover:bg-amber-400 text-gray-950 font-black rounded-xl text-xs active:scale-95 transition-all disabled:opacity-40 shrink-0 min-h-[44px]"
+                >
+                  {submittingIdea ? 'Sende...' : '+ Einreichen'}
+                </button>
+              </div>
+            </form>
+
+            <div className="space-y-2">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 px-1">
+                Bereits eingereichte Vorschläge ({(survey.options || []).length})
+              </p>
+              {(survey.options || []).length === 0 ? (
+                <div className="text-center py-6 bg-gray-950/60 border border-gray-800 border-dashed rounded-2xl text-xs text-gray-500">
+                  Noch keine Vorschläge vorhanden – mach den Anfang!
+                </div>
+              ) : (
+                (survey.options || []).map((o, idx) => {
+                  const canDelete = currentUser.role === 'admin' || o.suggestedById === currentUser.id;
+                  return (
+                    <div key={o.id || idx} className="p-3.5 bg-gray-950 border border-gray-800 rounded-xl flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <span className="w-6 h-6 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 font-black text-xs flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-white text-sm truncate">{o.text}</p>
+                          {o.suggestedBy && (
+                            <p className="text-[10px] text-gray-500">Vorschlag von {o.suggestedBy}</p>
+                          )}
+                        </div>
+                        {o.youtubeUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setActivePlayerUrl(activePlayerUrl === o.youtubeUrl ? null : o.youtubeUrl)}
+                            className="text-orange-400 hover:text-orange-300 bg-orange-500/10 px-2.5 py-1.5 rounded-lg border border-orange-500/20 text-xs flex items-center gap-1.5 shrink-0 transition-all"
+                          >
+                            <Play size={12}/> Anhören
+                          </button>
+                        )}
+                      </div>
+                      {canDelete && onDeleteSuggestion && (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteSuggestion(o.id)}
+                          className="p-2 text-gray-500 hover:text-red-500 rounded-lg transition-colors shrink-0"
+                          title="Vorschlag entfernen"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {isPublished && (survey.options || []).map(o => {
           const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
-          const maxV = Math.max(...survey.options.map(x => x.votes || 0));
+          const maxV = Math.max(...(survey.options || []).map(x => x.votes || 0));
           const isWinner = totalVotes > 0 && (o.votes || 0) === maxV && maxV > 0;
           return (
             <div key={o.id} className={`relative h-14 bg-gray-950 border rounded-xl overflow-hidden flex items-center px-4 ${isWinner ? 'border-orange-500/70' : 'border-gray-800'}`}>
               <div className="absolute left-0 top-0 h-full bg-orange-500/15 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
               <div className="flex-1 font-bold text-white z-10 flex items-center gap-2 min-w-0">
                 <span className="truncate">{o.text}</span>
+                {o.suggestedBy && (
+                  <span className="text-[10px] text-gray-500 font-normal hidden sm:inline shrink-0">({o.suggestedBy})</span>
+                )}
                 {o.youtubeUrl && (
                   <button
                     type="button"
@@ -3602,12 +3939,17 @@ function SurveyCard({ survey, currentUser, onVote, onStatusChange, isArchived, o
             </div>
           );
         })}
-        {(!isPublished && (!hasVoted || survey.status === 'active')) ? (
+        {(!isPublished && !isSuggestionsOpen && (!hasVoted || survey.status === 'active')) ? (
           <div className="space-y-3">
-            {!hasVoted && survey.options.map(o => (
+            {!hasVoted && (survey.options || []).map(o => (
               <div key={o.id} onClick={() => toggle(o.id)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between min-h-[52px] ${selected.includes(o.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <span className="font-bold text-sm sm:text-base truncate">{o.text}</span>
+                  <div className="min-w-0 flex-1">
+                    <span className="font-bold text-sm sm:text-base block truncate">{o.text}</span>
+                    {o.suggestedBy && (
+                      <span className="text-[10px] text-gray-500 block">Vorschlag von {o.suggestedBy}</span>
+                    )}
+                  </div>
                   {o.youtubeUrl && (
                     <button
                       type="button"
