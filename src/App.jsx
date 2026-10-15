@@ -26,6 +26,25 @@ const TRAKTANDEN = [
   'Präsident', 'Vizepräsident', 'Tambourmajor', 'Tourmanager', 'Sujetchef', 'Kassier', 'Aktuar'
 ];
 
+const SCHMUDO_DATES = [
+  { year: 2025, date: '2025-02-27T05:00:00' },
+  { year: 2026, date: '2026-02-12T05:00:00' },
+  { year: 2027, date: '2027-02-04T05:00:00' },
+  { year: 2028, date: '2028-02-24T05:00:00' },
+  { year: 2029, date: '2029-02-08T05:00:00' },
+  { year: 2030, date: '2030-02-28T05:00:00' },
+  { year: 2031, date: '2031-02-20T05:00:00' },
+  { year: 2032, date: '2032-02-05T05:00:00' },
+  { year: 2033, date: '2033-02-24T05:00:00' },
+  { year: 2034, date: '2034-02-16T05:00:00' },
+  { year: 2035, date: '2035-02-01T05:00:00' },
+  { year: 2036, date: '2036-02-21T05:00:00' },
+  { year: 2037, date: '2037-02-12T05:00:00' },
+  { year: 2038, date: '2038-03-04T05:00:00' },
+  { year: 2039, date: '2039-02-17T05:00:00' },
+  { year: 2040, date: '2040-02-09T05:00:00' }
+];
+
 const INITIAL_USERS = [
   { 
     id: 'admin_suuger', 
@@ -863,6 +882,9 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
   const [yearFilter,     setYearFilter]     = useState('Alle');
   const [onlyOpenTasks,  setOnlyOpenTasks]  = useState(false);
   const [onlyMyTasks,    setOnlyMyTasks]    = useState(false);
+  const [tasksViewMode,  setTasksViewMode]  = useState('kanban'); // 'list' | 'kanban'
+  const [showKanbanBoard, setShowKanbanBoard] = useState(false);
+  const [draggedTask,    setDraggedTask]    = useState(null);
   const [compactFactsOnly, setCompactFactsOnly] = useState(false);
   const [expandedId,     setExpandedId]     = useState(null);
   const [enlargedPoint,  setEnlargedPoint]  = useState(null);
@@ -918,12 +940,14 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
     return ['Alle', ...Array.from(years).sort((a, b) => b.localeCompare(a))];
   }, [minutes]);
 
-  const { stats, openTasksList } = useMemo(() => {
+  const { stats, openTasksList, allTodoTasksList } = useMemo(() => {
     let totalPoints = 0;
     let totalAttachments = 0;
     let openTodos = 0;
+    let inProgressTodos = 0;
     let myOpenTodos = 0;
     const tasks = [];
+    const allTodos = [];
 
     const validMinutes = minutes.filter(m => m.id !== '__live_session__');
     const sortedMins = [...validMinutes].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -934,26 +958,34 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
           totalPoints += list.length;
           list.forEach(p => {
             if (p.docUrl) totalAttachments++;
-            if (p.type === 'todo' && !p.done) {
-              openTodos++;
+            if (p.type === 'todo') {
+              const status = p.done ? 'done' : (p.status === 'in_progress' ? 'in_progress' : 'open');
               const isMine = p.assignee === myFullName || p.assignee === 'Gesamtvorstand';
-              if (isMine) myOpenTodos++;
-              tasks.push({
+              const taskObj = {
                 minuteId: m.id,
                 minuteTitle: m.title,
                 minuteDate: m.date,
                 traktandum: tName,
                 isMine,
+                status,
                 point: p
-              });
+              };
+              allTodos.push(taskObj);
+              if (!p.done) {
+                openTodos++;
+                if (status === 'in_progress') inProgressTodos++;
+                if (isMine) myOpenTodos++;
+                tasks.push(taskObj);
+              }
             }
           });
         });
       }
     });
     return {
-      stats: { totalMinutes: validMinutes.length, totalPoints, totalAttachments, openTodos, myOpenTodos },
-      openTasksList: tasks
+      stats: { totalMinutes: validMinutes.length, totalPoints, totalAttachments, openTodos, inProgressTodos, myOpenTodos, totalTodos: allTodos.length },
+      openTasksList: tasks,
+      allTodoTasksList: allTodos
     };
   }, [minutes, myFullName]);
 
@@ -961,6 +993,11 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
     if (onlyMyTasks) return openTasksList.filter(t => t.isMine);
     return openTasksList;
   }, [openTasksList, onlyMyTasks]);
+
+  const displayedKanbanTasks = useMemo(() => {
+    if (onlyMyTasks) return allTodoTasksList.filter(t => t.isMine);
+    return allTodoTasksList;
+  }, [allTodoTasksList, onlyMyTasks]);
 
   const filteredMinutes = useMemo(() => {
     let sorted = [...minutes]
@@ -1013,16 +1050,25 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
     notify("Protokoll erfolgreich gespeichert.", "success");
   };
 
-  const toggleTaskDone = async (minute, traktandum, pointId) => {
+  const updateTaskStatus = async (minute, traktandum, pointId, newStatus) => {
+    if (!minute) return;
+    const isDone = newStatus === 'done';
     const updatedList = (minute.traktanden?.[traktandum] || []).map(p =>
-      p.id === pointId ? { ...p, done: !p.done } : p
+      p.id === pointId ? { ...p, status: newStatus, done: isDone } : p
     );
     const updatedMinute = {
       ...minute,
       traktanden: { ...minute.traktanden, [traktandum]: updatedList }
     };
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', minute.id), updatedMinute);
-    notify("Pendenzen-Status aktualisiert.", "success");
+    const label = newStatus === 'done' ? 'Erledigt ✓' : newStatus === 'in_progress' ? 'In Arbeit ⚡' : 'Offen 📋';
+    notify(`Pendenz verschoben nach «${label}».`, "success");
+  };
+
+  const toggleTaskDone = async (minute, traktandum, pointId) => {
+    const targetPoint = (minute.traktanden?.[traktandum] || []).find(p => p.id === pointId);
+    const nextDone = !targetPoint?.done;
+    await updateTaskStatus(minute, traktandum, pointId, nextDone ? 'done' : 'open');
   };
 
   const copyProtocolSummary = (m) => {
@@ -1144,12 +1190,29 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Vorstands-Protokolle</h2>
             <p className="text-gray-400 text-sm mt-1">Strukturierte Sitzungsprotokolle, Beschlüsse & Pendenzen-Tracking</p>
           </div>
-          <button
-            onClick={() => setShowAdd(true)}
-            className="bg-orange-500 hover:bg-orange-400 text-gray-950 font-black px-6 py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 whitespace-nowrap w-full md:w-auto min-h-[48px]"
-          >
-            <Plus size={20} strokeWidth={2.5} /> Neues Protokoll erfassen
-          </button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+            <button
+              onClick={() => {
+                const nextState = !showKanbanBoard;
+                setShowKanbanBoard(nextState);
+                if (nextState) setTasksViewMode('kanban');
+              }}
+              className={`font-black px-5 py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all border whitespace-nowrap min-h-[48px] ${
+                showKanbanBoard || onlyOpenTasks || onlyMyTasks
+                  ? 'bg-orange-500/15 border-orange-500 text-orange-400 shadow-lg shadow-orange-500/10'
+                  : 'bg-gray-950 hover:bg-gray-800 border-gray-800 text-gray-300'
+              }`}
+            >
+              <BarChart3 size={18} className="text-orange-500 rotate-90" />
+              <span>Kanban-Board ({stats.openTodos})</span>
+            </button>
+            <button
+              onClick={() => setShowAdd(true)}
+              className="bg-orange-500 hover:bg-orange-400 text-gray-950 font-black px-6 py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 whitespace-nowrap min-h-[48px]"
+            >
+              <Plus size={20} strokeWidth={2.5} /> Neues Protokoll erfassen
+            </button>
+          </div>
         </div>
 
         {minutes.length === 0 ? (
@@ -1169,7 +1232,12 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                 <p className="text-xl sm:text-2xl font-black text-white mt-1">{stats.totalMinutes}</p>
               </div>
               <div
-                onClick={() => { setOnlyOpenTasks(!onlyOpenTasks); setOnlyMyTasks(false); }}
+                onClick={() => {
+                  const next = !onlyOpenTasks;
+                  setOnlyOpenTasks(next);
+                  setOnlyMyTasks(false);
+                  if (next) setShowKanbanBoard(true);
+                }}
                 className={`rounded-2xl p-3.5 sm:p-4 border cursor-pointer transition-all ${
                   onlyOpenTasks && !onlyMyTasks
                     ? 'bg-orange-500/15 border-orange-500'
@@ -1177,13 +1245,23 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
                 }`}
               >
                 <p className="text-[10px] font-black uppercase tracking-widest text-orange-400 flex items-center justify-between">
-                  <span>Alle Pendenzen</span>
+                  <span>Offene Pendenzen</span>
                   {onlyOpenTasks && !onlyMyTasks && <span className="text-[9px] bg-orange-500 text-gray-950 px-1.5 py-0.5 rounded font-black">Aktiv</span>}
                 </p>
-                <p className="text-xl sm:text-2xl font-black text-orange-500 mt-1">{stats.openTodos}</p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <p className="text-xl sm:text-2xl font-black text-orange-500">{stats.openTodos}</p>
+                  {stats.inProgressTodos > 0 && (
+                    <span className="text-[10px] font-bold text-amber-400">({stats.inProgressTodos} in Arbeit)</span>
+                  )}
+                </div>
               </div>
               <div
-                onClick={() => { setOnlyMyTasks(!onlyMyTasks); setOnlyOpenTasks(false); }}
+                onClick={() => {
+                  const next = !onlyMyTasks;
+                  setOnlyMyTasks(next);
+                  setOnlyOpenTasks(false);
+                  if (next) setShowKanbanBoard(true);
+                }}
                 className={`rounded-2xl p-3.5 sm:p-4 border cursor-pointer transition-all ${
                   onlyMyTasks
                     ? 'bg-amber-500/15 border-amber-500'
@@ -1205,72 +1283,254 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         )}
       </div>
 
-      {(onlyOpenTasks || onlyMyTasks) && displayedTasks.length > 0 && (
-        <div className="bg-orange-500/5 border border-orange-500/30 rounded-3xl p-5 sm:p-6 space-y-3 animate-in fade-in">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black uppercase tracking-widest text-orange-400 flex items-center gap-2">
-              <Sparkles size={16} /> {onlyMyTasks ? `Meine offenen Pendenzen (${displayedTasks.length})` : `Alle offenen Vorstands-Pendenzen (${displayedTasks.length})`}
-            </h3>
-            <button
-              onClick={() => { setOnlyOpenTasks(false); setOnlyMyTasks(false); }}
-              className="text-xs text-gray-400 hover:text-white font-bold min-h-[44px] flex items-center"
-            >
-              Filter zurücksetzen
-            </button>
-          </div>
-          <div className="grid gap-2.5">
-            {displayedTasks.map(item => {
-              const targetMinute = minutes.find(x => x.id === item.minuteId);
-              const isOverdue = item.point.dueDate && item.point.dueDate < todayIso;
-              return (
-                <div
-                  key={item.point.id}
-                  className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+      {(showKanbanBoard || onlyOpenTasks || onlyMyTasks) && stats.totalTodos > 0 && (
+        <div className="bg-gray-900/90 border border-orange-500/30 rounded-3xl p-5 sm:p-6 space-y-5 animate-in fade-in shadow-2xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-4">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <Sparkles size={18} className="text-orange-500" />
+              <h3 className="text-sm sm:text-base font-black uppercase tracking-widest text-white">
+                {onlyMyTasks ? 'Meine Vorstands-Pendenzen' : 'Vorstands-Pendenzen Board'}
+              </h3>
+              <button
+                onClick={() => setOnlyMyTasks(!onlyMyTasks)}
+                className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg border transition-all ${
+                  onlyMyTasks
+                    ? 'bg-amber-500 text-gray-950 border-amber-500'
+                    : 'bg-gray-950 text-gray-400 border-gray-800 hover:text-white'
+                }`}
+              >
+                {onlyMyTasks ? '✓ Nur Meine' : 'Alle zeigen / Nur Meine'}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              <div className="bg-gray-950 border border-gray-800 p-1 rounded-xl flex items-center">
+                <button
+                  type="button"
+                  onClick={() => setTasksViewMode('kanban')}
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all ${
+                    tasksViewMode === 'kanban' ? 'bg-orange-500 text-gray-950' : 'text-gray-400 hover:text-white'
+                  }`}
                 >
-                  <div className="flex items-start gap-3">
-                    <button
-                      onClick={() => targetMinute && toggleTaskDone(targetMinute, item.traktandum, item.point.id)}
-                      title="Als erledigt markieren"
-                      className="mt-0.5 w-6 h-6 rounded-lg border-2 border-orange-500 flex items-center justify-center hover:bg-orange-500/20 shrink-0 transition-all min-h-[36px] min-w-[36px]"
-                    />
-                    <div>
-                      <p className="text-sm font-bold text-white leading-snug">{item.point.text}</p>
-                      <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                        <span className="text-[10px] font-black uppercase text-orange-400">{item.traktandum}</span>
-                        {item.point.assignee && (
-                          <span className="text-[10px] font-bold bg-gray-950 border border-gray-800 px-2.5 py-1 rounded text-gray-300">
-                            Verantwortlich: {item.point.assignee}
-                          </span>
-                        )}
-                        {item.point.dueDate && (
-                          <span className={`text-[10px] font-bold px-2.5 py-1 rounded border ${
-                            isOverdue
-                              ? 'bg-red-500/15 text-red-400 border-red-500/30'
-                              : 'bg-gray-950 text-gray-400 border-gray-800'
-                          }`}>
-                            Frist: {new Date(item.point.dueDate).toLocaleDateString('de-CH')} {isOverdue ? '(Überfällig)' : ''}
-                          </span>
-                        )}
-                        <span className="text-[10px] text-gray-500">
-                          aus «{item.minuteTitle}» ({new Date(item.minuteDate).toLocaleDateString('de-CH')})
-                        </span>
-                      </div>
+                  Kanban-Board
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTasksViewMode('list')}
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all ${
+                    tasksViewMode === 'list' ? 'bg-orange-500 text-gray-950' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Liste
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  setShowKanbanBoard(false);
+                  setOnlyOpenTasks(false);
+                  setOnlyMyTasks(false);
+                }}
+                className="p-2 bg-gray-950 border border-gray-800 rounded-xl text-gray-400 hover:text-white transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"
+                title="Board schliessen"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+
+          {tasksViewMode === 'kanban' ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                { id: 'open',        title: 'Offen',     badgeColor: 'bg-orange-500/15 text-orange-400 border-orange-500/30', borderAccent: 'border-orange-500/30' },
+                { id: 'in_progress', title: 'In Arbeit', badgeColor: 'bg-amber-500/15 text-amber-400 border-amber-500/30',   borderAccent: 'border-amber-500/30' },
+                { id: 'done',        title: 'Erledigt',  badgeColor: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', borderAccent: 'border-emerald-500/30' }
+              ].map(col => {
+                const colTasks = displayedKanbanTasks.filter(t => t.status === col.id);
+                return (
+                  <div
+                    key={col.id}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={() => {
+                      if (draggedTask && draggedTask.status !== col.id) {
+                        const targetMin = minutes.find(m => m.id === draggedTask.minuteId);
+                        if (targetMin) {
+                          updateTaskStatus(targetMin, draggedTask.traktandum, draggedTask.point.id, col.id);
+                        }
+                      }
+                      setDraggedTask(null);
+                    }}
+                    className={`bg-gray-950/90 border rounded-2xl p-3.5 flex flex-col min-h-[260px] transition-all ${
+                      draggedTask && draggedTask.status !== col.id ? `border-dashed ${col.borderAccent} bg-gray-950` : 'border-gray-800/90'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3 px-1">
+                      <span className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${col.id === 'done' ? 'bg-emerald-500' : col.id === 'in_progress' ? 'bg-amber-400 animate-pulse' : 'bg-orange-500'}`} />
+                        {col.title}
+                      </span>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${col.badgeColor}`}>
+                        {colTasks.length}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2.5 flex-1">
+                      {colTasks.length === 0 ? (
+                        <div className="h-32 border border-dashed border-gray-800/80 rounded-xl flex items-center justify-center text-[11px] text-gray-600 font-bold">
+                          Keine Pendenzen in «{col.title}»
+                        </div>
+                      ) : (
+                        colTasks.map(item => {
+                          const targetMinute = minutes.find(x => x.id === item.minuteId);
+                          const isOverdue = item.status !== 'done' && item.point.dueDate && item.point.dueDate < todayIso;
+                          return (
+                            <div
+                              key={item.point.id}
+                              draggable
+                              onDragStart={() => setDraggedTask(item)}
+                              onDragEnd={() => setDraggedTask(null)}
+                              className={`bg-gray-900 border rounded-xl p-3.5 space-y-2.5 shadow-md cursor-grab active:cursor-grabbing transition-all hover:border-gray-700 ${
+                                isOverdue ? 'border-red-500/50' : item.isMine && item.status !== 'done' ? 'border-orange-500/40' : 'border-gray-800'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-gray-950 text-orange-400 border border-gray-800">
+                                  {item.traktandum}
+                                </span>
+                                {item.point.dueDate && (
+                                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${
+                                    isOverdue ? 'bg-red-500/15 text-red-400 border-red-500/30' : 'bg-gray-950 text-gray-400 border-gray-800'
+                                  }`}>
+                                    Bis {new Date(item.point.dueDate).toLocaleDateString('de-CH')}
+                                  </span>
+                                )}
+                              </div>
+
+                              <p className={`text-xs sm:text-sm font-bold leading-snug break-words ${item.status === 'done' ? 'line-through text-gray-500' : 'text-white'}`}>
+                                {item.point.text}
+                              </p>
+
+                              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-800/80">
+                                <div className="min-w-0">
+                                  {item.point.assignee ? (
+                                    <span className="text-[10px] font-bold text-gray-300 bg-gray-950 px-2 py-0.5 rounded border border-gray-800 inline-block truncate max-w-[140px]">
+                                      @{item.point.assignee}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-gray-600">Unzugewiesen</span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                  {col.id !== 'open' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => targetMinute && updateTaskStatus(targetMinute, item.traktandum, item.point.id, col.id === 'done' ? 'in_progress' : 'open')}
+                                      title={col.id === 'done' ? 'Zurück auf In Arbeit' : 'Zurück auf Offen'}
+                                      className="px-2 py-1 rounded-lg bg-gray-950 hover:bg-gray-800 text-gray-400 hover:text-white text-[10px] font-black border border-gray-800 transition-colors"
+                                    >
+                                      ←
+                                    </button>
+                                  )}
+                                  {col.id === 'open' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => targetMinute && updateTaskStatus(targetMinute, item.traktandum, item.point.id, 'in_progress')}
+                                      className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500 text-amber-300 hover:text-gray-950 text-[10px] font-black border border-amber-500/30 transition-all"
+                                    >
+                                      In Arbeit →
+                                    </button>
+                                  )}
+                                  {col.id !== 'done' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => targetMinute && updateTaskStatus(targetMinute, item.traktandum, item.point.id, 'done')}
+                                      className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500 text-emerald-400 hover:text-gray-950 text-[10px] font-black border border-emerald-500/30 transition-all"
+                                    >
+                                      ✓ Erledigt
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => {
-                      setExpandedId(item.minuteId);
-                      setOnlyOpenTasks(false);
-                      setOnlyMyTasks(false);
-                    }}
-                    className="text-xs font-bold text-orange-500 hover:underline self-end sm:self-center shrink-0 min-h-[44px] flex items-center"
+                );
+              })}
+            </div>
+          ) : (
+            <div className="grid gap-2.5">
+              {displayedTasks.map(item => {
+                const targetMinute = minutes.find(x => x.id === item.minuteId);
+                const isOverdue = item.point.dueDate && item.point.dueDate < todayIso;
+                return (
+                  <div
+                    key={item.point.id}
+                    className="bg-gray-950 border border-gray-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                   >
-                    Zum Protokoll →
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                    <div className="flex items-start gap-3">
+                      <button
+                        onClick={() => targetMinute && toggleTaskDone(targetMinute, item.traktandum, item.point.id)}
+                        title="Als erledigt markieren"
+                        className="mt-0.5 w-6 h-6 rounded-lg border-2 border-orange-500 flex items-center justify-center hover:bg-orange-500/20 shrink-0 transition-all min-h-[36px] min-w-[36px]"
+                      />
+                      <div>
+                        <p className="text-sm font-bold text-white leading-snug">{item.point.text}</p>
+                        <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                          <span className="text-[10px] font-black uppercase text-orange-400">{item.traktandum}</span>
+                          {item.status === 'in_progress' && (
+                            <span className="text-[10px] font-black uppercase bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded">
+                              In Arbeit
+                            </span>
+                          )}
+                          {item.point.assignee && (
+                            <span className="text-[10px] font-bold bg-gray-900 border border-gray-800 px-2.5 py-1 rounded text-gray-300">
+                              Verantwortlich: {item.point.assignee}
+                            </span>
+                          )}
+                          {item.point.dueDate && (
+                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded border ${
+                              isOverdue
+                                ? 'bg-red-500/15 text-red-400 border-red-500/30'
+                                : 'bg-gray-900 text-gray-400 border-gray-800'
+                            }`}>
+                              Frist: {new Date(item.point.dueDate).toLocaleDateString('de-CH')} {isOverdue ? '(Überfällig)' : ''}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-gray-500">
+                            aus «{item.minuteTitle}» ({new Date(item.minuteDate).toLocaleDateString('de-CH')})
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                      {item.status !== 'in_progress' && (
+                        <button
+                          onClick={() => targetMinute && updateTaskStatus(targetMinute, item.traktandum, item.point.id, 'in_progress')}
+                          className="text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 px-3 py-2 rounded-xl hover:bg-amber-500 hover:text-gray-950 transition-all"
+                        >
+                          In Arbeit
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setExpandedId(item.minuteId);
+                          setShowKanbanBoard(false);
+                          setOnlyOpenTasks(false);
+                          setOnlyMyTasks(false);
+                        }}
+                        className="text-xs font-bold text-orange-500 hover:underline min-h-[44px] flex items-center px-2"
+                      >
+                        Zum Protokoll →
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1333,3566 +1593,4 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
 
       <div className="grid gap-4">
         {minutes.length === 0 ? (
-          <div className="space-y-4">
-            {[1, 2].map(i => (
-              <div key={i} className="bg-gray-900 border border-gray-800 rounded-3xl p-6 animate-pulse">
-                <div className="flex gap-4">
-                  <div className="w-16 h-16 bg-gray-800 rounded-2xl"></div>
-                  <div className="flex-1 space-y-3">
-                    <div className="h-4 bg-gray-800 rounded w-1/4"></div>
-                    <div className="h-6 bg-gray-800 rounded w-3/4"></div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          filteredMinutes.map(m => {
-            const isExpanded = expandedId === m.id;
-            const dateObj = m.date ? new Date(m.date) : new Date();
-            const dayNum = dateObj.toLocaleDateString('de-CH', { day: '2-digit' });
-            const monthShort = dateObj.toLocaleDateString('de-CH', { month: 'short' });
-            const yearNum = dateObj.getFullYear();
-
-            const activeTraktanden = TRAKTANDEN.filter(t => (m.traktanden?.[t]?.length || 0) > 0);
-            const totalPointsCount = activeTraktanden.reduce((sum, t) => sum + (m.traktanden?.[t]?.length || 0), 0);
-            const totalDocsCount = activeTraktanden.reduce(
-              (sum, t) => sum + (m.traktanden?.[t]?.filter(p => p.docUrl)?.length || 0),
-              0
-            );
-            const openTodoCount = activeTraktanden.reduce(
-              (sum, t) => sum + (m.traktanden?.[t]?.filter(p => p.type === 'todo' && !p.done)?.length || 0),
-              0
-            );
-            const presentCount = Object.values(m.attendance || {}).filter(s => s === 'present').length;
-
-            return (
-              <div
-                key={m.id}
-                className={`bg-gray-900 border rounded-3xl flex flex-col transition-all duration-300 overflow-hidden shadow-xl ${
-                  isExpanded ? 'border-orange-500/50 ring-1 ring-orange-500/20' : 'border-gray-800 hover:border-gray-700'
-                }`}
-              >
-                <div
-                  className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6 cursor-pointer hover:bg-gray-800/20 transition-colors"
-                  onClick={() => setExpandedId(isExpanded ? null : m.id)}
-                >
-                  <div className="flex items-start sm:items-center gap-4 sm:gap-5 flex-1 min-w-0">
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gray-950 border border-gray-800 flex flex-col items-center justify-center shrink-0 shadow-inner">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-orange-500">{monthShort}</span>
-                      <span className="text-xl sm:text-2xl font-black text-white leading-none my-0.5">{dayNum}</span>
-                      <span className="text-[10px] font-bold text-gray-600">{yearNum}</span>
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                        <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md bg-gray-800 text-gray-300 border border-gray-700">
-                          {totalPointsCount} {totalPointsCount === 1 ? 'Eintrag' : 'Einträge'}
-                        </span>
-                        {openTodoCount > 0 && (
-                          <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md bg-orange-500/15 text-orange-400 border border-orange-500/30">
-                            {openTodoCount} {openTodoCount === 1 ? 'Pendenz offen' : 'Pendenzen offen'}
-                          </span>
-                        )}
-                        {presentCount > 0 && (
-                          <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-green-500/10 text-green-400 border border-green-500/20 flex items-center gap-1">
-                            <UserCheck size={11} /> {presentCount} Anwesend
-                          </span>
-                        )}
-                        {totalDocsCount > 0 && (
-                          <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
-                            <Paperclip size={11} /> {totalDocsCount} {totalDocsCount === 1 ? 'Anhang' : 'Anhänge'}
-                          </span>
-                        )}
-                      </div>
-
-                      <h3 className="text-lg sm:text-2xl font-black text-white break-words leading-snug">
-                        {highlightText(m.title, searchTerm)}
-                      </h3>
-
-                      {activeTraktanden.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mt-3">
-                          {activeTraktanden.map(t => (
-                            <span
-                              key={t}
-                              className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${traktandumMeta[t]?.badge || 'bg-gray-800 text-gray-400 border-gray-700'}`}
-                            >
-                              {t} ({m.traktanden[t].length})
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2.5 shrink-0 justify-end pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-800/80" onClick={e => e.stopPropagation()}>
-                    <button
-                      onClick={() => copyProtocolSummary(m)}
-                      title="Zusammenfassung für WhatsApp / E-Mail kopieren"
-                      className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 hover:border-orange-500/40 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                    >
-                      <Share2 size={18} />
-                    </button>
-                    <button
-                      onClick={() => setReadingMinute(m)}
-                      title="Lese- & Druckansicht (PDF)"
-                      className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-orange-500 hover:border-orange-500/40 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                    >
-                      <Printer size={18} />
-                    </button>
-                    <button
-                      onClick={() => setEditing(m)}
-                      title="Protokoll bearbeiten"
-                      className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                    >
-                      <Edit2 size={18} />
-                    </button>
-                    <button
-                      onClick={() =>
-                        askConfirm(
-                          'Protokoll löschen?',
-                          `Möchtest du das Protokoll "${m.title}" wirklich unwiderruflich löschen?`,
-                          async () => {
-                            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id));
-                            notify('Protokoll gelöscht.', 'info');
-                          },
-                          'Löschen'
-                        )
-                      }
-                      title="Protokoll löschen"
-                      className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                    <button
-                      onClick={() => setExpandedId(isExpanded ? null : m.id)}
-                      className={`p-3 rounded-2xl border transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center ${
-                        isExpanded
-                          ? 'bg-orange-500 text-gray-950 border-orange-500'
-                          : 'bg-gray-800 border-gray-700 text-gray-300 hover:text-white'
-                      }`}
-                    >
-                      <ChevronRight className={`transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''}`} size={18} />
-                    </button>
-                  </div>
-                </div>
-
-                {isExpanded && (
-                  <div className="border-t border-gray-800 bg-gray-950/60 p-5 sm:p-8 space-y-8 animate-in slide-in-from-top-2 duration-300">
-                    <div className="flex flex-wrap items-center justify-between gap-3 bg-gray-900 border border-gray-800 px-4 py-3 rounded-2xl">
-                      <span className="text-xs font-bold text-gray-400">Ansichts-Modus für dieses Protokoll:</span>
-                      <button
-                        type="button"
-                        onClick={() => setCompactFactsOnly(!compactFactsOnly)}
-                        className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider border transition-all min-h-[38px] flex items-center gap-2 ${
-                          compactFactsOnly
-                            ? 'bg-orange-500 text-gray-950 border-orange-500 shadow-lg shadow-orange-500/20'
-                            : 'bg-gray-950 text-gray-300 border-gray-800 hover:border-orange-500/40'
-                        }`}
-                      >
-                        <Filter size={13} />
-                        {compactFactsOnly ? '✓ Nur Beschlüsse & Pendenzen aktiv' : 'Nur Beschlüsse & Pendenzen anzeigen'}
-                      </button>
-                    </div>
-
-                    {m.attendance && Object.keys(m.attendance).length > 0 && (
-                      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-5">
-                        <h4 className="text-orange-500 font-black uppercase text-[10px] tracking-widest mb-3 flex items-center gap-2">
-                          <UserCheck size={14}/> Anwesenheitskontrolle
-                        </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {users.filter(u => u.groups?.includes('Vorstand')).map(u => {
-                            const status = m.attendance?.[u.id];
-                            if (!status) return null;
-                            const label = status === 'present' ? 'Anwesend' : status === 'absent' ? 'Unentschuldigt' : 'Entschuldigt';
-                            const color = status === 'present'
-                              ? 'bg-green-500/10 text-green-400 border-green-500/30'
-                              : status === 'absent'
-                              ? 'bg-red-500/10 text-red-400 border-red-500/30'
-                              : 'bg-blue-500/10 text-blue-400 border-blue-500/30';
-                            return (
-                              <span key={u.id} className={`text-xs font-bold px-3 py-1.5 rounded-xl border ${color}`}>
-                                {u.firstName} {u.lastName} <span className="opacity-70 font-normal">• {label}</span>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="grid gap-5">
-                      {TRAKTANDEN.map(t => {
-                        const rawPoints = m.traktanden?.[t] || [];
-                        const points = compactFactsOnly
-                          ? rawPoints.filter(p => p.type === 'decision' || p.type === 'todo')
-                          : rawPoints;
-                        if (!points || points.length === 0) return null;
-                        const meta = traktandumMeta[t] || { badge: 'bg-gray-800 text-gray-300 border-gray-700', dot: 'bg-orange-500' };
-
-                        return (
-                          <div key={t} className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-lg">
-                            <div className="px-5 sm:px-6 py-4 bg-gray-950/60 border-b border-gray-800 flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <span className={`w-2.5 h-2.5 rounded-full ${meta.dot}`} />
-                                <h4 className="text-white font-black text-base sm:text-lg tracking-tight">{t}</h4>
-                              </div>
-                              <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg border ${meta.badge}`}>
-                                {points.length} {points.length === 1 ? 'Eintrag' : 'Einträge'}
-                              </span>
-                            </div>
-
-                            <div className="p-4 sm:p-6 space-y-3">
-                              {points.map((p, idx) => {
-                                const pType = p.type === 'todo' && p.done ? 'done' : (p.type || 'info');
-                                const typeBadge = pointTypeMeta[pType] || pointTypeMeta.info;
-                                const isOverdue = p.type === 'todo' && !p.done && p.dueDate && p.dueDate < todayIso;
-
-                                return (
-                                  <div
-                                    key={p.id}
-                                    className={`bg-gray-950 p-4 sm:p-5 rounded-2xl border transition-all relative group flex gap-3.5 ${
-                                      isOverdue
-                                        ? 'border-red-500/50'
-                                        : p.type === 'todo' && !p.done
-                                        ? 'border-orange-500/40'
-                                        : p.type === 'decision'
-                                        ? 'border-green-500/30'
-                                        : 'border-gray-800/90 hover:border-gray-700'
-                                    }`}
-                                  >
-                                    {p.type === 'todo' ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleTaskDone(m, t, p.id)}
-                                        title={p.done ? 'Als offen markieren' : 'Pendenz als erledigt abhaken'}
-                                        className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all min-h-[36px] min-w-[36px] ${
-                                          p.done
-                                            ? 'bg-emerald-500 border-emerald-500 text-gray-950'
-                                            : 'border-orange-500 hover:bg-orange-500/20 text-transparent'
-                                        }`}
-                                      >
-                                        <Check size={15} strokeWidth={3.5} />
-                                      </button>
-                                    ) : (
-                                      <span className="text-xs font-black text-gray-600 bg-gray-900 border border-gray-800 w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
-                                        {idx + 1}
-                                      </span>
-                                    )}
-
-                                    <div className="flex-1 min-w-0 pr-8">
-                                      {(p.type && p.type !== 'info') || p.assignee || p.dueDate ? (
-                                        <div className="flex flex-wrap items-center gap-2 mb-2">
-                                          {p.type && p.type !== 'info' && (
-                                            <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border ${typeBadge.style}`}>
-                                              {typeBadge.label}
-                                            </span>
-                                          )}
-                                          {p.assignee && (
-                                            <span className="text-[10px] font-bold bg-gray-900 border border-gray-800 text-gray-300 px-2 py-0.5 rounded-md flex items-center gap-1">
-                                              <Users size={10} className="text-orange-500" /> {highlightText(p.assignee, searchTerm)}
-                                            </span>
-                                          )}
-                                          {p.dueDate && (
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
-                                              isOverdue
-                                                ? 'bg-red-500/15 text-red-400 border-red-500/30'
-                                                : 'bg-gray-900 border-gray-800 text-gray-400'
-                                            }`}>
-                                              <Clock size={10} /> Bis {new Date(p.dueDate).toLocaleDateString('de-CH')}
-                                            </span>
-                                          )}
-                                        </div>
-                                      ) : null}
-
-                                      <p className={`text-sm sm:text-base whitespace-pre-wrap leading-relaxed break-words ${p.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>
-                                        {highlightText(p.text, searchTerm)}
-                                      </p>
-
-                                      {p.docUrl && (
-                                        <div className="mt-3.5 flex flex-wrap items-center gap-2">
-                                          <button
-                                            type="button"
-                                            onClick={() => setPreviewDoc({ url: p.docUrl, name: p.docName || 'Protokoll-Anhang' })}
-                                            className="inline-flex items-center gap-1.5 text-xs font-bold text-white hover:text-orange-300 bg-gray-900 px-3.5 py-2.5 rounded-xl border border-gray-800 transition-all active:scale-95 min-h-[44px]"
-                                          >
-                                            <Eye size={14} className="text-orange-500" /> Vorschau
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => triggerFileDownload(p.docUrl, p.docName || 'Protokoll-Anhang')}
-                                            className="inline-flex items-center gap-2 text-xs font-bold text-orange-400 hover:text-orange-300 bg-orange-500/10 px-3.5 py-2.5 rounded-xl border border-orange-500/20 transition-all hover:scale-[1.02] active:scale-95 min-h-[44px]"
-                                          >
-                                            <Paperclip size={14} /> {p.docName || 'Dokument herunterladen'}
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); setEnlargedPoint({ traktandum: t, index: idx + 1, ...p }); }}
-                                      title="Grossansicht"
-                                      className="absolute top-3.5 right-3.5 p-2.5 bg-gray-900 border border-gray-800 text-gray-400 hover:text-orange-500 rounded-xl transition-all sm:opacity-0 sm:group-hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                                    >
-                                      <Maximize2 size={15} />
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
-
-        {filteredMinutes.length === 0 && (searchTerm || roleFilter !== 'Alle' || yearFilter !== 'Alle' || onlyOpenTasks || onlyMyTasks) && (
-          <div className="text-center py-12 text-gray-500 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
-            Keine passenden Protokolle für deine aktuelle Filterauswahl gefunden.
-          </div>
-        )}
-        {stats.totalMinutes === 0 && !searchTerm && minutes.length > 0 && (
-          <div className="text-center py-20 bg-gray-900/50 border border-gray-800 border-dashed rounded-3xl">
-            <ClipboardList className="mx-auto text-gray-800 mb-4" size={48} />
-            <p className="text-gray-600 font-bold uppercase tracking-widest text-sm">Noch keine Protokolle vorhanden</p>
-          </div>
-        )}
-      </div>
-
-      {previewDoc && (
-        <FilePreviewModal docItem={previewDoc} onClose={() => setPreviewDoc(null)} />
-      )}
-
-      {readingMinute && (
-        <ReadingViewModal minute={readingMinute} users={users} onClose={() => setReadingMinute(null)} />
-      )}
-
-      {watchingLive && liveDraft && (
-        <div className="fixed inset-0 z-[230] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-gray-900 border-2 border-orange-500/50 rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
-            <div className="px-6 py-4 bg-gray-950 border-b border-gray-800 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="w-3 h-3 rounded-full bg-orange-500 animate-ping shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">
-                    Teleprompter • Live-Mitlese-Modus (Schreibgeschützt)
-                  </p>
-                  <h3 className="font-black text-white text-base sm:text-lg truncate">
-                    {liveDraft.form?.title || 'Laufende Vorstandssitzung'}
-                  </h3>
-                </div>
-              </div>
-              <button
-                onClick={() => setWatchingLive(false)}
-                className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto flex-1 space-y-5">
-              <div className="bg-orange-500/10 border border-orange-500/30 rounded-2xl px-4 py-3 flex items-center justify-between text-xs">
-                <span className="font-bold text-orange-300">
-                  ✍️ {liveDraft.activeEditorName || 'Aktuar'} schreibt gerade{liveDraft.activeTraktandum ? ` in «${liveDraft.activeTraktandum}»` : ''}...
-                </span>
-                <span className="text-[10px] font-black uppercase text-orange-400">Echtzeit-Sync</span>
-              </div>
-
-              {TRAKTANDEN.map(t => {
-                const pts = liveDraft.form?.traktanden?.[t] || [];
-                if (pts.length === 0) return null;
-                return (
-                  <div key={t} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 space-y-2.5">
-                    <h4 className="text-sm font-black text-orange-500 uppercase tracking-wider">{t}</h4>
-                    {pts.map((p, i) => (
-                      <div
-                        key={p.id || i}
-                        className={`p-3 rounded-xl border text-sm ${
-                          liveDraft.activePointId === p.id
-                            ? 'bg-orange-500/10 border-orange-500/50 text-white'
-                            : 'bg-gray-900 border-gray-800 text-gray-200'
-                        }`}
-                      >
-                        {p.type && p.type !== 'info' && (
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 mr-2">
-                            {p.type === 'decision' ? 'Beschluss' : 'Pendenz'}
-                          </span>
-                        )}
-                        {p.assignee && <span className="text-xs font-bold text-gray-400 mr-2">(@{p.assignee})</span>}
-                        <span className="whitespace-pre-wrap">{p.text || '...'}</span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {enlargedPoint && (
-        <div className="fixed inset-0 z-[220] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
-            <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
-              <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedPoint.traktandum}</h3>
-              <button onClick={() => setEnlargedPoint(null)} className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"><X size={20} /></button>
-            </div>
-            <div className="p-6 overflow-y-auto flex-1 space-y-4">
-              <p className="text-white text-base sm:text-lg whitespace-pre-wrap leading-relaxed">{enlargedPoint.text}</p>
-              {enlargedPoint.docUrl && (
-                <div className="pt-4 border-t border-gray-800 flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setPreviewDoc({ url: enlargedPoint.docUrl, name: enlargedPoint.docName || 'Anhang' })}
-                    className="px-5 py-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 min-h-[44px]"
-                  >
-                    <Eye size={16} className="text-orange-500" /> Vorschau
-                  </button>
-                  <button
-                    onClick={() => triggerFileDownload(enlargedPoint.docUrl, enlargedPoint.docName || 'Anhang')}
-                    className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg min-h-[44px]"
-                  >
-                    <Download size={16} /> Herunterladen
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ProtocolEditor({ vorstand, currentUser, liveDraft, openTasksList = [], calItems = [], onSave, onCancel, initialData, notify }) {
-  const [form, setForm] = useState(() => {
-    if (initialData) return initialData;
-    if (liveDraft?.form) return liveDraft.form;
-    const savedDraft = localStorage.getItem('ruesssuuger_protocol_draft');
-    if (savedDraft) {
-      try {
-        const parsed = JSON.parse(savedDraft);
-        if (parsed && (parsed.title || Object.values(parsed.traktanden || {}).some(arr => arr?.length > 0))) {
-          return parsed;
-        }
-      } catch (e) {}
-    }
-    return {
-      title: '',
-      date: new Date().toISOString().split('T')[0],
-      attendance: {},
-      traktanden: TRAKTANDEN.reduce((acc, curr) => ({ ...acc, [curr]: [] }), {})
-    };
-  });
-  const [uploading,         setUploading]         = useState({});
-  const [enlargedEditPoint, setEnlargedEditPoint] = useState(null);
-  const [activeTraktandum,  setActiveTraktandum]  = useState('Alle');
-  const [draftSavedAt,      setDraftSavedAt]      = useState(null);
-  const [liveSyncEnabled,   setLiveSyncEnabled]   = useState(true);
-  const [focusedField,      setFocusedField]      = useState({ traktandum: null, pointId: null });
-  const [nextMeetingDate,   setNextMeetingDate]   = useState('');
-  const [nextMeetingTime,   setNextMeetingTime]   = useState('19:30');
-  const [nextMeetingLoc,    setNextMeetingLoc]    = useState('Vereinslokal Ämme');
-  const [sessionSeconds,    setSessionSeconds]    = useState(0);
-
-  const isRemoteUpdateRef = useRef(false);
-  const lastLocalEditRef  = useRef(0);
-
-  useEffect(() => {
-    const timer = setInterval(() => setSessionSeconds(s => s + 1), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const formatSessionTime = (sec) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  };
-
-  useEffect(() => {
-    if (!liveSyncEnabled || !liveDraft?.form) return;
-    const isFromOtherSession = liveDraft.sessionId && liveDraft.sessionId !== currentUser?.sessionId;
-    const timeSinceMyLastKeystroke = Date.now() - lastLocalEditRef.current;
-
-    if (isFromOtherSession && timeSinceMyLastKeystroke > 400) {
-      isRemoteUpdateRef.current = true;
-      setForm(liveDraft.form);
-    }
-  }, [liveDraft, liveSyncEnabled, currentUser?.sessionId]);
-
-  useEffect(() => {
-    if (isRemoteUpdateRef.current) {
-      isRemoteUpdateRef.current = false;
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        if (!initialData) {
-          localStorage.setItem('ruesssuuger_protocol_draft', JSON.stringify(form));
-        }
-        setDraftSavedAt(new Date().toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-
-        if (liveSyncEnabled) {
-          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', '__live_session__'), {
-            isActive: true,
-            form,
-            activeEditorId: currentUser?.id || 'unknown',
-            activeEditorName: `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim(),
-            sessionId: currentUser?.sessionId || 'local',
-            activeTraktandum: focusedField.traktandum || null,
-            activePointId: focusedField.pointId || null,
-            updatedAt: Date.now()
-          });
-        }
-      } catch (e) {
-        console.error("Live Sync Write Error:", e);
-      }
-    }, 250);
-
-    return () => clearTimeout(timer);
-  }, [form, initialData, liveSyncEnabled, currentUser, focusedField]);
-
-  const markLocalEdit = (traktandum = null, pointId = null) => {
-    lastLocalEditRef.current = Date.now();
-    if (traktandum || pointId) {
-      setFocusedField({ traktandum, pointId });
-    }
-  };
-
-  const importOpenTasks = () => {
-    if (!openTasksList || openTasksList.length === 0) {
-      notify("Keine offenen Pendenzen aus früheren Protokollen vorhanden.", "info");
-      return;
-    }
-    markLocalEdit('Pendenzen-Import', null);
-    let importedCount = 0;
-    setForm(prev => {
-      const nextTraktanden = { ...prev.traktanden };
-      openTasksList.forEach(item => {
-        const list = [...(nextTraktanden[item.traktandum] || [])];
-        const alreadyExists = list.some(p => p.text.trim() === item.point.text.trim());
-        if (!alreadyExists) {
-          list.push({
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            text: `[Pendenz aus ${item.minuteTitle}] ${item.point.text}`,
-            type: 'todo',
-            assignee: item.point.assignee || '',
-            dueDate: item.point.dueDate || '',
-            done: false,
-            docUrl: item.point.docUrl || '',
-            docName: item.point.docName || ''
-          });
-          nextTraktanden[item.traktandum] = list;
-          importedCount++;
-        }
-      });
-      return { ...prev, traktanden: nextTraktanden };
-    });
-    if (importedCount > 0) {
-      notify(`${importedCount} offene Pendenz(en) ins aktuelle Protokoll übernommen!`, "success");
-    } else {
-      notify("Alle offenen Pendenzen sind bereits im aktuellen Protokoll enthalten.", "info");
-    }
-  };
-
-  const scheduleNextMeeting = async () => {
-    if (!nextMeetingDate) {
-      notify("Bitte zuerst ein Datum für die nächste Sitzung wählen.", "error");
-      return;
-    }
-    const id = Date.now().toString();
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'calendar', id), {
-      id,
-      title: 'Vorstandssitzung',
-      date: nextMeetingDate,
-      time: nextMeetingTime || '19:30',
-      location: nextMeetingLoc || 'Vereinslokal Ämme',
-      description: `Geplant in Sitzung «${form.title || 'Vorstandssitzung'}»`
-    });
-    notify(`Nächste Vorstandssitzung (${new Date(nextMeetingDate).toLocaleDateString('de-CH')}) im Kalender eingetragen!`, "success");
-    setNextMeetingDate('');
-  };
-
-  const handleCancelEditor = async () => {
-    if (liveDraft?.sessionId === currentUser?.sessionId) {
-      try {
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', '__live_session__'));
-      } catch (e) {}
-    }
-    onCancel();
-  };
-
-  const updateAttendance = (userId, status) => {
-    markLocalEdit('Anwesenheit', null);
-    setForm(prev => ({ ...prev, attendance: { ...prev.attendance, [userId]: status } }));
-  };
-
-  const markAllPresent = () => {
-    markLocalEdit('Anwesenheit', null);
-    const next = {};
-    vorstand.forEach(m => { next[m.id] = 'present'; });
-    setForm(prev => ({ ...prev, attendance: next }));
-  };
-
-  const addPoint = (traktandum, defaultType = 'info') => {
-    const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
-    markLocalEdit(traktandum, id);
-    setForm(prev => ({
-      ...prev,
-      traktanden: {
-        ...prev.traktanden,
-        [traktandum]: [
-          ...(prev.traktanden[traktandum] || []),
-          { id, text: '', type: defaultType, assignee: '', dueDate: '', done: false, docUrl: '', docName: '' }
-        ]
-      }
-    }));
-  };
-
-  const removePoint = (traktandum, pointId) => {
-    markLocalEdit(traktandum, null);
-    setForm(prev => ({
-      ...prev,
-      traktanden: { ...prev.traktanden, [traktandum]: prev.traktanden[traktandum].filter(p => p.id !== pointId) }
-    }));
-  };
-
-  const updatePoint = (traktandum, pointId, field, value) => {
-    markLocalEdit(traktandum, pointId);
-    setForm(prev => ({
-      ...prev,
-      traktanden: { ...prev.traktanden, [traktandum]: prev.traktanden[traktandum].map(p => p.id === pointId ? { ...p, [field]: value } : p) }
-    }));
-  };
-
-  const updatePointFields = (traktandum, pointId, fieldsObj) => {
-    markLocalEdit(traktandum, pointId);
-    setForm(prev => ({
-      ...prev,
-      traktanden: { ...prev.traktanden, [traktandum]: prev.traktanden[traktandum].map(p => p.id === pointId ? { ...p, ...fieldsObj } : p) }
-    }));
-  };
-
-  const movePoint = (traktandum, index, dir) => {
-    markLocalEdit(traktandum, null);
-    const newIndex = index + dir;
-    setForm(prev => {
-      const list = [...prev.traktanden[traktandum]];
-      if (newIndex < 0 || newIndex >= list.length) return prev;
-      [list[index], list[newIndex]] = [list[newIndex], list[index]];
-      return { ...prev, traktanden: { ...prev.traktanden, [traktandum]: list } };
-    });
-  };
-
-  const handleFileUpload = async (e, traktandum, pointId) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    e.target.value = '';
-
-    setUploading(prev => ({ ...prev, [pointId]: 10 }));
-
-    const fallbackToDataUrl = async () => {
-      try {
-        if (file.size > 750 * 1024) {
-          notify("Storage nicht erreichbar & Datei grösser als 750 KB. Bitte kleinere Datei wählen.", "error");
-          setUploading(prev => { const n = { ...prev }; delete n[pointId]; return n; });
-          return;
-        }
-        const dataUrl = await readFileAsDataURL(file);
-        updatePointFields(traktandum, pointId, { docUrl: dataUrl, docName: file.name });
-        notify(`"${file.name}" direkt im Protokoll hinterlegt.`, "success");
-      } catch (err) {
-        console.error("Fallback Error:", err);
-        notify("Datei konnte nicht verarbeitet werden.", "error");
-      } finally {
-        setUploading(prev => { const n = { ...prev }; delete n[pointId]; return n; });
-      }
-    };
-
-    try {
-      const storageRef = ref(storage, `artifacts/${appId}/public/uploads/${Date.now()}_${file.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, file);
-
-      uploadTask.on('state_changed',
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setUploading(prev => ({ ...prev, [pointId]: progress || 15 }));
-        },
-        async (error) => {
-          await fallbackToDataUrl();
-        },
-        async () => {
-          try {
-            const url = await getDownloadURL(uploadTask.snapshot.ref);
-            updatePointFields(traktandum, pointId, { docUrl: url, docName: file.name });
-            notify(`Anhang "${file.name}" hochgeladen.`, "success");
-          } catch (err) {
-            await fallbackToDataUrl();
-          } finally {
-            setUploading(prev => { const n = { ...prev }; delete n[pointId]; return n; });
-          }
-        }
-      );
-    } catch (err) {
-      await fallbackToDataUrl();
-    }
-  };
-
-  const visibleTraktanden = activeTraktandum === 'Alle'
-    ? TRAKTANDEN
-    : TRAKTANDEN.filter(t => t === activeTraktandum);
-
-  return (
-    <div className="space-y-6 sm:space-y-8 animate-in slide-in-from-bottom-8 duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gray-900 p-5 sm:p-8 rounded-3xl border border-gray-800 shadow-2xl">
-        <div className="flex-1 space-y-4 w-full">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 inline-block">
-              {initialData ? 'Protokoll bearbeiten' : 'Neues Sitzungsprotokoll'}
-            </span>
-            <div className="text-[10px] font-bold text-gray-400 bg-gray-950 px-3 py-1 rounded-full border border-gray-800 flex items-center gap-1">
-              <Clock size={12} className="text-orange-500" /> Sitzungsdauer: {formatSessionTime(sessionSeconds)}
-            </div>
-            <button
-              type="button"
-              onClick={() => setLiveSyncEnabled(!liveSyncEnabled)}
-              className={`text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border flex items-center gap-1.5 transition-all min-h-[32px] ${
-                liveSyncEnabled
-                  ? 'bg-orange-500/15 text-orange-400 border-orange-500/40'
-                  : 'bg-gray-950 text-gray-500 border-gray-800'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${liveSyncEnabled ? 'bg-orange-500 animate-ping' : 'bg-gray-600'}`} />
-              {liveSyncEnabled ? 'Live aktiv' : 'Live pausiert'}
-            </button>
-            {draftSavedAt && (
-              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                ✓ Gesichert ({draftSavedAt})
-              </span>
-            )}
-            {liveDraft && liveDraft.sessionId !== currentUser?.sessionId && (
-              <span className="text-[10px] font-black text-amber-300 bg-amber-500/15 px-3 py-1 rounded-full border border-amber-500/30 animate-pulse">
-                ✍️ {liveDraft.activeEditorName} tippt gerade...
-              </span>
-            )}
-          </div>
-          <input
-            className="w-full bg-transparent text-2xl sm:text-4xl font-black text-white border-b-2 border-gray-800 focus:border-orange-500 outline-none pb-2 transition-all placeholder:text-gray-700 min-h-[48px]"
-            placeholder="z.B. 4. Vorstandssitzung 2026..."
-            value={form.title}
-            onChange={e => {
-              markLocalEdit('Titel', null);
-              setForm({...form, title: e.target.value});
-            }}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-black uppercase text-gray-600 mr-1">Schnell-Titel:</span>
-            {['Vorstandssitzung', 'Sujetsitzung', 'Kader- & Musikkommission', 'GV-Vorbereitung'].map(preset => (
-              <button
-                key={preset}
-                type="button"
-                onClick={() => {
-                  markLocalEdit('Titel', null);
-                  setForm(prev => ({ ...prev, title: `${preset} vom ${new Date(prev.date || Date.now()).toLocaleDateString('de-CH')}` }));
-                }}
-                className="text-[10px] font-bold bg-gray-950 hover:bg-gray-800 text-gray-400 hover:text-white border border-gray-800 px-3 py-2 rounded-lg transition-all min-h-[36px]"
-              >
-                + {preset}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-3 pt-1">
-            <div className="flex items-center gap-2">
-              <Calendar className="text-orange-500 shrink-0" size={18} />
-              <span className="text-xs font-bold text-gray-500 uppercase">Sitzungsdatum:</span>
-              <input
-                type="date"
-                className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm font-bold focus:border-orange-500 outline-none min-h-[44px]"
-                value={form.date}
-                onChange={e => {
-                  markLocalEdit('Datum', null);
-                  setForm({...form, date: e.target.value});
-                }}
-              />
-            </div>
-
-            {openTasksList.length > 0 && (
-              <button
-                type="button"
-                onClick={importOpenTasks}
-                className="text-xs font-black bg-orange-500/10 hover:bg-orange-500 hover:text-gray-950 text-orange-400 border border-orange-500/30 px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 active:scale-95 min-h-[44px]"
-              >
-                <Sparkles size={14} /> Offene Pendenzen übernehmen ({openTasksList.length})
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-          <button
-            onClick={handleCancelEditor}
-            className="w-full sm:w-auto px-6 py-3.5 text-gray-400 font-bold hover:text-white transition-colors bg-gray-950 border border-gray-800 rounded-2xl min-h-[48px]"
-          >
-            Abbrechen
-          </button>
-          <button
-            onClick={() => {
-              if (!form.title.trim()) {
-                notify("Bitte einen Sitzungstitel eingeben.", "error");
-                return;
-              }
-              onSave(form);
-            }}
-            className="w-full sm:w-auto justify-center px-8 py-3.5 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-500/20 active:scale-95 transition-all min-h-[48px]"
-          >
-            <Save size={20} /> Protokoll speichern
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-gray-900 border border-gray-800 p-2.5 sm:p-3 rounded-2xl flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-3">
-        <button
-          type="button"
-          onClick={() => setActiveTraktandum('Alle')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 min-h-[40px] flex items-center ${
-            activeTraktandum === 'Alle'
-              ? 'bg-orange-500 text-gray-950'
-              : 'bg-gray-950 text-gray-400 hover:text-white border border-gray-800'
-          }`}
-        >
-          Alle Ämter ({TRAKTANDEN.length})
-        </button>
-        {TRAKTANDEN.map(t => {
-          const count = form.traktanden[t]?.length || 0;
-          return (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setActiveTraktandum(t)}
-              className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-2 min-h-[40px] ${
-                activeTraktandum === t
-                  ? 'bg-orange-500 text-gray-950 font-black'
-                  : 'bg-gray-950 text-gray-400 hover:text-white border border-gray-800'
-              }`}
-            >
-              <span>{t}</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-black ${
-                activeTraktandum === t ? 'bg-gray-950/20 text-gray-950' : count > 0 ? 'bg-orange-500/20 text-orange-400' : 'bg-gray-900 text-gray-600'
-              }`}>
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3 items-start">
-        <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
-          <div className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl shadow-xl">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-black text-white flex items-center gap-2.5">
-                <UserCheck className="text-orange-500" size={20} /> Anwesenheit
-              </h3>
-              <button
-                type="button"
-                onClick={markAllPresent}
-                className="text-[10px] font-black uppercase tracking-wider text-orange-500 hover:underline min-h-[44px] flex items-center"
-              >
-                Alle anwesend
-              </button>
-            </div>
-            <div className="space-y-3">
-              {vorstand.map(m => (
-                <div key={m.id} className="p-3.5 bg-gray-950 rounded-2xl border border-gray-800">
-                  <p className="font-bold text-white mb-2.5 text-sm">{m.firstName} {m.lastName}</p>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[
-                      { id: 'present', label: 'Anw.',  color: 'bg-green-500/20 text-green-400 border-green-500/50' },
-                      { id: 'excused', label: 'Ents.', color: 'bg-blue-500/20 text-blue-400 border-blue-500/50' },
-                      { id: 'absent',  label: 'Unen.', color: 'bg-red-500/20 text-red-400 border-red-500/50' }
-                    ].map(status => (
-                      <button
-                        type="button"
-                        key={status.id}
-                        onClick={() => updateAttendance(m.id, status.id)}
-                        className={`text-[10px] font-black uppercase py-2.5 rounded-xl border transition-all min-h-[40px] flex items-center justify-center ${
-                          form.attendance[m.id] === status.id
-                            ? status.color
-                            : 'bg-gray-900 text-gray-600 border-gray-800 hover:border-gray-700 hover:text-gray-400'
-                        }`}
-                      >
-                        {status.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-gray-900 border border-gray-800 p-5 sm:p-6 rounded-3xl shadow-xl space-y-3">
-            <h3 className="text-sm font-black uppercase tracking-widest text-orange-500 flex items-center gap-2">
-              <CalendarDays size={16} /> Nächste Sitzung planen
-            </h3>
-            <p className="text-xs text-gray-500">Trage den nächsten Termin direkt in den Vereinskalender ein:</p>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="date"
-                value={nextMeetingDate}
-                onChange={e => setNextMeetingDate(e.target.value)}
-                className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2.5 text-xs text-white font-bold focus:border-orange-500 outline-none min-h-[44px]"
-              />
-              <input
-                type="time"
-                value={nextMeetingTime}
-                onChange={e => setNextMeetingTime(e.target.value)}
-                className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2.5 text-xs text-white font-bold focus:border-orange-500 outline-none min-h-[44px]"
-              />
-            </div>
-            <input
-              type="text"
-              placeholder="Ort (z.B. Vereinslokal Ämme)"
-              value={nextMeetingLoc}
-              onChange={e => setNextMeetingLoc(e.target.value)}
-              className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-bold focus:border-orange-500 outline-none min-h-[44px]"
-            />
-            <button
-              type="button"
-              onClick={scheduleNextMeeting}
-              className="w-full py-3 bg-gray-950 hover:bg-orange-500 text-orange-400 hover:text-gray-950 border border-orange-500/30 font-black text-xs rounded-xl transition-all active:scale-95 min-h-[44px]"
-            >
-              + In Kalender eintragen
-            </button>
-          </div>
-        </div>
-
-        <div className="lg:col-span-2 space-y-6 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 scrollbar-thin">
-          {visibleTraktanden.map(traktandum => {
-            const points = form.traktanden[traktandum] || [];
-            return (
-              <div key={traktandum} className="bg-gray-900 border border-gray-800 rounded-3xl shadow-xl overflow-hidden">
-                <div className="px-5 sm:px-7 py-5 bg-gray-950/50 border-b border-gray-800 flex flex-wrap justify-between items-center gap-2">
-                  <div>
-                    <h3 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-2.5">
-                      <span className="w-2 h-5 bg-orange-500 rounded-full" />
-                      {traktandum}
-                    </h3>
-                    <p className="text-[11px] text-gray-500 mt-0.5">
-                      {points.length === 0 ? 'Noch keine Einträge' : `${points.length} ${points.length === 1 ? 'Traktandenpunkt' : 'Traktandenpunkte'}`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => addPoint(traktandum, 'info')}
-                      className="px-3.5 py-2.5 bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 flex items-center gap-1 min-h-[40px]"
-                    >
-                      <Plus size={15} /> Punkt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => addPoint(traktandum, 'decision')}
-                      className="px-3.5 py-2.5 bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 flex items-center gap-1 min-h-[40px]"
-                    >
-                      + Beschluss
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => addPoint(traktandum, 'todo')}
-                      className="px-3.5 py-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500 hover:text-gray-950 font-black text-xs rounded-xl transition-all active:scale-95 flex items-center gap-1 min-h-[40px]"
-                    >
-                      + Pendenz
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-4 sm:p-7 space-y-4">
-                  {points.map((point, index) => {
-                    const otherTypingThisPoint =
-                      liveDraft &&
-                      liveDraft.sessionId !== currentUser?.sessionId &&
-                      liveDraft.activePointId === point.id;
-
-                    return (
-                    <div
-                      key={point.id}
-                      className={`p-4 sm:p-5 bg-gray-950 border rounded-2xl space-y-4 group transition-colors ${
-                        otherTypingThisPoint
-                          ? 'border-amber-500/70 ring-1 ring-amber-500/20'
-                          : 'border-gray-800 focus-within:border-orange-500/50'
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-900">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="w-6 h-6 rounded-lg bg-gray-900 border border-gray-800 text-orange-500 font-black text-[11px] flex items-center justify-center shrink-0 mr-1">
-                            #{index + 1}
-                          </span>
-                          {otherTypingThisPoint && (
-                            <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-md animate-pulse mr-1">
-                              ✍️ {liveDraft.activeEditorName} tippt...
-                            </span>
-                          )}
-                          {[
-                            { id: 'info',     label: 'Info',      activeClass: 'bg-gray-800 text-white border-gray-600' },
-                            { id: 'decision', label: 'Beschluss', activeClass: 'bg-green-500/20 text-green-400 border-green-500/50' },
-                            { id: 'todo',     label: 'Pendenz',   activeClass: 'bg-orange-500/20 text-orange-400 border-orange-500/50' },
-                          ].map(tOpt => (
-                            <button
-                              key={tOpt.id}
-                              type="button"
-                              onClick={() => updatePoint(traktandum, point.id, 'type', tOpt.id)}
-                              className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border transition-all min-h-[36px] flex items-center ${
-                                (point.type || 'info') === tOpt.id
-                                  ? tOpt.activeClass
-                                  : 'bg-gray-900/50 text-gray-600 border-gray-800 hover:text-gray-400'
-                              }`}
-                            >
-                              {tOpt.label}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <select
-                            value={point.assignee || ''}
-                            onChange={e => updatePoint(traktandum, point.id, 'assignee', e.target.value)}
-                            className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-2 text-[11px] font-bold text-gray-300 focus:border-orange-500 outline-none min-h-[36px]"
-                          >
-                            <option value="">Verantwortlich...</option>
-                            {vorstand.map(v => (
-                              <option key={v.id} value={`${v.firstName} ${v.lastName}`}>
-                                {v.firstName} {v.lastName}
-                              </option>
-                            ))}
-                            <option value="Gesamtvorstand">Gesamtvorstand</option>
-                          </select>
-
-                          {point.type === 'todo' && (
-                            <input
-                              type="date"
-                              value={point.dueDate || ''}
-                              onChange={e => updatePoint(traktandum, point.id, 'dueDate', e.target.value)}
-                              title="Fälligkeitsdatum (Bis wann?)"
-                              className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-2 text-[11px] font-bold text-orange-400 focus:border-orange-500 outline-none min-h-[36px]"
-                            />
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => setEnlargedEditPoint({ traktandum, id: point.id, text: point.text })}
-                            title="Im Vollbild bearbeiten"
-                            className="p-2 text-gray-500 hover:text-orange-500 transition-colors bg-gray-900 rounded-lg border border-gray-800 min-h-[36px] min-w-[36px] flex items-center justify-center"
-                          >
-                            <Maximize2 size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => movePoint(traktandum, index, -1)}
-                            disabled={index === 0}
-                            className="p-2 text-gray-500 hover:text-orange-500 disabled:opacity-30 transition-colors bg-gray-900 rounded-lg border border-gray-800 min-h-[36px] min-w-[36px] flex items-center justify-center"
-                          >
-                            <ArrowUp size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => movePoint(traktandum, index, 1)}
-                            disabled={index === points.length - 1}
-                            className="p-2 text-gray-500 hover:text-orange-500 disabled:opacity-30 transition-colors bg-gray-900 rounded-lg border border-gray-800 min-h-[36px] min-w-[36px] flex items-center justify-center"
-                          >
-                            <ArrowDown size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removePoint(traktandum, point.id)}
-                            className="p-2 text-gray-500 hover:text-red-500 transition-colors bg-gray-900 rounded-lg border border-gray-800 min-h-[36px] min-w-[36px] flex items-center justify-center"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="flex items-start gap-3">
-                        <textarea
-                          className="w-full flex-1 bg-transparent text-gray-100 border-none focus:ring-0 outline-none resize-none placeholder:text-gray-700 text-sm sm:text-base font-medium leading-relaxed overflow-hidden min-h-[56px]"
-                          placeholder={`Notiz, Beschluss oder Pendenz für ${traktandum} eingeben...`}
-                          value={point.text}
-                          onFocus={() => setFocusedField({ traktandum, pointId: point.id })}
-                          onChange={e => {
-                            e.target.style.height = 'auto';
-                            e.target.style.height = `${e.target.scrollHeight}px`;
-                            updatePoint(traktandum, point.id, 'text', e.target.value);
-                          }}
-                          ref={el => { if (el) { requestAnimationFrame(() => { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }); } }}
-                        />
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row items-center gap-3 pt-3 border-t border-gray-900">
-                        <div className="w-full flex-1 flex items-center gap-3 bg-gray-900 px-4 py-3 rounded-xl border border-gray-800 relative overflow-hidden">
-                          {uploading[point.id] !== undefined && (
-                            <div className="absolute left-0 top-0 h-full bg-orange-500/20 transition-all" style={{ width: `${uploading[point.id]}%` }} />
-                          )}
-                          <Paperclip size={15} className="text-orange-500 shrink-0 z-10" />
-                          <div className="flex-1 z-10 flex items-center overflow-hidden">
-                            {uploading[point.id] !== undefined ? (
-                              <span className="text-[11px] text-orange-500 font-bold">Wird gespeichert... {Math.round(uploading[point.id])}%</span>
-                            ) : point.docUrl ? (
-                              <div className="flex items-center justify-between w-full">
-                                <button
-                                  type="button"
-                                  onClick={() => triggerFileDownload(point.docUrl, point.docName || 'Dokument')}
-                                  className="text-xs text-white hover:text-orange-400 truncate font-bold max-w-[180px] sm:max-w-[280px] text-left"
-                                >
-                                  {point.docName || 'Dokument herunterladen'}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => updatePointFields(traktandum, point.id, { docUrl: '', docName: '' })}
-                                  className="text-gray-500 hover:text-red-500 ml-2 bg-gray-950 p-2 rounded-md shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center"
-                                >
-                                  <X size={14} />
-                                </button>
-                              </div>
-                            ) : (
-                              <label className="cursor-pointer text-xs text-gray-400 hover:text-white w-full block font-bold transition-colors truncate py-1">
-                                <UploadCloud size={14} className="inline mr-2 text-orange-500" />
-                                Datei anhängen (PDF, Word, Excel, Bild)
-                                <input type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" onChange={e => handleFileUpload(e, traktandum, point.id)} />
-                              </label>
-                            )}
-                          </div>
-                        </div>
-                        <input
-                          className="w-full sm:w-48 bg-gray-900 px-3.5 py-3 rounded-xl border border-gray-800 text-xs text-gray-300 focus:border-orange-500 outline-none min-h-[44px]"
-                          placeholder="Anzeige-Name (optional)"
-                          value={point.docName}
-                          onChange={e => updatePoint(traktandum, point.id, 'docName', e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    );
-                  })}
-
-                  {points.length === 0 && (
-                    <button
-                      type="button"
-                      onClick={() => addPoint(traktandum)}
-                      className="w-full py-6 border-2 border-dashed border-gray-800 hover:border-orange-500/40 rounded-2xl text-gray-600 hover:text-orange-400 text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 min-h-[56px]"
-                    >
-                      <Plus size={16} /> Ersten Eintrag für {traktandum} erfassen
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {enlargedEditPoint && (
-        <div className="fixed inset-0 z-[100] bg-gray-950/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-3xl flex flex-col shadow-2xl h-[80vh] max-h-[800px]">
-            <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 rounded-t-3xl">
-              <h3 className="text-orange-500 font-black uppercase tracking-widest text-sm">{enlargedEditPoint.traktandum} – Vollbild</h3>
-              <button onClick={() => setEnlargedEditPoint(null)} className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"><X size={20} /></button>
-            </div>
-            <div className="p-6 flex-1 flex flex-col">
-              <textarea
-                className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-2xl p-6 text-white focus:border-orange-500 outline-none resize-none leading-relaxed text-base sm:text-lg"
-                value={enlargedEditPoint.text}
-                onChange={e => setEnlargedEditPoint({...enlargedEditPoint, text: e.target.value})}
-                placeholder="Beschluss oder Notiz..."
-                autoFocus
-              />
-            </div>
-            <div className="p-5 border-t border-gray-800 bg-gray-950/50 rounded-b-3xl flex justify-end">
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  updatePoint(enlargedEditPoint.traktandum, enlargedEditPoint.id, 'text', enlargedEditPoint.text);
-                  setEnlargedEditPoint(null);
-                }}
-                className="w-full sm:w-auto px-8 py-4 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg min-h-[48px]"
-              >
-                Text übernehmen
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ReadingViewModal({ minute, users, onClose }) {
-  const presentCount = Object.values(minute.attendance || {}).filter(s => s === 'present').length;
-
-  return (
-    <div className="fixed inset-0 z-[220] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="bg-gray-900 border border-gray-800 rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
-        <div className="px-6 py-4 bg-gray-950 border-b border-gray-800 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Printer size={18} className="text-orange-500 shrink-0" />
-            <h3 className="font-black text-white text-sm sm:text-base truncate">Sitzungsprotokoll (Druckansicht)</h3>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => window.print()}
-              className="px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 shadow-lg min-h-[44px]"
-            >
-              <Printer size={14} /> Drucken / PDF
-            </button>
-            <button
-              onClick={onClose}
-              className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
-            >
-              <X size={18} />
-            </button>
-          </div>
-        </div>
-
-        <div className="p-6 sm:p-10 overflow-y-auto flex-1 space-y-6 bg-gray-950/40 text-gray-200">
-          <div className="border-b border-gray-800 pb-5">
-            <p className="text-xs font-black uppercase tracking-widest text-orange-500">RüssSuuger Ämme • Vorstandsprotokoll</p>
-            <h2 className="text-2xl sm:text-3xl font-black text-white mt-1">{minute.title}</h2>
-            <p className="text-xs text-gray-400 mt-1">
-              Datum: {minute.date ? new Date(minute.date).toLocaleDateString('de-CH') : '—'} • Anwesend: {presentCount} Vorstandsmitglieder
-            </p>
-          </div>
-
-          {TRAKTANDEN.map(t => {
-            const pts = minute.traktanden?.[t] || [];
-            if (pts.length === 0) return null;
-            return (
-              <div key={t} className="space-y-2">
-                <h4 className="text-sm font-black uppercase tracking-wider text-orange-400 border-b border-gray-800 pb-1">{t}</h4>
-                <ul className="space-y-2">
-                  {pts.map((p, idx) => (
-                    <li key={p.id || idx} className="text-sm leading-relaxed bg-gray-900/70 border border-gray-800/80 rounded-xl p-3">
-                      {p.type === 'decision' && <span className="font-black text-green-400 mr-2">[Beschluss]</span>}
-                      {p.type === 'todo' && <span className="font-black text-orange-400 mr-2">[{p.done ? 'Erledigt' : 'Pendenz'}]</span>}
-                      {p.assignee && <span className="text-xs font-bold text-gray-400 mr-2">(@{p.assignee})</span>}
-                      <span className="whitespace-pre-wrap">{p.text}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FilePreviewModal({ docItem, onClose }) {
-  const nameLower = (docItem?.name || '').toLowerCase();
-  const urlLower = (docItem?.url || '').toLowerCase();
-  const isImage = docItem?.type?.includes('image') || /\.(png|jpe?g|gif|webp|svg)$/.test(nameLower) || urlLower.startsWith('data:image/');
-  const isPdf = docItem?.type?.includes('pdf') || nameLower.endsWith('.pdf') || urlLower.startsWith('data:application/pdf');
-
-  return (
-    <div className="fixed inset-0 z-[240] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="bg-gray-900 border border-gray-800 rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
-        <div className="px-6 py-4 bg-gray-950 border-b border-gray-800 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <FileText size={18} className="text-orange-500 shrink-0" />
-            <h3 className="font-black text-white text-sm sm:text-base truncate">{docItem?.name || 'Dokument-Vorschau'}</h3>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => triggerFileDownload(docItem.url, docItem.name || 'Dokument')}
-              className="px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 shadow-lg min-h-[44px]"
-            >
-              <Download size={14} /> Download
-            </button>
-            <button
-              onClick={onClose}
-              className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
-            >
-              <X size={18} />
-            </button>
-          </div>
-        </div>
-
-        <div className="p-6 flex-1 overflow-auto flex items-center justify-center bg-gray-950/60 min-h-[320px]">
-          {isImage ? (
-            <img
-              src={docItem.url}
-              alt={docItem.name}
-              className="max-h-[72vh] max-w-full object-contain rounded-2xl shadow-xl"
-            />
-          ) : isPdf ? (
-            <iframe
-              src={docItem.url}
-              title={docItem.name || 'PDF Vorschau'}
-              className="w-full h-[72vh] rounded-2xl border border-gray-800 bg-white"
-            />
-          ) : (
-            <div className="text-center py-12 space-y-4">
-              <File size={48} className="mx-auto text-orange-500/60" />
-              <p className="text-gray-300 font-bold text-sm">
-                Für diesen Dateityp ist keine direkte Browser-Vorschau verfügbar.
-              </p>
-              <button
-                onClick={() => triggerFileDownload(docItem.url, docItem.name || 'Dokument')}
-                className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-xs inline-flex items-center gap-2 shadow-lg min-h-[44px]"
-              >
-                <Download size={16} /> Datei jetzt herunterladen
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TabButton({ active, onClick, icon, label, badge = 0 }) {
-  return (
-    <button onClick={onClick} className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold transition-all whitespace-nowrap active:scale-95 min-h-[44px] ${active ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/20' : 'bg-gray-900 text-gray-500 hover:text-gray-300 hover:bg-gray-800'}`}>
-      {icon}
-      <span>{label}</span>
-      {badge > 0 && (
-        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${active ? 'bg-gray-950 text-orange-400' : 'bg-red-500 text-white'}`}>
-          {badge}
-        </span>
-      )}
-    </button>
-  );
-}
-
-function MobileTabButton({ active, onClick, icon, label, badge = 0 }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`relative flex flex-col items-center justify-center py-1.5 px-2.5 rounded-2xl transition-all min-h-[48px] min-w-[56px] ${
-        active ? 'text-orange-500 font-black' : 'text-gray-500 hover:text-gray-300 font-bold'
-      }`}
-    >
-      <div className="relative">
-        {icon}
-        {badge > 0 && (
-          <span className="absolute -top-1.5 -right-2.5 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
-            {badge}
-          </span>
-        )}
-      </div>
-      <span className="text-[10px] mt-1 tracking-tight truncate max-w-[64px]">{label}</span>
-    </button>
-  );
-}
-
-function EventsView({ events, calItems = [], currentUser, isArchive = false, users, notify, askConfirm }) {
-  const [showCreate,    setShowCreate]    = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState(null);
-
-  const isVorstand = currentUser?.groups?.includes('Vorstand');
-
-  const nextUpcomingCalItem = useMemo(() => {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const future = [...(calItems || [])]
-      .filter(i => i.date >= todayStr)
-      .sort((a, b) => a.date.localeCompare(b.date));
-    return future[0] || null;
-  }, [calItems]);
-
-  if (selectedEvent) {
-    const current = events.find(e => e.id === selectedEvent.id);
-    if (!current) { setSelectedEvent(null); return null; }
-    return (
-      <EventDetail
-        event={current}
-        onBack={() => setSelectedEvent(null)}
-        currentUser={currentUser}
-        onUpdate={data => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', current.id), data, { merge: true })}
-        onDelete={() => {
-          deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', current.id));
-          setSelectedEvent(null);
-          notify("Event wurde gelöscht.", "info");
-        }}
-        users={users}
-        isArchived={isArchive}
-        notify={notify}
-        askConfirm={askConfirm}
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {!isArchive && isVorstand && nextUpcomingCalItem && (
-        <div className="bg-gradient-to-r from-orange-500/15 via-gray-900 to-gray-900 border border-orange-500/30 rounded-2xl px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-lg">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-orange-500/20 text-orange-400 shrink-0">
-              <CalendarDays size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">Nächster Vorstandstermin</p>
-              <p className="text-sm font-black text-white">
-                {nextUpcomingCalItem.title} •{' '}
-                <span className="text-orange-400">
-                  {new Date(nextUpcomingCalItem.date).toLocaleDateString('de-CH', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
-                  {nextUpcomingCalItem.time ? `, ${nextUpcomingCalItem.time} Uhr` : ''}
-                </span>
-                {nextUpcomingCalItem.location ? ` (${nextUpcomingCalItem.location})` : ''}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => downloadICSFile(nextUpcomingCalItem, `${nextUpcomingCalItem.title}.ics`)}
-            className="text-xs font-bold text-orange-400 hover:text-orange-300 self-end sm:self-center shrink-0"
-          >
-            + In Kalender speichern
-          </button>
-        </div>
-      )}
-
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <h2 className="text-2xl sm:text-3xl font-black text-white">{isArchive ? 'Archiv' : 'Aktuelle Events'}</h2>
-        {!isArchive && currentUser.role === 'admin' && (
-          <button onClick={() => setShowCreate(!showCreate)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all min-h-[48px]">
-            {showCreate ? 'Schliessen' : <><Plus size={20} /> Neuer Event</>}
-          </button>
-        )}
-      </div>
-      {showCreate && <CreateEventForm onSubmit={e => {
-        const id = Date.now().toString();
-        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', id), { ...e, id, isArchived: false, surveys: [], createdAt: new Date().toISOString() });
-        setShowCreate(false);
-        notify("Event erfolgreich erstellt.", "success");
-      }} />}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {events.length === 0 ? (
-          <div className="col-span-full space-y-4">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl animate-pulse">
-                <div className="h-4 bg-gray-800 rounded w-1/4 mb-4"></div>
-                <div className="h-6 bg-gray-800 rounded w-3/4 mb-3"></div>
-                <div className="h-4 bg-gray-800 rounded w-1/2"></div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          events.map(e => (
-            <div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl cursor-pointer hover:border-orange-500 transition-all group shadow-lg active:scale-95">
-              <span className="text-[9px] font-black text-orange-500 uppercase bg-orange-500/10 px-3 py-1 rounded-full mb-4 inline-block tracking-widest">{e.category}</span>
-              <h3 className="text-xl font-bold text-white mb-2">{e.title}</h3>
-              <div className="flex flex-col gap-2 text-xs text-gray-500">
-                <span className="flex items-center gap-1.5"><Calendar size={14} className="text-orange-500" /> Start: {new Date(e.date).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>
-                {e.autoArchive && e.endDate && <span className="flex items-center gap-1.5"><Archive size={14} className="text-orange-500" /> Auto-Archiv: {new Date(e.endDate).toLocaleString('de-CH', {dateStyle: 'short', timeStyle: 'short'})}</span>}
-                <div className="flex items-center gap-1 mt-2 border-t border-gray-800 pt-2"><BarChart3 size={14}/> {e.surveys?.length || 0} Umfragen</div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function EventDetail({ event, onBack, currentUser, onUpdate, onDelete, users, isArchived, notify, askConfirm }) {
-  const [showSurveyForm,   setShowSurveyForm]   = useState(false);
-  const [editingSurvey,    setEditingSurvey]    = useState(null);
-  const [presentingSurvey, setPresentingSurvey] = useState(null);
-  const [showConfetti,     setShowConfetti]     = useState(false);
-  const prevActiveIdsRef = useRef([]);
-
-  const triggerCelebration = () => {
-    setShowConfetti(true);
-    setTimeout(() => setShowConfetti(false), 3200);
-  };
-
-  useEffect(() => {
-    const currentActiveIds = (event.surveys || [])
-      .filter(s => s.status === 'active')
-      .map(s => s.id);
-    const newlyActivated = currentActiveIds.find(id => !prevActiveIdsRef.current.includes(id));
-    if (newlyActivated) {
-      const el = document.getElementById(`survey-card-${newlyActivated}`);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }
-    prevActiveIdsRef.current = currentActiveIds;
-  }, [event.surveys]);
-
-  const saveSurvey = (s) => {
-    if (editingSurvey) {
-      onUpdate({ surveys: event.surveys.map(x => x.id === editingSurvey.id ? { ...x, ...s } : x) });
-      setEditingSurvey(null);
-      notify("Umfrage aktualisiert.", "success");
-    } else {
-      const initialStatus = s.openForSuggestions ? 'suggestions' : 'draft';
-      onUpdate({ surveys: [...(event.surveys || []), { ...s, id: Date.now().toString(), status: initialStatus, votedUsers: [] }] });
-      setShowSurveyForm(false);
-      notify(initialStatus === 'suggestions' ? "Ideen-Box geöffnet! Mitglieder können nun Vorschläge einreichen." : "Neue Umfrage hinzugefügt.", "success");
-    }
-  };
-
-  const createRunoffSurvey = (sourceSurvey) => {
-    const sorted = [...(sourceSurvey.options || [])].sort((a, b) => (b.votes || 0) - (a.votes || 0));
-    if (sorted.length < 2) {
-      notify("Für eine Stichwahl braucht es mindestens 2 Optionen.", "error");
-      return;
-    }
-    const cutoffVotes = sorted[1]?.votes || 0;
-    let topOptions = sorted.filter(o => (o.votes || 0) >= cutoffVotes && (o.votes || 0) > 0);
-    if (topOptions.length < 2) {
-      topOptions = sorted.slice(0, 2);
-    }
-
-    const runoffSurvey = {
-      id: Date.now().toString(),
-      title: `⚡ Stichwahl: ${sourceSurvey.title.replace(/^⚡ Stichwahl:\s*/i, '')}`,
-      maxAnswers: 1,
-      majorityType: sourceSurvey.majorityType || 'simple',
-      allowedGroups: sourceSurvey.allowedGroups || GROUPS,
-      isAnonymous: sourceSurvey.isAnonymous ?? false,
-      status: 'active',
-      votedUsers: [],
-      options: topOptions.map((o, idx) => ({
-        id: `${Date.now()}_${idx}`,
-        text: o.text,
-        youtubeUrl: o.youtubeUrl || '',
-        suggestedBy: o.suggestedBy || '',
-        votes: 0
-      }))
-    };
-
-    const updatedSurveys = (event.surveys || []).map(x =>
-      x.status === 'active' ? { ...x, status: 'published' } : x
-    );
-    onUpdate({ surveys: [...updatedSurveys, runoffSurvey] });
-    if (presentingSurvey) {
-      setPresentingSurvey(runoffSurvey);
-    }
-    notify(`Stichwahl mit ${topOptions.length} Optionen direkt gestartet!`, "success");
-  };
-
-  const handleAddSuggestion = async (surveyId, text, youtubeUrl) => {
-    const cleanText = text.trim();
-    if (!cleanText) return;
-    const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
-    try {
-      await runTransaction(db, async (transaction) => {
-        const snap = await transaction.get(eventRef);
-        if (!snap.exists()) throw new Error("Event nicht gefunden.");
-        const data = snap.data();
-        const srv = data.surveys?.find(x => x.id === surveyId);
-        if (!srv) throw new Error("Umfrage nicht gefunden.");
-        if (srv.status !== 'suggestions' && currentUser.role !== 'admin') {
-          throw new Error("Vorschlagsphase ist bereits geschlossen.");
-        }
-        const exists = (srv.options || []).some(o => o.text.trim().toLowerCase() === cleanText.toLowerCase());
-        if (exists) throw new Error("Dieser Vorschlag existiert bereits.");
-
-        const newOption = {
-          id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          text: cleanText,
-          youtubeUrl: (youtubeUrl || '').trim(),
-          suggestedBy: `${currentUser.firstName} ${currentUser.lastName}`.trim(),
-          suggestedById: currentUser.id,
-          votes: 0
-        };
-
-        const updatedSurveys = data.surveys.map(x => {
-          if (x.id !== surveyId) return x;
-          return { ...x, options: [...(x.options || []), newOption] };
-        });
-        transaction.update(eventRef, { surveys: updatedSurveys });
-      });
-      notify("Dein Vorschlag wurde in die Ideen-Box aufgenommen!", "success");
-    } catch (err) {
-      notify(err.message || "Vorschlag konnte nicht gespeichert werden.", "error");
-    }
-  };
-
-  const handleDeleteSuggestion = async (surveyId, optionId) => {
-    const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
-    try {
-      await runTransaction(db, async (transaction) => {
-        const snap = await transaction.get(eventRef);
-        if (!snap.exists()) return;
-        const data = snap.data();
-        const updatedSurveys = (data.surveys || []).map(x => {
-          if (x.id !== surveyId) return x;
-          return { ...x, options: (x.options || []).filter(o => o.id !== optionId) };
-        });
-        transaction.update(eventRef, { surveys: updatedSurveys });
-      });
-      notify("Vorschlag entfernt.", "info");
-    } catch (err) {
-      notify("Fehler beim Entfernen.", "error");
-    }
-  };
-
-  const moveSurvey = (index, dir) => {
-    const newIndex = index + dir;
-    if (newIndex < 0 || newIndex >= event.surveys.length) return;
-    const reordered = [...event.surveys];
-    [reordered[index], reordered[newIndex]] = [reordered[newIndex], reordered[index]];
-    onUpdate({ surveys: reordered });
-  };
-
-  const deleteSurvey = (id) => {
-    askConfirm(
-      'Umfrage löschen?',
-      'Soll diese Umfrage wirklich gelöscht werden?',
-      () => {
-        onUpdate({ surveys: event.surveys.filter(x => x.id !== id) });
-        notify("Umfrage gelöscht.", "info");
-      },
-      'Löschen'
-    );
-  };
-
-  const exportToExcel = () => {
-    let csv = '\uFEFF';
-    csv += `Event:;${event.title}\n`;
-    csv += `Datum:;${new Date(event.date).toLocaleDateString('de-CH')}\n`;
-    csv += `Kategorie:;${event.category}\n\n`;
-    csv += `Umfrage;Option;Stimmen;Prozent\n`;
-    if (event.surveys) {
-      event.surveys.forEach(survey => {
-        const totalVotes = survey.options.reduce((sum, o) => sum + (o.votes || 0), 0);
-        survey.options.forEach(opt => {
-          const pct = totalVotes === 0 ? 0 : Math.round(((opt.votes || 0) / totalVotes) * 100);
-          csv += `"${survey.title.replace(/"/g, '""')}";"${opt.text.replace(/"/g, '""')}";${opt.votes || 0};${pct}%\n`;
-        });
-      });
-    }
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `${event.title.replace(/\s+/g, '_')}_Resultate.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  return (
-    <div className="space-y-6 animate-in slide-in-from-right-4">
-      <div className="flex items-center gap-4 sm:gap-6">
-        <button onClick={onBack} className="bg-gray-900 p-3 rounded-2xl hover:text-orange-500 transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center"><ChevronRight className="rotate-180" size={24} /></button>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-xl sm:text-3xl font-black text-white flex flex-wrap items-center gap-2">
-            <span className="truncate">{event.title}</span>
-            {isArchived && <span className="bg-red-500/10 text-red-500 text-[10px] uppercase font-black px-2 py-1 rounded-md border border-red-500/20">Archiviert</span>}
-          </h2>
-          <p className="text-orange-500 text-xs font-bold uppercase">{event.category} • {new Date(event.date).toLocaleDateString('de-CH')}</p>
-        </div>
-        {currentUser.role === 'admin' && (
-          <div className="flex gap-2 shrink-0">
-            <button onClick={exportToExcel} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-green-500 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center" title="Als Excel (CSV) exportieren"><Download size={20}/></button>
-            {!isArchived && <button onClick={() => onUpdate({ isArchived: !event.isArchived })} className="p-3 bg-gray-900 border border-gray-800 rounded-2xl hover:text-orange-500 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center" title="Manuell Archivieren"><Archive size={20}/></button>}
-            <button
-              onClick={() =>
-                askConfirm(
-                  'Event komplett löschen?',
-                  'Achtung: Soll dieser Event wirklich komplett und unwiderruflich gelöscht werden?',
-                  onDelete,
-                  'Unwiderruflich löschen'
-                )
-              }
-              className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500/20 min-h-[44px] min-w-[44px] flex items-center justify-center"
-            >
-              <Trash2 size={20}/>
-            </button>
-          </div>
-        )}
-      </div>
-
-      {currentUser.role === 'admin' && !isArchived && (
-        <button onClick={() => setShowSurveyForm(!showSurveyForm)} className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all min-h-[48px]">
-          {showSurveyForm ? 'Abbrechen' : 'Neue Umfrage hinzufügen'}
-        </button>
-      )}
-
-      {showSurveyForm && (
-        <CreateSurveyForm onSubmit={saveSurvey} onCancel={() => setShowSurveyForm(false)} />
-      )}
-
-      <ConfettiOverlay active={showConfetti} />
-
-      {!isArchived && currentUser.role !== 'admin' && (event.surveys || []).filter(s => s.status !== 'draft').length === 0 && (
-        <div className="bg-gray-900 border border-orange-500/30 rounded-3xl p-8 text-center space-y-3 animate-pulse">
-          <Sparkles className="mx-auto text-orange-500" size={36} />
-          <h3 className="text-lg font-black text-white">🎙️ Die Abstimmung wird gerade vom Vorstand vorbereitet</h3>
-          <p className="text-xs text-gray-400 max-w-md mx-auto">
-            Bitte halte dein Smartphone bereit – sobald der Admin die erste Abstimmung am Beamer startet, erscheint sie hier automatisch live!
-          </p>
-        </div>
-      )}
-
-      {}
-      <div className="space-y-6">
-        {(() => {
-          const allSurveys = event.surveys || [];
-          const activeSurveys = allSurveys.filter(s => s.status === 'active');
-          const suggestionSurveys = allSurveys.filter(s => s.status === 'suggestions');
-          const finishedSurveys = allSurveys.filter(s => s.status === 'published');
-
-          const handleVoteForSurvey = async (s, opts) => {
-            const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
-            try {
-              await runTransaction(db, async (transaction) => {
-                const snap = await transaction.get(eventRef);
-                if (!snap.exists()) throw new Error("Event nicht gefunden.");
-                const data = snap.data();
-                const srv = data.surveys?.find(x => x.id === s.id);
-                if (!srv) throw new Error("Umfrage nicht gefunden.");
-                if (srv.votedUsers?.includes(currentUser.id)) throw new Error("Bereits abgestimmt.");
-                const updatedSurveys = data.surveys.map(x => {
-                  if (x.id !== s.id) return x;
-                  return {
-                    ...x,
-                    options: x.options.map(o => opts.includes(o.id) ? { ...o, votes: (o.votes || 0) + 1 } : o),
-                    votedUsers: [...(x.votedUsers || []), currentUser.id]
-                  };
-                });
-                transaction.update(eventRef, { surveys: updatedSurveys });
-              });
-            } catch (err) {
-              console.error("Vote Error:", err);
-              if (err.message === "Bereits abgestimmt.") notify("Du hast bereits abgestimmt.", "error");
-            }
-          };
-
-          const handleStatusChangeForSurvey = (s, st) => {
-            const updated = allSurveys.map(x => {
-              if (x.id === s.id) return { ...x, status: st };
-              // Wenn eine neue Abstimmung aktiviert wird, werden andere laufende automatisch als beendet/publiziert markiert
-              if (st === 'active' && x.status === 'active') return { ...x, status: 'published' };
-              return x;
-            });
-            if (st === 'published') {
-              triggerCelebration();
-            }
-            onUpdate({ surveys: updated });
-          };
-
-          // Admin sieht alle Umfragen in der gewohnten Verwaltungs-Reihenfolge
-          if (currentUser.role === 'admin' || isArchived) {
-            return allSurveys.map((s, index) => (
-              <div key={s.id} id={`survey-card-${s.id}`} className="transition-all">
-                <SurveyCard
-                  survey={s}
-                  currentUser={currentUser}
-                  isArchived={isArchived}
-                  onEdit={() => setEditingSurvey(editingSurvey?.id === s.id ? null : s)}
-                  onDelete={() => deleteSurvey(s.id)}
-                  onPresent={setPresentingSurvey}
-                  onMoveUp={index > 0 ? () => moveSurvey(index, -1) : null}
-                  onMoveDown={index < allSurveys.length - 1 ? () => moveSurvey(index, 1) : null}
-                  isEditing={editingSurvey?.id === s.id}
-                  onSaveEdit={saveSurvey}
-                  onCancelEdit={() => setEditingSurvey(null)}
-                  onVote={(opts) => handleVoteForSurvey(s, opts)}
-                  onStatusChange={(st) => handleStatusChangeForSurvey(s, st)}
-                  onCreateRunoff={() => createRunoffSurvey(s)}
-                  onAddSuggestion={(text, yt) => handleAddSuggestion(s.id, text, yt)}
-                  onDeleteSuggestion={(optId) => handleDeleteSuggestion(s.id, optId)}
-                  users={users}
-                />
-              </div>
-            ));
-          }
-
-          // Mitglieder-Ansicht: Fokus auf die EINE aktuelle Abstimmung, offene Ideen-Boxen & beendete Abstimmungen darunter
-          return (
-            <>
-              {activeSurveys.length > 0 && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 px-1">
-                    <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping" />
-                    <span className="text-xs font-black uppercase tracking-widest text-orange-400">
-                      Aktuelle Live-Abstimmung
-                    </span>
-                  </div>
-                  {activeSurveys.map(s => (
-                    <div key={s.id} id={`survey-card-${s.id}`} className="transition-all">
-                      <SurveyCard
-                        survey={s}
-                        currentUser={currentUser}
-                        isArchived={false}
-                        onVote={(opts) => handleVoteForSurvey(s, opts)}
-                        onAddSuggestion={(text, yt) => handleAddSuggestion(s.id, text, yt)}
-                        onDeleteSuggestion={(optId) => handleDeleteSuggestion(s.id, optId)}
-                        users={users}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {suggestionSurveys.length > 0 && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 px-1">
-                    <Lightbulb size={15} className="text-amber-400 animate-pulse" />
-                    <span className="text-xs font-black uppercase tracking-widest text-amber-400">
-                      Ideen-Box offen – Reiche deine Vorschläge ein
-                    </span>
-                  </div>
-                  {suggestionSurveys.map(s => (
-                    <div key={s.id} id={`survey-card-${s.id}`} className="transition-all">
-                      <SurveyCard
-                        survey={s}
-                        currentUser={currentUser}
-                        isArchived={false}
-                        onVote={(opts) => handleVoteForSurvey(s, opts)}
-                        onAddSuggestion={(text, yt) => handleAddSuggestion(s.id, text, yt)}
-                        onDeleteSuggestion={(optId) => handleDeleteSuggestion(s.id, optId)}
-                        users={users}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {finishedSurveys.length > 0 && (
-                <div className="space-y-4 pt-6 border-t border-gray-800/80">
-                  <div className="flex items-center justify-between px-1">
-                    <span className="text-xs font-black uppercase tracking-widest text-gray-500">
-                      Abgeschlossene Abstimmungen ({finishedSurveys.length})
-                    </span>
-                  </div>
-                  {finishedSurveys.map(s => (
-                    <div key={s.id} id={`survey-card-${s.id}`} className="transition-all opacity-85">
-                      <SurveyCard
-                        survey={s}
-                        currentUser={currentUser}
-                        isArchived={true}
-                        onVote={(opts) => handleVoteForSurvey(s, opts)}
-                        users={users}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          );
-        })()}
-      </div>
-
-      {presentingSurvey && (
-        <PresentationModal
-          survey={event.surveys.find(s => s.id === presentingSurvey.id) || presentingSurvey}
-          allSurveys={event.surveys || []}
-          users={users}
-          onClose={() => setPresentingSurvey(null)}
-          onSelectSurvey={(nextSurvey, autoActivate = false) => {
-            if (autoActivate) {
-              const updated = (event.surveys || []).map(x => {
-                if (x.id === nextSurvey.id) return { ...x, status: x.status === 'published' ? 'published' : 'active' };
-                if (x.status === 'active') return { ...x, status: 'published' };
-                return x;
-              });
-              onUpdate({ surveys: updated });
-            }
-            setPresentingSurvey(nextSurvey);
-          }}
-          onStart={() => {
-            const s = event.surveys.find(x => x.id === presentingSurvey.id);
-            if (!s) return;
-            const updated = event.surveys.map(x => {
-              if (x.id === s.id) return { ...x, status: 'active' };
-              if (x.status === 'active') return { ...x, status: 'published' };
-              return x;
-            });
-            onUpdate({ surveys: updated });
-          }}
-          onPublish={() => {
-            const s = event.surveys.find(x => x.id === presentingSurvey.id);
-            if (!s) return;
-            const updated = event.surveys.map(x => x.id === s.id ? { ...x, status: 'published' } : x);
-            triggerCelebration();
-            onUpdate({ surveys: updated });
-          }}
-          onCreateRunoff={() => {
-            const s = event.surveys.find(x => x.id === presentingSurvey.id) || presentingSurvey;
-            if (s) createRunoffSurvey(s);
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function PresentationModal({ survey, allSurveys = [], users, onClose, onSelectSurvey, onStart, onPublish, onCreateRunoff }) {
-  const [step, setStep] = useState('welcome'); // 'welcome' | 'voting'
-
-  const currentIndex = allSurveys.findIndex(x => x.id === survey.id);
-  const prevSurvey = currentIndex > 0 ? allSurveys[currentIndex - 1] : null;
-  const nextSurvey = currentIndex >= 0 && currentIndex < allSurveys.length - 1 ? allSurveys[currentIndex + 1] : null;
-
-  const surveyAllowedGroups = survey.allowedGroups || GROUPS;
-  const eligibleUsers = users.filter(u => surveyAllowedGroups.some(g => u.groups?.includes(g)));
-  const eligibleUsersCount = eligibleUsers.length;
-  
-  const onlineCount = eligibleUsers.filter(u => u.isOnline && Date.now() - (u.lastSeen || 0) < 45000).length;
-  const pctOnline = eligibleUsersCount === 0 ? 0 : Math.round((onlineCount / eligibleUsersCount) * 100);
-
-  const totalVotes = survey.options.reduce((sum, o) => sum + (o.votes || 0), 0);
-  const votedCount = survey.votedUsers?.length || 0;
-  const pctVoted = eligibleUsersCount === 0 ? 0 : Math.round((votedCount / eligibleUsersCount) * 100);
-
-  const currentUrl = typeof window !== 'undefined' ? window.location.href : 'https://ruesssuuger-aemme.ch';
-
-  const leadingOption = totalVotes > 0 ? survey.options.reduce((max, o) => (o.votes || 0) > (max.votes || 0) ? o : max, survey.options[0]) : null;
-  const leadingVotes = leadingOption?.votes || 0;
-  const quorumReached = survey.majorityType === 'two_thirds' 
-    ? (leadingVotes / (totalVotes || 1)) >= (2 / 3) 
-    : survey.majorityType === 'simple' 
-    ? (leadingVotes / (totalVotes || 1)) > 0.5 
-    : true;
-
-  return (
-    <div className="fixed inset-0 z-[200] bg-gray-950 flex flex-col animate-in fade-in duration-300">
-      <div className="flex flex-wrap items-center justify-between px-6 sm:px-8 py-5 border-b border-gray-800 gap-4">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl sm:text-2xl font-black italic tracking-tighter">
-            <span className="text-gray-400">Rüss</span><span className="text-orange-500">Suuger</span> <span className="text-gray-400">Ämme</span>
-          </h1>
-          <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1.5 rounded-lg border border-orange-500/20 hidden sm:inline-block">
-            {step === 'welcome' ? 'Willkommen & QR-Code' : 'Live Abstimmung'}
-          </span>
-          {allSurveys.length > 1 && (
-            <div className="flex items-center gap-1.5 bg-gray-900 border border-gray-800 px-2.5 py-1.5 rounded-xl">
-              <button
-                type="button"
-                disabled={!prevSurvey}
-                onClick={() => {
-                  if (prevSurvey && onSelectSurvey) {
-                    onSelectSurvey(prevSurvey, step === 'voting');
-                  }
-                }}
-                title="Vorherige Abstimmung"
-                className="p-1.5 text-gray-400 hover:text-white disabled:opacity-30 transition-colors"
-              >
-                <ChevronRight size={16} className="rotate-180" />
-              </button>
-              <span className="text-xs font-black text-gray-300 px-2">
-                Abstimmung {currentIndex + 1} / {allSurveys.length}
-              </span>
-              <button
-                type="button"
-                disabled={!nextSurvey}
-                onClick={() => {
-                  if (nextSurvey && onSelectSurvey) {
-                    onSelectSurvey(nextSurvey, step === 'voting');
-                  }
-                }}
-                title="Nächste Abstimmung"
-                className="p-1.5 text-gray-400 hover:text-white disabled:opacity-30 transition-colors"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          {step === 'welcome' ? (
-            <button onClick={() => {
-              if ((survey.status === 'draft' || survey.status === 'suggestions') && onStart) {
-                onStart();
-              }
-              setStep('voting');
-            }} className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[44px]">
-              Zur Abstimmung starten →
-            </button>
-          ) : (
-            <>
-              {(survey.status === 'draft' || survey.status === 'suggestions') && onStart && (
-                <button onClick={onStart} className="px-5 py-3 bg-green-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg min-h-[44px]">
-                  Abstimmung freigeben
-                </button>
-              )}
-              {survey.status === 'active' && onPublish && (
-                <button onClick={onPublish} className="px-5 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[44px]">
-                  Resultate publizieren
-                </button>
-              )}
-              {survey.status === 'published' && survey.options?.length >= 2 && onCreateRunoff && (
-                <button
-                  onClick={onCreateRunoff}
-                  className="px-5 py-3 bg-amber-500 hover:bg-amber-400 text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all shadow-lg shadow-amber-500/20 min-h-[44px] flex items-center gap-1.5"
-                >
-                  <Zap size={16} /> Stichwahl starten
-                </button>
-              )}
-              {nextSurvey && onSelectSurvey && (
-                <button
-                  onClick={() => onSelectSurvey(nextSurvey, true)}
-                  className="px-5 py-3 bg-gray-800 hover:bg-orange-500 text-white hover:text-gray-950 font-black rounded-xl text-sm active:scale-95 transition-all border border-gray-700 hover:border-orange-500 min-h-[44px] flex items-center gap-1.5"
-                >
-                  Nächste Abstimmung →
-                </button>
-              )}
-            </>
-          )}
-          <button onClick={onClose} className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center">
-            <Minimize2 size={20} />
-          </button>
-        </div>
-      </div>
-
-      <div className="flex-1 flex flex-col items-center justify-center px-6 sm:px-8 py-10 max-w-4xl mx-auto w-full overflow-y-auto">
-        {step === 'welcome' ? (
-          <div className="text-center space-y-8 animate-in fade-in duration-300 w-full max-w-lg">
-            <div className="space-y-2">
-              <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20">
-                Beamer & Live-Einlass
-              </span>
-              <h2 className="text-3xl sm:text-4xl font-black text-white">QR-Code scannen & mitmachen</h2>
-              <p className="text-gray-400 text-sm">Richte die Smartphone-Kamera auf den QR-Code, um dem Portal beizutreten.</p>
-            </div>
-
-            <div className="bg-white p-4 rounded-3xl shadow-2xl inline-block mx-auto">
-              <StandardQRCodeImage value={currentUrl} size={240} />
-            </div>
-
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-3">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-gray-400">Mitglieder im System (Online):</span>
-                <span className="font-black text-orange-500">{onlineCount} / {eligibleUsersCount} ({pctOnline}%)</span>
-              </div>
-              <div className="w-full h-3 bg-gray-950 rounded-full overflow-hidden">
-                <div className="h-full bg-orange-500 transition-all duration-500" style={{ width: `${pctOnline}%` }} />
-              </div>
-            </div>
-
-            <button
-              onClick={() => {
-                if ((survey.status === 'draft' || survey.status === 'suggestions') && onStart) {
-                  onStart();
-                }
-                setStep('voting');
-              }}
-              className="w-full py-5 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl text-lg shadow-xl shadow-orange-500/20 active:scale-95 transition-all"
-            >
-              Zur Abstimmung starten →
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-8 w-full animate-in fade-in duration-300">
-            <div className="text-center space-y-2">
-              <span className="text-xs font-black uppercase tracking-widest text-orange-500 bg-orange-500/10 px-3.5 py-1.5 rounded-full border border-orange-500/20">
-                {survey.status === 'published'
-                  ? 'Abstimmung Beendet & Resultate'
-                  : survey.status === 'suggestions'
-                  ? '💡 Ideen-Box offen – Live-Vorschläge'
-                  : 'Live-Abstimmung läuft'}
-              </span>
-              <h2 className="text-2xl sm:text-4xl font-black text-white">{survey.title}</h2>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
-              <div className="bg-gray-900 border border-gray-800 p-4 rounded-2xl text-center">
-                <p className="text-[10px] font-black uppercase text-gray-500">Stimmbeteiligung</p>
-                <p className="text-2xl sm:text-3xl font-black text-white mt-1">{votedCount} / {eligibleUsersCount}</p>
-                <p className="text-xs text-orange-400 font-bold mt-0.5">{pctVoted}% der Berechtigten</p>
-              </div>
-              <div className="bg-gray-900 border border-gray-800 p-4 rounded-2xl text-center">
-                <p className="text-[10px] font-black uppercase text-gray-500">Abgegebene Stimmen</p>
-                <p className="text-2xl sm:text-3xl font-black text-orange-500 mt-1">{totalVotes}</p>
-                <p className="text-xs text-gray-400 font-bold mt-0.5">Gesamt</p>
-              </div>
-            </div>
-
-            <div className="space-y-4 max-w-2xl mx-auto w-full">
-              {survey.options.map(o => {
-                const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
-
-                return (
-                  <div key={o.id} className="relative h-16 bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden flex items-center px-5">
-                    <div className="absolute left-0 top-0 h-full bg-orange-500/20 transition-all duration-1000 ease-out" style={{ width: `${survey.status === 'published' ? pct : Math.round(((o.votes || 0) / (eligibleUsersCount || 1)) * 100)}%` }} />
-                    <div className="flex-1 font-black text-white text-base sm:text-lg z-10 truncate mr-3">
-                      {o.text}
-                    </div>
-                    <div className="text-right z-10 shrink-0">
-                      {survey.status === 'published' ? (
-                        <>
-                          <p className="text-lg font-black text-orange-400">{o.votes || 0} Stimmen</p>
-                          <p className="text-xs text-gray-400 font-bold">{pct}%</p>
-                        </>
-                      ) : (
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Wird gezählt...</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {survey.status === 'published' && survey.majorityType && survey.majorityType !== 'none' && (
-              <div className={`p-4 rounded-2xl border text-center font-bold text-sm max-w-2xl mx-auto ${quorumReached ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-                {quorumReached ? '✓ Erforderliche Mehrheit erreicht / Antrag angenommen!' : '⚠ Erforderliche Mehrheit nicht erreicht'}
-              </div>
-            )}
-
-            {survey.status === 'published' && survey.options?.length >= 2 && onCreateRunoff && (
-              <div className="flex justify-center pt-1">
-                <button
-                  onClick={onCreateRunoff}
-                  className="px-7 py-4 bg-amber-500 hover:bg-amber-400 text-gray-950 font-black rounded-2xl text-sm active:scale-95 transition-all shadow-xl shadow-amber-500/20 flex items-center gap-2"
-                >
-                  <Zap size={18} /> ⚡ Stichwahl mit den Bestplatzierten starten
-                </button>
-              </div>
-            )}
-
-            {survey.status === 'active' && (
-              <div className="text-center pt-2">
-                <button
-                  onClick={onPublish}
-                  className="px-8 py-4 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl text-base shadow-xl shadow-orange-500/20 active:scale-95 transition-all"
-                >
-                  Resultate jetzt publizieren 🔓
-                </button>
-              </div>
-            )}
-
-            {nextSurvey && (
-              <div className="pt-4 flex justify-center">
-                <button
-                  onClick={() => onSelectSurvey(nextSurvey, true)}
-                  className="px-8 py-4 bg-gray-900 hover:bg-orange-500 text-white hover:text-gray-950 border border-gray-800 hover:border-orange-500 font-black rounded-2xl text-sm active:scale-95 transition-all flex items-center gap-2"
-                >
-                  Weiter zur nächsten Abstimmung: «{nextSurvey.title}» →
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function CreateEventForm({ onSubmit }) {
-  const [form, setForm] = useState({
-    title: '',
-    category: 'Generalversammlung',
-    date: new Date().toISOString().slice(0, 16),
-    autoArchive: false,
-    endDate: ''
-  });
-
-  return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl space-y-4 shadow-2xl animate-in slide-in-from-top-2">
-      <div className="space-y-1">
-        <label className="text-xs font-bold text-gray-600 uppercase ml-1">Event-Titel</label>
-        <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[44px]" placeholder="z.B. Generalversammlung 2026" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
-      </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-gray-600 uppercase ml-1">Kategorie</label>
-          <select className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[44px]" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
-            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-gray-600 uppercase ml-1">Start-Datum & Zeit</label>
-          <input type="datetime-local" required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[44px]" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-gray-600 uppercase ml-1 flex items-center gap-2 cursor-pointer py-1">
-            <input type="checkbox" checked={form.autoArchive} onChange={e => setForm({...form, autoArchive: e.target.checked})} className="accent-orange-500 w-5 h-5" />
-            Auto-Archivierung am:
-          </label>
-          <input type="datetime-local" required={form.autoArchive} disabled={!form.autoArchive} className={`w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none transition-all min-h-[44px] ${!form.autoArchive && 'opacity-50 cursor-not-allowed'}`} value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} />
-        </div>
-      </div>
-      <button type="submit" className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg mt-2 min-h-[48px]">Event speichern</button>
-    </form>
-  );
-}
-
-function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
-  const [title,         setTitle]         = useState(initialData?.title || '');
-  const [maxAnswers,    setMaxAnswers]    = useState(initialData?.maxAnswers || 1);
-  const [majorityType,  setMajorityType]  = useState(initialData?.majorityType || 'none');
-  const [options,       setOptions]       = useState(initialData?.options || [{ id: '1', text: '', youtubeUrl: '' }, { id: '2', text: '', youtubeUrl: '' }]);
-  const [allowedGroups, setAllowedGroups] = useState(initialData?.allowedGroups || GROUPS);
-  const [isAnonymous,   setIsAnonymous]   = useState(initialData?.isAnonymous || false);
-  const [openForSuggestions, setOpenForSuggestions] = useState(initialData?.status === 'suggestions' || false);
-
-  const toggleGroup = g => setAllowedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
-
-  const applyTemplate = (tpl) => {
-    if (tpl === 'yes_no') {
-      setMaxAnswers(1);
-      setMajorityType('simple');
-      setOpenForSuggestions(false);
-      setOptions([
-        { id: '1', text: 'Ja', youtubeUrl: '' },
-        { id: '2', text: 'Nein', youtubeUrl: '' },
-        { id: '3', text: 'Enthaltung', youtubeUrl: '' }
-      ]);
-    } else if (tpl === 'unanimous') {
-      setMaxAnswers(1);
-      setMajorityType('two_thirds');
-      setOpenForSuggestions(false);
-      setOptions([
-        { id: '1', text: 'Annahme (Zustimmung)', youtubeUrl: '' },
-        { id: '2', text: 'Ablehnung (Gegenstimme)', youtubeUrl: '' }
-      ]);
-    } else if (tpl === 'songs3') {
-      if (!title) setTitle('Liederwahl – Welche 3 Songs sollen wir spielen?');
-      setMaxAnswers(3);
-      setMajorityType('none');
-      setAllowedGroups(['Vorstand', 'Aktiv Musig', 'Neumitglied Musig']);
-    } else if (tpl === 'ideabox') {
-      if (!title) setTitle('Sujet- & Lieder-Ideen – Was sind eure Vorschläge?');
-      setMaxAnswers(3);
-      setMajorityType('none');
-      setOpenForSuggestions(true);
-      setOptions([]);
-    }
-  };
-
-  return (
-    <form
-      onSubmit={e => {
-        e.preventDefault();
-        const cleanedOptions = options.filter(o => o.text.trim());
-        onSubmit({
-          title,
-          maxAnswers,
-          majorityType,
-          allowedGroups,
-          isAnonymous,
-          openForSuggestions,
-          ...(initialData ? { status: openForSuggestions ? 'suggestions' : (initialData.status === 'suggestions' ? 'draft' : initialData.status) } : {}),
-          options: cleanedOptions
-        });
-      }}
-      className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-2" : "bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl"}`}
-    >
-      <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-gray-800">
-        <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 mr-1">1-Klick-Vorlagen:</span>
-        <button type="button" onClick={() => applyTemplate('yes_no')} className="text-[11px] font-bold bg-gray-950 hover:bg-orange-500/15 text-gray-300 hover:text-orange-400 border border-gray-800 px-3 py-1.5 rounded-xl transition-all">
-          + Ja / Nein / Enthaltung
-        </button>
-        <button type="button" onClick={() => applyTemplate('unanimous')} className="text-[11px] font-bold bg-gray-950 hover:bg-orange-500/15 text-gray-300 hover:text-orange-400 border border-gray-800 px-3 py-1.5 rounded-xl transition-all">
-          + ⅔ Antrag (Annahme / Ablehnung)
-        </button>
-        <button type="button" onClick={() => applyTemplate('songs3')} className="text-[11px] font-bold bg-gray-950 hover:bg-orange-500/15 text-gray-300 hover:text-orange-400 border border-gray-800 px-3 py-1.5 rounded-xl transition-all">
-          + Liederwahl (3 Stimmen Musig)
-        </button>
-        <button type="button" onClick={() => applyTemplate('ideabox')} className="text-[11px] font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1">
-          <Lightbulb size={12} /> + Ideen-Box (Mitglieder-Vorschläge)
-        </button>
-      </div>
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
-          <input required className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-4 text-white focus:border-orange-500 outline-none min-h-[48px]" placeholder="Was ist die Frage?" value={title} onChange={e => setTitle(e.target.value)} />
-        </div>
-        <div className="flex items-center gap-3 bg-gray-950 border border-gray-800 px-4 py-3 rounded-xl shrink-0">
-          <label className="text-xs font-bold text-gray-500 uppercase">Max. Stimmen:</label>
-          <input type="number" min="1" max="20" required className="w-16 bg-gray-900 border border-gray-800 rounded-lg px-2 py-2 text-center text-white font-black focus:border-orange-500 outline-none min-h-[40px]" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value, 10) || 1)} />
-        </div>
-        <div className="flex items-center gap-3 bg-gray-950 border border-gray-800 px-4 py-3 rounded-xl shrink-0">
-          <label className="text-xs font-bold text-gray-500 uppercase">Mehrheit:</label>
-          <select className="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white text-xs font-bold focus:border-orange-500 outline-none min-h-[40px]" value={majorityType} onChange={e => setMajorityType(e.target.value)}>
-            <option value="none">Keine Vorgabe</option>
-            <option value="simple">Einfaches Mehr (&gt;50%)</option>
-            <option value="two_thirds">Zweidrittelmehrheit (⅔)</option>
-          </select>
-        </div>
-      </div>
-      <div className="grid sm:grid-cols-2 gap-3">
-        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-4 py-3 rounded-xl">
-          <input type="checkbox" id="anonCheck" checked={isAnonymous} onChange={e => setIsAnonymous(e.target.checked)} className="accent-orange-500 w-4 h-4 shrink-0" />
-          <label htmlFor="anonCheck" className="text-xs font-bold text-gray-300 cursor-pointer">
-            🔒 Anonyme Abstimmung (Stimmen werden ohne Zuordnung gezählt)
-          </label>
-        </div>
-        <div className="flex items-center gap-2 bg-amber-500/5 border border-amber-500/30 px-4 py-3 rounded-xl">
-          <input type="checkbox" id="suggestCheck" checked={openForSuggestions} onChange={e => setOpenForSuggestions(e.target.checked)} className="accent-amber-500 w-4 h-4 shrink-0" />
-          <label htmlFor="suggestCheck" className="text-xs font-bold text-amber-300 cursor-pointer flex items-center gap-1.5">
-            <Lightbulb size={14} className="text-amber-400 shrink-0" />
-            💡 Ideen-Box öffnen (Mitglieder können eigene Vorschläge einreichen)
-          </label>
-        </div>
-      </div>
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-gray-500 uppercase ml-1">
-            {openForSuggestions ? 'Start-Optionen (optional – Mitglieder fügen weitere hinzu)' : 'Antwort-Optionen & YouTube-Links (optional)'}
-          </label>
-          <button
-            type="button"
-            onClick={() => setOptions([...options, { id: Date.now().toString() + Math.random().toString(36).slice(2, 5), text: '', youtubeUrl: '' }])}
-            className="text-xs font-black text-orange-500 hover:text-orange-400 flex items-center gap-1 min-h-[36px]"
-          >
-            <Plus size={14} /> Option hinzufügen
-          </button>
-        </div>
-        <div className="space-y-2.5">
-          {options.map((opt, idx) => (
-            <div key={opt.id || idx} className="flex flex-col sm:flex-row gap-2 bg-gray-950 p-3 rounded-2xl border border-gray-800">
-              <input
-                required={!openForSuggestions && idx < 2}
-                className="flex-1 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:border-orange-500 outline-none min-h-[44px]"
-                placeholder={`Option ${idx + 1}`}
-                value={opt.text}
-                onChange={e => setOptions(options.map((x, i) => i === idx ? { ...x, text: e.target.value } : x))}
-              />
-              <div className="flex items-center gap-2 sm:w-72">
-                <div className="relative flex-1">
-                  <Youtube size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input
-                    className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-10 pr-3 py-3 text-white text-xs focus:border-orange-500 outline-none min-h-[44px]"
-                    placeholder="YouTube-Link (optional)"
-                    value={opt.youtubeUrl || ''}
-                    onChange={e => setOptions(options.map((x, i) => i === idx ? { ...x, youtubeUrl: e.target.value } : x))}
-                  />
-                </div>
-                {(openForSuggestions || options.length > 2) && (
-                  <button
-                    type="button"
-                    onClick={() => setOptions(options.filter((_, i) => i !== idx))}
-                    className="p-3 bg-gray-900 text-gray-500 hover:text-red-500 rounded-xl border border-gray-800 min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="space-y-3">
-        <label className="text-xs font-bold text-gray-500 uppercase ml-1">Stimmberechtigte Gruppen</label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-          {GROUPS.map(g => (
-            <label key={g} className={`flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all min-h-[44px] ${allowedGroups.includes(g) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
-              <input type="checkbox" className="hidden" checked={allowedGroups.includes(g)} onChange={() => toggleGroup(g)} />
-              <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${allowedGroups.includes(g) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'}`}>
-                {allowedGroups.includes(g) && <Check size={12} className="text-gray-950" strokeWidth={4} />}
-              </div>
-              <span className="text-[10px] font-black uppercase tracking-tighter truncate">{g}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-      <div className="flex gap-4 pt-4 border-t border-gray-800">
-        <button type="button" onClick={onCancel} className="text-gray-500 font-bold px-4 py-3 hover:text-gray-300 min-h-[44px]">Abbrechen</button>
-        <button type="submit" className="flex-1 bg-orange-500 text-gray-950 font-black py-4 rounded-xl shadow-lg active:scale-[0.99] transition-all min-h-[48px]">Umfrage speichern</button>
-      </div>
-    </form>
-  );
-}
-
-function SurveyCard({ survey, currentUser, onVote, onStatusChange, onCreateRunoff, onAddSuggestion, onDeleteSuggestion, isArchived, onEdit, onDelete, onPresent, onMoveUp, onMoveDown, isEditing, onSaveEdit, onCancelEdit, users }) {
-  const [selected, setSelected] = useState([]);
-  const [voting,   setVoting]   = useState(false);
-  const [activePlayerUrl, setActivePlayerUrl] = useState(null);
-  const [newSuggestionText, setNewSuggestionText] = useState('');
-  const [newSuggestionYt,   setNewSuggestionYt]   = useState('');
-  const [submittingIdea,    setSubmittingIdea]    = useState(false);
-
-  const hasVoted = survey.votedUsers?.includes(currentUser.id);
-  const totalVotes = (survey.options || []).reduce((sum, o) => sum + (o.votes || 0), 0);
-  const surveyAllowedGroups = survey.allowedGroups || GROUPS;
-  const isEligible = currentUser.role === 'admin' || surveyAllowedGroups.some(g => currentUser.groups?.includes(g));
-  const eligibleUsersCount = users.filter(u => surveyAllowedGroups.some(g => u.groups?.includes(g))).length;
-
-  if (!isEligible) return null;
-  if (survey.status === 'draft' && currentUser.role !== 'admin') return null;
-
-  const toggle = (id) => {
-    if (selected.includes(id)) {
-      setSelected(selected.filter(x => x !== id));
-    } else if ((survey.maxAnswers || 1) === 1) {
-      setSelected([id]);
-    } else if (selected.length < (survey.maxAnswers || 1)) {
-      setSelected([...selected, id]);
-    }
-  };
-
-  const getEmbedUrl = (rawUrl) => {
-    if (!rawUrl) return null;
-    let videoId = '';
-    if (rawUrl.includes('youtu.be/')) {
-      videoId = rawUrl.split('youtu.be/')[1]?.split('?')[0];
-    } else if (rawUrl.includes('watch?v=')) {
-      videoId = rawUrl.split('watch?v=')[1]?.split('&')[0];
-    }
-    return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1` : null;
-  };
-
-  const handleIdeaSubmit = async (e) => {
-    e.preventDefault();
-    if (!newSuggestionText.trim() || !onAddSuggestion) return;
-    setSubmittingIdea(true);
-    await onAddSuggestion(newSuggestionText, newSuggestionYt);
-    setNewSuggestionText('');
-    setNewSuggestionYt('');
-    setSubmittingIdea(false);
-  };
-
-  const isPublished = survey.status === 'published' || isArchived;
-  const isSuggestionsOpen = survey.status === 'suggestions' && !isArchived;
-
-  return (
-    <div className={`bg-gray-900 border rounded-3xl overflow-hidden shadow-xl transition-all ${
-      survey.status === 'active' && !isArchived
-        ? 'border-orange-500/50'
-        : isSuggestionsOpen
-        ? 'border-amber-500/50'
-        : 'border-gray-800 opacity-85'
-    }`}>
-      <div className="p-5 sm:p-6 border-b border-gray-800 bg-gray-950/20 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-        <div>
-          <span className={`text-[10px] font-black uppercase block mb-1 ${isSuggestionsOpen ? 'text-amber-400' : 'text-orange-500'}`}>
-            {isArchived || survey.status === 'published'
-              ? 'Abstimmung Beendet'
-              : survey.status === 'active'
-              ? 'Live-Abstimmung'
-              : isSuggestionsOpen
-              ? '💡 Ideen-Box offen (Vorschläge willkommen)'
-              : 'Entwurf'} • {(survey.maxAnswers || 1) > 1 ? `Max. ${survey.maxAnswers} Stimmen` : '1 Stimme'} {survey.majorityType === 'two_thirds' ? '• ⅔ Mehrheit' : survey.majorityType === 'simple' ? '• Einfache Mehrheit' : ''} {survey.isAnonymous ? '• 🔒 Anonym' : ''}
-          </span>
-          <h4 className="text-lg sm:text-xl font-bold text-white leading-tight">{survey.title}</h4>
-        </div>
-        <div className="flex flex-col sm:items-end gap-3 shrink-0">
-          <div className="text-[10px] font-bold text-gray-400 bg-gray-950 px-3 py-1.5 rounded-lg border border-gray-800 flex items-center w-fit shadow-inner">
-            {isSuggestionsOpen ? (
-              <>
-                <Lightbulb size={12} className="mr-1.5 text-amber-400" />
-                {(survey.options || []).length} {(survey.options || []).length === 1 ? 'Vorschlag eingereicht' : 'Vorschläge eingereicht'}
-              </>
-            ) : (
-              <>
-                <Users size={12} className="mr-1.5 text-orange-500" />
-                {survey.votedUsers?.length || 0} / {eligibleUsersCount} haben abgestimmt
-              </>
-            )}
-          </div>
-          {currentUser.role === 'admin' && !isArchived && (
-            <div className="flex gap-1.5 sm:gap-2 items-center flex-wrap">
-              {survey.status === 'draft' && (
-                <button
-                  onClick={() => onStatusChange('suggestions')}
-                  className="bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-gray-950 border border-amber-500/40 text-[10px] font-black px-3.5 py-2.5 rounded-xl active:scale-95 transition-all min-h-[38px] flex items-center gap-1"
-                  title="Für Mitglieder-Vorschläge öffnen"
-                >
-                  <Lightbulb size={13} /> Ideen-Box öffnen
-                </button>
-              )}
-              {(survey.status === 'draft' || survey.status === 'suggestions') && (
-                <button
-                  onClick={() => onStatusChange('active')}
-                  disabled={(survey.options || []).length < 2}
-                  title={(survey.options || []).length < 2 ? 'Mindestens 2 Optionen erforderlich' : 'Abstimmung jetzt starten'}
-                  className="bg-green-500 text-gray-950 text-[10px] font-black px-4 py-2.5 rounded-xl active:scale-95 transition-all min-h-[38px] disabled:opacity-40"
-                >
-                  {survey.status === 'suggestions' ? 'Ideen schliessen & Voting starten' : 'Starten'}
-                </button>
-              )}
-              {survey.status === 'active' && (
-                <button onClick={() => onStatusChange('published')} className="bg-orange-500 text-gray-950 text-[10px] font-black px-4 py-2.5 rounded-xl active:scale-95 transition-all min-h-[38px]">
-                  Publizieren
-                </button>
-              )}
-              {survey.status === 'published' && (survey.options || []).length >= 2 && onCreateRunoff && (
-                <button
-                  onClick={onCreateRunoff}
-                  className="bg-amber-500 hover:bg-amber-400 text-gray-950 text-[10px] font-black px-3.5 py-2.5 rounded-xl active:scale-95 transition-all min-h-[38px] flex items-center gap-1 shadow-lg shadow-amber-500/15"
-                  title="Erstellt sofort eine neue Live-Abstimmung mit den bestplatzierten Optionen"
-                >
-                  <Zap size={13} /> Stichwahl (Top 2)
-                </button>
-              )}
-              <button onClick={() => onPresent(survey)} className="p-2.5 bg-gray-800 text-gray-400 hover:text-orange-500 rounded-lg transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center" title="Präsentationsmodus"><Maximize2 size={16}/></button>
-              <button onClick={onMoveUp} disabled={!onMoveUp} className="p-2.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors disabled:opacity-30 min-h-[38px] min-w-[38px] flex items-center justify-center" title="Nach oben"><ArrowUp size={16}/></button>
-              <button onClick={onMoveDown} disabled={!onMoveDown} className="p-2.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors disabled:opacity-30 min-h-[38px] min-w-[38px] flex items-center justify-center" title="Nach unten"><ArrowDown size={16}/></button>
-              <button onClick={onEdit}   className="p-2.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"><Edit2 size={16}/></button>
-              <button onClick={onDelete} className="p-2.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"><Trash2 size={16}/></button>
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="p-5 sm:p-6 space-y-3">
-        {activePlayerUrl && (
-          <div className="bg-gray-950 p-3 rounded-2xl border border-orange-500/40 relative animate-in fade-in">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-black uppercase text-orange-400 flex items-center gap-1.5"><Play size={14}/> Track Live-Anhören</span>
-              <button onClick={() => setActivePlayerUrl(null)} className="text-gray-400 hover:text-white p-1"><X size={16}/></button>
-            </div>
-            <div className="relative w-full pt-[56.25%] rounded-xl overflow-hidden bg-black">
-              <iframe
-                src={getEmbedUrl(activePlayerUrl)}
-                title="YouTube Player"
-                className="absolute inset-0 w-full h-full border-0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
-          </div>
-        )}
-
-        {isSuggestionsOpen && (
-          <div className="space-y-4">
-            <form onSubmit={handleIdeaSubmit} className="bg-amber-500/5 border border-amber-500/30 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-400">
-                <Lightbulb size={15} /> Eigenen Vorschlag / Liedwunsch einreichen
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2.5">
-                <input
-                  required
-                  value={newSuggestionText}
-                  onChange={e => setNewSuggestionText(e.target.value)}
-                  placeholder="z.B. Sujet-Idee oder Songtitel & Interpret..."
-                  className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white focus:border-amber-500 outline-none min-h-[44px]"
-                />
-                <div className="relative sm:w-64">
-                  <Youtube size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input
-                    value={newSuggestionYt}
-                    onChange={e => setNewSuggestionYt(e.target.value)}
-                    placeholder="YouTube-Link (optional)"
-                    className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-3 py-3 text-xs text-white focus:border-amber-500 outline-none min-h-[44px]"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={submittingIdea || !newSuggestionText.trim()}
-                  className="px-5 py-3 bg-amber-500 hover:bg-amber-400 text-gray-950 font-black rounded-xl text-xs active:scale-95 transition-all disabled:opacity-40 shrink-0 min-h-[44px]"
-                >
-                  {submittingIdea ? 'Sende...' : '+ Einreichen'}
-                </button>
-              </div>
-            </form>
-
-            <div className="space-y-2">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 px-1">
-                Bereits eingereichte Vorschläge ({(survey.options || []).length})
-              </p>
-              {(survey.options || []).length === 0 ? (
-                <div className="text-center py-6 bg-gray-950/60 border border-gray-800 border-dashed rounded-2xl text-xs text-gray-500">
-                  Noch keine Vorschläge vorhanden – mach den Anfang!
-                </div>
-              ) : (
-                (survey.options || []).map((o, idx) => {
-                  const canDelete = currentUser.role === 'admin' || o.suggestedById === currentUser.id;
-                  return (
-                    <div key={o.id || idx} className="p-3.5 bg-gray-950 border border-gray-800 rounded-xl flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <span className="w-6 h-6 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 font-black text-xs flex items-center justify-center shrink-0">
-                          {idx + 1}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-bold text-white text-sm truncate">{o.text}</p>
-                          {o.suggestedBy && (
-                            <p className="text-[10px] text-gray-500">Vorschlag von {o.suggestedBy}</p>
-                          )}
-                        </div>
-                        {o.youtubeUrl && (
-                          <button
-                            type="button"
-                            onClick={() => setActivePlayerUrl(activePlayerUrl === o.youtubeUrl ? null : o.youtubeUrl)}
-                            className="text-orange-400 hover:text-orange-300 bg-orange-500/10 px-2.5 py-1.5 rounded-lg border border-orange-500/20 text-xs flex items-center gap-1.5 shrink-0 transition-all"
-                          >
-                            <Play size={12}/> Anhören
-                          </button>
-                        )}
-                      </div>
-                      {canDelete && onDeleteSuggestion && (
-                        <button
-                          type="button"
-                          onClick={() => onDeleteSuggestion(o.id)}
-                          className="p-2 text-gray-500 hover:text-red-500 rounded-lg transition-colors shrink-0"
-                          title="Vorschlag entfernen"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
-
-        {isPublished && (survey.options || []).map(o => {
-          const pct = totalVotes === 0 ? 0 : Math.round(((o.votes || 0) / totalVotes) * 100);
-          const maxV = Math.max(...(survey.options || []).map(x => x.votes || 0));
-          const isWinner = totalVotes > 0 && (o.votes || 0) === maxV && maxV > 0;
-          return (
-            <div key={o.id} className={`relative h-14 bg-gray-950 border rounded-xl overflow-hidden flex items-center px-4 ${isWinner ? 'border-orange-500/70' : 'border-gray-800'}`}>
-              <div className="absolute left-0 top-0 h-full bg-orange-500/15 transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
-              <div className="flex-1 font-bold text-white z-10 flex items-center gap-2 min-w-0">
-                <span className="truncate">{o.text}</span>
-                {o.suggestedBy && (
-                  <span className="text-[10px] text-gray-500 font-normal hidden sm:inline shrink-0">({o.suggestedBy})</span>
-                )}
-                {o.youtubeUrl && (
-                  <button
-                    type="button"
-                    onClick={() => setActivePlayerUrl(activePlayerUrl === o.youtubeUrl ? null : o.youtubeUrl)}
-                    className="text-orange-400 hover:text-orange-300 bg-orange-500/10 px-2.5 py-1 rounded-lg border border-orange-500/20 text-xs flex items-center gap-1.5 transition-all shrink-0"
-                  >
-                    <Play size={12}/> Anhören
-                  </button>
-                )}
-              </div>
-              <div className="text-right z-10 ml-2">
-                <p className="text-sm font-black">{o.votes || 0}</p>
-                <p className="text-[9px] text-gray-600 font-bold tracking-tighter uppercase">{pct}%</p>
-              </div>
-            </div>
-          );
-        })}
-        {(!isPublished && !isSuggestionsOpen && (!hasVoted || survey.status === 'active')) ? (
-          <div className="space-y-3">
-            {!hasVoted && (survey.options || []).map(o => (
-              <div key={o.id} onClick={() => toggle(o.id)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between min-h-[52px] ${selected.includes(o.id) ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="min-w-0 flex-1">
-                    <span className="font-bold text-sm sm:text-base block truncate">{o.text}</span>
-                    {o.suggestedBy && (
-                      <span className="text-[10px] text-gray-500 block">Vorschlag von {o.suggestedBy}</span>
-                    )}
-                  </div>
-                  {o.youtubeUrl && (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setActivePlayerUrl(activePlayerUrl === o.youtubeUrl ? null : o.youtubeUrl); }}
-                      className="text-orange-400 hover:text-orange-300 bg-orange-500/10 px-2.5 py-1 rounded-lg border border-orange-500/20 text-xs flex items-center gap-1.5 shrink-0 transition-all"
-                    >
-                      <Play size={12}/> Anhören
-                    </button>
-                  )}
-                </div>
-                <div className={`w-6 h-6 rounded-lg border-2 ${selected.includes(o.id) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'} flex items-center justify-center transition-all shrink-0 ml-3`}>
-                  {selected.includes(o.id) && <Check size={16} strokeWidth={4} className="text-gray-950" />}
-                </div>
-              </div>
-            ))}
-            {!hasVoted && (
-              <button
-                disabled={selected.length === 0 || voting}
-                onClick={async () => { setVoting(true); await onVote(selected); setVoting(false); }}
-                className="w-full mt-3 bg-orange-500 text-gray-950 font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30 min-h-[48px]"
-              >
-                {voting ? 'Wird gesendet...' : `Abstimmung senden (${selected.length}/${survey.maxAnswers || 1})`}
-              </button>
-            )}
-            {!hasVoted && selected.length > 0 && survey.options.length > 4 && (
-              <div className="fixed bottom-20 sm:bottom-6 left-4 right-4 z-[160] max-w-md mx-auto bg-gray-900/95 backdrop-blur-xl border-2 border-orange-500 p-3 rounded-2xl shadow-2xl flex items-center justify-between gap-3 animate-in slide-in-from-bottom-4">
-                <div className="pl-2">
-                  <p className="text-[10px] font-black uppercase text-orange-400">Auswahl bereit</p>
-                  <p className="text-xs font-bold text-white">{selected.length} von {survey.maxAnswers || 1} Stimmen gewählt</p>
-                </div>
-                <button
-                  disabled={voting}
-                  onClick={async () => { setVoting(true); await onVote(selected); setVoting(false); }}
-                  className="px-5 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-xs active:scale-95 transition-all shadow-lg"
-                >
-                  {voting ? 'Sende...' : 'Jetzt absenden ✓'}
-                </button>
-              </div>
-            )}
-          </div>
-        ) : null}
-        {hasVoted && !isPublished && (
-          <div className="text-center py-8 space-y-2">
-            <p className="text-green-500 font-black text-lg">✓ Stimme erfasst</p>
-            <p className="text-gray-500 text-sm">Die Resultate werden erst nach der offiziellen Veröffentlichung durch den Vorstand angezeigt.</p>
-          </div>
-        )}
-      </div>
-      {isEditing && (
-        <div className="border-t border-gray-800 p-4 bg-gray-950/50">
-          <CreateSurveyForm
-            initialData={survey}
-            onSubmit={onSaveEdit}
-            onCancel={onCancelEdit}
-            inline
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MembersView({ users, notify, askConfirm }) {
-  const [showAdd,     setShowAdd]     = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
-  const [filterGroup, setFilterGroup] = useState('Alle');
-  const [searchTerm,  setSearchTerm]  = useState('');
-
-  const filteredUsers = useMemo(() => {
-    let result = users;
-    if (filterGroup === 'Keine Gruppe') result = result.filter(u => !u.groups || u.groups.length === 0);
-    else if (filterGroup !== 'Alle') result = result.filter(u => u.groups?.includes(filterGroup));
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      result = result.filter(u =>
-        u.firstName?.toLowerCase().includes(term) ||
-        u.lastName?.toLowerCase().includes(term) ||
-        `${u.firstName} ${u.lastName}`.toLowerCase().includes(term)
-      );
-    }
-    return result;
-  }, [users, filterGroup, searchTerm]);
-
-  const saveMember = async (m) => {
-    const id = m.id || Date.now().toString();
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', id), { ...m, id });
-    setShowAdd(false);
-    setEditingUser(null);
-    notify("Mitglied gespeichert.", "success");
-  };
-
-  const handleImportCSV = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const text = event.target.result;
-      const lines = text.split(/\r?\n/);
-      let count = 0;
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        const parts = line.split(/[,;]/);
-        if (parts.length >= 2) {
-          const firstName = sanitizeName(parts[0]);
-          const lastName  = sanitizeName(parts[1]);
-          if (firstName && lastName && firstName.toLowerCase() !== 'vorname') {
-            const alreadyExists = users.some(
-              u => u.firstName.toLowerCase() === firstName.toLowerCase() &&
-                   u.lastName.toLowerCase()  === lastName.toLowerCase()
-            );
-            if (!alreadyExists) {
-              const id = `${Date.now()}_${i}`;
-              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', id), {
-                id, firstName, lastName, role: 'member', groups: []
-              });
-              count++;
-            }
-          }
-        }
-      }
-      notify(`${count} Mitglieder wurden erfolgreich importiert.`, "success");
-      e.target.value = '';
-    };
-    reader.readAsText(file);
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-black text-white">Mitglieder</h2>
-          <p className="text-gray-500 text-sm mt-1">Verwalte Rollen und Gruppenberechtigungen</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold px-4 py-3.5 rounded-2xl flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-lg min-h-[48px]" title="CSV Import (Format: Vorname;Nachname)">
-            <UploadCloud size={20} /> <span className="hidden sm:inline">CSV Import</span>
-            <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} />
-          </label>
-          <button onClick={() => setShowAdd(!showAdd)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3.5 rounded-2xl flex items-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/10 min-h-[48px]">
-            {showAdd ? 'Abbrechen' : <><UserPlus size={20} /> Neu</>}
-          </button>
-        </div>
-      </div>
-
-      {showAdd && <MemberForm onSubmit={saveMember} onCancel={() => setShowAdd(false)} />}
-
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-        <input
-          type="text"
-          placeholder="Mitglied suchen..."
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-3.5 pl-11 pr-10 text-white focus:border-orange-500 outline-none transition-all min-h-[48px]"
-        />
-        {searchTerm && (
-          <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white p-2 min-h-[44px] min-w-[44px] flex items-center justify-center">
-            <X size={16} />
-          </button>
-        )}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {['Alle', ...GROUPS, 'Keine Gruppe'].map(g => (
-          <button
-            key={g}
-            onClick={() => setFilterGroup(g)}
-            className={`px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 min-h-[40px] flex items-center ${
-              filterGroup === g
-                ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/20'
-                : 'bg-gray-900 border border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'
-            }`}
-          >
-            {g} {g !== 'Alle' ? `(${g === 'Keine Gruppe' ? users.filter(u => !u.groups || u.groups.length === 0).length : users.filter(u => u.groups?.includes(g)).length})` : `(${users.length})`}
-          </button>
-        ))}
-      </div>
-
-      <div className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-2xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-gray-950 text-[10px] font-black text-gray-600 uppercase tracking-widest border-b border-gray-800">
-                <th className="px-6 py-5">Name & Gruppen</th>
-                <th className="px-6 py-5">Rolle</th>
-                <th className="px-6 py-5">Sicherheit</th>
-                <th className="px-6 py-5 text-right">Optionen</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800">
-              {users.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-6 py-8">
-                    <div className="space-y-3 animate-pulse">
-                      {[1, 2, 3].map(i => (
-                        <div key={i} className="h-10 bg-gray-800 rounded-xl w-full"></div>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredUsers.map(u => (
-                  <React.Fragment key={u.id}>
-                    <tr className="hover:bg-gray-800/30 transition-colors">
-                      <td className="px-6 py-5">
-                        <p className="font-bold text-white text-base sm:text-lg">{u.firstName} {u.lastName}</p>
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {u.groups?.map(g => <span key={g} className="text-[8px] bg-gray-950 border border-gray-800 px-2 py-0.5 rounded text-gray-500 uppercase font-black">{g}</span>)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-md ${u.role === 'admin' ? 'bg-orange-500/10 text-orange-500' : 'bg-gray-800 text-gray-400'}`}>
-                          {u.role === 'admin' ? 'Admin' : 'Mitglied'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-5">
-                        {u.groups?.includes('Vorstand') ? (
-                          u.password ? <span className="text-green-500 flex items-center gap-1 text-[10px] font-black"><Lock size={12}/> AKTIV</span> : <span className="text-orange-500 flex items-center gap-1 text-[10px] font-black animate-pulse"><Unlock size={12}/> OFFEN</span>
-                        ) : <span className="text-gray-700 text-[10px] font-black uppercase">—</span>}
-                      </td>
-                      <td className="px-6 py-5 text-right whitespace-nowrap">
-                        <button onClick={() => setEditingUser(editingUser?.id === u.id ? null : u)} className={`transition-colors p-3 rounded-xl active:scale-90 mr-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center ${editingUser?.id === u.id ? 'text-orange-500 bg-orange-500/10' : 'text-gray-400 hover:text-orange-500 hover:bg-orange-500/10'}`}><Edit2 size={18}/></button>
-                        <button
-                          onClick={() =>
-                            askConfirm(
-                              'Mitglied entfernen?',
-                              `Soll ${u.firstName} ${u.lastName} wirklich entfernt werden?`,
-                              async () => {
-                                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id));
-                                notify("Mitglied entfernt.", "info");
-                              },
-                              'Entfernen'
-                            )
-                          }
-                          className="text-gray-400 hover:text-red-500 transition-colors p-3 hover:bg-red-500/10 rounded-xl active:scale-90 min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
-                        >
-                          <Trash2 size={18}/>
-                        </button>
-                      </td>
-                    </tr>
-                    {editingUser?.id === u.id && (
-                      <tr>
-                        <td colSpan={4} className="px-4 pb-4 bg-gray-900">
-                          <MemberForm
-                            initialData={editingUser}
-                            onSubmit={async (m) => { await saveMember(m); }}
-                            onCancel={() => setEditingUser(null)}
-                            inline
-                          />
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MemberForm({ onSubmit, onCancel, initialData, inline = false }) {
-  const [form, setForm] = useState(initialData || { firstName: '', lastName: '', role: 'member', groups: [] });
-  const toggleGroup = g => setForm(f => ({ ...f, groups: f.groups.includes(g) ? f.groups.filter(x => x !== g) : [...f.groups, g] }));
-
-  return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className={`space-y-6 animate-in slide-in-from-top-2 duration-200 ${inline ? "p-4 pt-2" : "bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl mb-8 shadow-2xl"}`}>
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="space-y-1">
-          <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Vorname</label>
-          <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all min-h-[48px]" placeholder="z.B. Max" value={form.firstName} onChange={e => setForm({...form, firstName: e.target.value})} />
-        </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Nachname</label>
-          <input required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all min-h-[48px]" placeholder="z.B. Muster" value={form.lastName} onChange={e => setForm({...form, lastName: e.target.value})} />
-        </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Rolle</label>
-          <select required className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:border-orange-500 outline-none transition-all min-h-[48px]" value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
-            <option value="member" className="bg-gray-900">Mitglied</option>
-            <option value="admin" className="bg-gray-900">Administrator</option>
-          </select>
-        </div>
-      </div>
-      <div className="space-y-3">
-        <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Gruppen-Berechtigungen</label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          {GROUPS.map(g => (
-            <label key={g} className={`flex items-center gap-2 p-3.5 rounded-xl border-2 cursor-pointer transition-all min-h-[48px] ${form.groups.includes(g) ? 'bg-orange-500/10 border-orange-500 text-white shadow-lg' : 'bg-gray-950 border-gray-800 text-gray-500 hover:border-gray-700'}`}>
-              <input type="checkbox" className="hidden" checked={form.groups.includes(g)} onChange={() => toggleGroup(g)} />
-              <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${form.groups.includes(g) ? 'bg-orange-500 border-orange-500' : 'border-gray-800'}`}>
-                {form.groups.includes(g) && <Check size={12} className="text-gray-950" strokeWidth={4} />}
-              </div>
-              <span className="text-[10px] font-black uppercase tracking-tighter truncate">{g}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-      <div className="flex justify-end gap-4 pt-6 border-t border-gray-800">
-        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white font-bold transition-colors min-h-[44px]">Abbrechen</button>
-        <button type="submit" className="bg-orange-500 text-gray-950 font-black px-8 py-3.5 rounded-2xl shadow-lg active:scale-95 transition-all min-h-[48px]">Mitglied speichern</button>
-      </div>
-    </form>
-  );
-}
-
-function FilesView({ folders, files, currentUser, notify, askConfirm }) {
-  const [selectedFolder, setSelectedFolder] = useState(null);
-  const [showNewFolder,  setShowNewFolder]  = useState(false);
-  const [folderName,     setFolderName]     = useState('');
-  const [uploading,      setUploading]      = useState({});
-  const [dragOver,       setDragOver]       = useState(false);
-  const [fileSearch,     setFileSearch]     = useState('');
-  const [previewDoc,     setPreviewDoc]     = useState(null);
-
-  const folderFiles = useMemo(() =>
-    selectedFolder ? files.filter(f => f.folderId === selectedFolder.id) : [],
-    [files, selectedFolder]
-  );
-
-  const globalMatchedFiles = useMemo(() => {
-    if (!fileSearch.trim()) return [];
-    const term = fileSearch.toLowerCase();
-    return files.filter(f => f.name?.toLowerCase().includes(term));
-  }, [files, fileSearch]);
-
-  const createFolder = async (e) => {
-    e.preventDefault();
-    if (!folderName.trim()) return;
-    const id = Date.now().toString();
-    const newFolder = {
-      id, name: folderName.trim(), createdAt: new Date().toISOString(), createdBy: currentUser.id
-    };
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'folders', id), newFolder);
-    setFolderName('');
-    setShowNewFolder(false);
-    setSelectedFolder(newFolder);
-    notify(`Ordner "${newFolder.name}" erstellt.`, "success");
-  };
-
-  const deleteFolder = (folder) => {
-    askConfirm(
-      'Ordner löschen?',
-      `Ordner "${folder.name}" und alle enthaltenen Dateien wirklich löschen?`,
-      async () => {
-        const folderFilesList = files.filter(f => f.folderId === folder.id);
-        for (const f of folderFilesList) {
-          if (f.storagePath) {
-            try { await deleteObject(ref(storage, f.storagePath)); } catch(e) {}
-          }
-          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', f.id));
-        }
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'folders', folder.id));
-        if (selectedFolder?.id === folder.id) setSelectedFolder(null);
-        notify(`Ordner "${folder.name}" gelöscht.`, "info");
-      },
-      'Ordner löschen'
-    );
-  };
-
-  const handleUpload = (fileList) => {
-    if (!selectedFolder || !fileList) return;
-    Array.from(fileList).forEach(file => {
-      const uploadId = Date.now().toString() + Math.random().toString(36).substr(2, 4);
-      const storagePath = `artifacts/${appId}/public/files/${selectedFolder.id}/${Date.now()}_${file.name}`;
-      setUploading(prev => ({ ...prev, [uploadId]: { name: file.name, progress: 10 } }));
-
-      const saveFallbackToFirestore = async () => {
-        try {
-          if (file.size > 750 * 1024) {
-            notify(`"${file.name}" ist grösser als 750 KB.`, "error");
-            setUploading(prev => { const n = { ...prev }; delete n[uploadId]; return n; });
-            return;
-          }
-          const dataUrl = await readFileAsDataURL(file);
-          const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 4);
-          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', fileId), {
-            id: fileId,
-            name: file.name,
-            url: dataUrl,
-            storagePath: null,
-            folderId: selectedFolder.id,
-            size: file.size,
-            type: file.type,
-            uploadedAt: new Date().toISOString(),
-            uploadedBy: currentUser.id
-          });
-          notify(`"${file.name}" in Dateiablage gespeichert.`, "success");
-        } catch (err) {
-          console.error(err);
-          notify(`Fehler beim Speichern von "${file.name}".`, "error");
-        } finally {
-          setUploading(prev => { const n = { ...prev }; delete n[uploadId]; return n; });
-        }
-      };
-
-      try {
-        const storageRef = ref(storage, storagePath);
-        const task = uploadBytesResumable(storageRef, file);
-        task.on('state_changed',
-          snap => setUploading(prev => ({
-            ...prev,
-            [uploadId]: { name: file.name, progress: Math.round((snap.bytesTransferred / snap.totalBytes) * 100) || 20 }
-          })),
-          async () => {
-            await saveFallbackToFirestore();
-          },
-          async () => {
-            try {
-              const url = await getDownloadURL(task.snapshot.ref);
-              const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 4);
-              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', fileId), {
-                id: fileId, name: file.name, url, storagePath, folderId: selectedFolder.id,
-                size: file.size, type: file.type, uploadedAt: new Date().toISOString(), uploadedBy: currentUser.id
-              });
-              notify(`"${file.name}" hochgeladen.`, "success");
-              setUploading(prev => { const n = { ...prev }; delete n[uploadId]; return n; });
-            } catch (_) {
-              await saveFallbackToFirestore();
-            }
-          }
-        );
-      } catch (_) {
-        saveFallbackToFirestore();
-      }
-    });
-  };
-
-  const deleteFile = (f) => {
-    askConfirm(
-      'Datei löschen?',
-      `Möchtest du die Datei "${f.name}" wirklich löschen?`,
-      async () => {
-        if (f.storagePath) {
-          try { await deleteObject(ref(storage, f.storagePath)); } catch(e) {}
-        }
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', f.id));
-        notify(`Datei "${f.name}" gelöscht.`, "info");
-      },
-      'Löschen'
-    );
-  };
-
-  const formatSize = (bytes) => {
-    if (!bytes) return '';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const getFileIcon = (type) => {
-    if (type?.includes('pdf')) return '📄';
-    if (type?.includes('image')) return '🖼️';
-    if (type?.includes('word') || type?.includes('document')) return '📝';
-    if (type?.includes('excel') || type?.includes('sheet')) return '📊';
-    return '📁';
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-black text-white">Dateiablage</h2>
-          <p className="text-gray-500 text-sm mt-1">Dokumente, Reglemente und Vorlagen geordnet verwalten</p>
-        </div>
-        <button onClick={() => setShowNewFolder(!showNewFolder)} className="bg-orange-500 text-gray-950 font-bold px-6 py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 w-full sm:w-auto min-h-[48px]">
-          <FolderPlus size={20} /> Neuer Ordner
-        </button>
-      </div>
-
-      {showNewFolder && (
-        <form onSubmit={createFolder} className="flex flex-col sm:flex-row gap-3 bg-gray-900 border border-gray-800 p-4 rounded-2xl animate-in slide-in-from-top-2">
-          <input
-            autoFocus required value={folderName} onChange={e => setFolderName(e.target.value)}
-            placeholder="Ordnername eingeben..."
-            className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[48px]"
-          />
-          <div className="flex gap-2">
-            <button type="submit" className="flex-1 sm:flex-none px-6 py-3.5 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all min-h-[48px] flex items-center justify-center"><Save size={18}/></button>
-            <button type="button" onClick={() => setShowNewFolder(false)} className="px-5 py-3.5 bg-gray-800 text-gray-400 rounded-xl hover:text-white transition-all min-h-[48px] flex items-center justify-center"><X size={18}/></button>
-          </div>
-        </form>
-      )}
-
-      {files.length > 0 && (
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-          <input
-            type="text"
-            value={fileSearch}
-            onChange={e => setFileSearch(e.target.value)}
-            placeholder="In allen Ordnern nach Dateinamen suchen..."
-            className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-3.5 pl-11 pr-10 text-white focus:border-orange-500 outline-none transition-all text-sm min-h-[48px]"
-          />
-          {fileSearch && (
-            <button onClick={() => setFileSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white p-2 min-h-[44px] min-w-[44px] flex items-center justify-center">
-              <X size={16} />
-            </button>
-          )}
-        </div>
-      )}
-
-      {fileSearch.trim() && (
-        <div className="bg-gray-900 border border-orange-500/30 rounded-3xl p-4 space-y-2 animate-in fade-in">
-          <p className="text-xs font-black uppercase tracking-widest text-orange-500 px-2 mb-2">
-            Suchergebnisse ({globalMatchedFiles.length})
-          </p>
-          {globalMatchedFiles.length === 0 ? (
-            <p className="text-xs text-gray-500 px-2 py-4">Keine Datei mit «{fileSearch}» gefunden.</p>
-          ) : (
-            globalMatchedFiles.map(f => {
-              const parentFolder = folders.find(fl => fl.id === f.folderId);
-              return (
-                <div key={f.id} className="flex items-center gap-3 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5">
-                  <span className="text-xl shrink-0">{getFileIcon(f.type)}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-white text-sm truncate">{f.name}</p>
-                    <p className="text-[10px] text-gray-500">
-                      Ordner: <span className="text-orange-400 font-bold">{parentFolder?.name || 'Unbekannt'}</span> • {formatSize(f.size)}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewDoc(f)}
-                    className="p-3 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all border border-gray-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                    title="Vorschau"
-                  >
-                    <Eye size={16}/>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => triggerFileDownload(f.url, f.name)}
-                    className="p-3 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all border border-gray-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                    title="Herunterladen"
-                  >
-                    <Download size={16}/>
-                  </button>
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-        {folders.length === 0 ? (
-          <div className="col-span-full space-y-3">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="bg-gray-900 border border-gray-800 p-4 rounded-2xl animate-pulse">
-                <div className="h-8 w-8 bg-gray-800 rounded-lg mb-2"></div>
-                <div className="h-4 bg-gray-800 rounded w-1/2"></div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          folders.map(folder => (
-            <div
-              key={folder.id}
-              onClick={() => setSelectedFolder(selectedFolder?.id === folder.id ? null : folder)}
-              className={`bg-gray-900 border rounded-2xl p-4 cursor-pointer transition-all active:scale-95 group relative ${selectedFolder?.id === folder.id ? 'border-orange-500 bg-orange-500/5 shadow-lg shadow-orange-500/5' : 'border-gray-800 hover:border-gray-700'}`}
-            >
-              <Folder size={32} className={`mb-2 ${selectedFolder?.id === folder.id ? 'text-orange-500' : 'text-gray-600 group-hover:text-gray-400'}`} />
-              <p className="font-bold text-white text-sm truncate">{folder.name}</p>
-              <p className="text-[10px] text-gray-600 mt-1">{files.filter(f => f.folderId === folder.id).length} Dateien</p>
-              <button
-                onClick={e => { e.stopPropagation(); deleteFolder(folder); }}
-                className="absolute top-2 right-2 p-2.5 text-gray-700 hover:text-red-500 opacity-0 group-hover:opacity-100 bg-gray-950 rounded-lg transition-all min-h-[40px] min-w-[40px] flex items-center justify-center"
-              ><Trash2 size={14}/></button>
-            </div>
-          ))
-        )}
-      </div>
-
-      {selectedFolder && (
-        <div className="bg-gray-900 border border-orange-500/30 rounded-3xl overflow-hidden animate-in slide-in-from-top-2 duration-300 shadow-2xl">
-          <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-orange-500/5">
-            <div className="flex items-center gap-3 min-w-0">
-              <Folder size={20} className="text-orange-500 shrink-0"/>
-              <h3 className="font-black text-white text-lg truncate">{selectedFolder.name}</h3>
-              <span className="text-[10px] text-gray-500 font-bold shrink-0">{folderFiles.length} Dateien</span>
-            </div>
-          </div>
-
           <div
-            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={e => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files); }}
-            className={`mx-4 mt-4 border-2 border-dashed rounded-2xl p-6 text-center transition-all ${dragOver ? 'border-orange-500 bg-orange-500/10' : 'border-gray-800 hover:border-gray-700'}`}
-          >
-            <UploadCloud size={28} className="mx-auto text-orange-500/70 mb-2"/>
-            <p className="text-gray-400 text-sm font-bold">Dateien per Drag & Drop hier ablegen oder</p>
-            <label className="mt-2 inline-block cursor-pointer text-orange-500 font-black text-sm hover:underline py-1">
-              Dateien vom Gerät auswählen
-              <input type="file" multiple className="hidden" onChange={e => { handleUpload(e.target.files); e.target.value = ''; }} />
-            </label>
-          </div>
-
-          {Object.entries(uploading).map(([id, u]) => (
-            <div key={id} className="mx-4 mt-2 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 flex items-center gap-3">
-              <div className="flex-1">
-                <p className="text-xs font-bold text-white truncate">{u.name}</p>
-                <div className="w-full h-1.5 bg-gray-800 rounded-full mt-1 overflow-hidden">
-                  <div className="h-full bg-orange-500 rounded-full transition-all" style={{ width: `${u.progress}%` }}/>
-                </div>
-              </div>
-              <span className="text-[11px] text-orange-500 font-bold shrink-0">{u.progress}%</span>
-            </div>
-          ))}
-
-          <div className="p-4 space-y-2">
-            {folderFiles.length === 0 && Object.keys(uploading).length === 0 && (
-              <p className="text-center text-gray-700 text-xs py-6 font-bold uppercase tracking-widest">Noch keine Dateien in diesem Ordner</p>
-            )}
-            {folderFiles.map(f => (
-              <div key={f.id} className="flex items-center gap-3 bg-gray-950 border border-gray-800 hover:border-gray-700 rounded-xl px-4 py-3.5 group transition-all">
-                <span className="text-xl shrink-0">{getFileIcon(f.type)}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-white text-sm truncate">{f.name}</p>
-                  <p className="text-[10px] text-gray-500">{formatSize(f.size)} • {new Date(f.uploadedAt).toLocaleDateString('de-CH')}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPreviewDoc(f)}
-                  className="p-3 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all shrink-0 border border-gray-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                  title="Vorschau öffnen"
-                >
-                  <Eye size={16}/>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => triggerFileDownload(f.url, f.name)}
-                  className="p-3 text-gray-400 hover:text-orange-500 bg-gray-900 rounded-xl transition-all shrink-0 border border-gray-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                  title="Herunterladen"
-                >
-                  <Download size={16}/>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => deleteFile(f)}
-                  className="p-3 text-gray-500 hover:text-red-500 bg-gray-900 rounded-xl transition-all shrink-0 border border-gray-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                  title="Löschen"
-                >
-                  <Trash2 size={16}/>
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {previewDoc && (
-        <FilePreviewModal docItem={previewDoc} onClose={() => setPreviewDoc(null)} />
-      )}
-    </div>
-  );
-}
-
-function CalendarView({ calItems, currentUser, notify, askConfirm }) {
-  const [showAdd,      setShowAdd]      = useState(false);
-  const [editing,      setEditing]      = useState(null);
-  const [viewMonth,    setViewMonth]    = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState(null);
-
-  const saveItem = async (item) => {
-    const id = item.id || Date.now().toString();
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'calendar', id), { ...item, id });
-    setShowAdd(false);
-    setEditing(null);
-    notify("Termin erfolgreich gespeichert.", "success");
-  };
-
-  const deleteItem = (id) => {
-    askConfirm(
-      'Termin löschen?',
-      'Möchtest du diesen Kalendereintrag wirklich löschen?',
-      async () => {
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'calendar', id));
-        notify("Termin gelöscht.", "info");
-      },
-      'Löschen'
-    );
-  };
-
-  const year  = viewMonth.getFullYear();
-  const month = viewMonth.getMonth();
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const startOffset = firstDay === 0 ? 6 : firstDay - 1;
-
-  const itemsByDate = useMemo(() => {
-    const map = {};
-    calItems.forEach(item => {
-      const key = item.date?.slice(0, 10);
-      if (key) { if (!map[key]) map[key] = []; map[key].push(item); }
-    });
-    return map;
-  }, [calItems]);
-
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const monthNames = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
-  const dayNames = ['Mo','Di','Mi','Do','Fr','Sa','So'];
-
-  const upcomingItems = useMemo(() =>
-    [...calItems]
-      .filter(i => i.date >= todayStr)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(0, 8),
-    [calItems, todayStr]
-  );
-
-  const selectedDayItems = selectedDate ? (itemsByDate[selectedDate] || []) : [];
-
-  const handleICSExport = () => {
-    downloadICSFile(calItems, 'ruesssuuger_kalender.ics');
-    notify("Kalender als .ics-Datei heruntergeladen! Du kannst sie nun in Apple Kalender oder Google Calendar öffnen.", "success");
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-black text-white">Vereinskalender</h2>
-          <p className="text-gray-500 text-sm mt-1">ICS-Export & Live-Terminsynchronisation</p>
-        </div>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-          <button
-            onClick={handleICSExport}
-            className="bg-orange-500 hover:bg-orange-400 text-gray-950 font-black px-5 py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/20 min-h-[48px]"
-            title="Alle Termine als .ics-Datei exportieren"
-          >
-            <CalendarDays size={18} /> Kalender exportieren (.ics)
-          </button>
-          <button
-            onClick={() => { setEditing(null); setShowAdd(!showAdd); }}
-            className="bg-gray-900 hover:bg-gray-800 text-white border border-gray-800 font-bold px-6 py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all min-h-[48px]"
-          >
-            <Plus size={20} /> Neuer Termin
-          </button>
-        </div>
-      </div>
-
-      {(showAdd || editing) && (
-        <CalendarItemForm
-          initialData={editing || (selectedDate ? { title: '', date: selectedDate, time: '', location: '', description: '' } : null)}
-          onSave={saveItem}
-          onCancel={() => { setShowAdd(false); setEditing(null); }}
-        />
-      )}
-
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-xl">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-950/40">
-            <button onClick={() => setViewMonth(new Date(year, month - 1, 1))} className="p-3 bg-gray-800 rounded-xl hover:text-orange-500 transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center">
-              <ChevronRight className="rotate-180" size={18}/>
-            </button>
-            <div className="flex items-center gap-3">
-              <h3 className="font-black text-white text-base sm:text-lg">{monthNames[month]} {year}</h3>
-              <button
-                onClick={() => setViewMonth(new Date())}
-                className="text-[10px] font-black uppercase px-3 py-1.5 rounded-lg bg-gray-800 text-gray-400 hover:text-white min-h-[36px] flex items-center"
-              >
-                Heute
-              </button>
-            </div>
-            <button onClick={() => setViewMonth(new Date(year, month + 1, 1))} className="p-3 bg-gray-800 rounded-xl hover:text-orange-500 transition-all active:scale-90 min-h-[44px] min-w-[44px] flex items-center justify-center">
-              <ChevronRight size={18}/>
-            </button>
-          </div>
-
-          <div className="p-3 sm:p-4">
-            <div className="grid grid-cols-7 mb-2">
-              {dayNames.map(d => (
-                <div key={d} className="text-center text-[10px] font-black text-gray-600 uppercase py-1">{d}</div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-              {Array.from({ length: startOffset }).map((_, i) => <div key={`e${i}`}/>)}
-              {Array.from({ length: daysInMonth }).map((_, i) => {
-                const day = i + 1;
-                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const dayItems = itemsByDate[dateStr] || [];
-                const isToday = dateStr === todayStr;
-                const isSelected = dateStr === selectedDate;
-                return (
-                  <div
-                    key={day}
-                    onClick={() => setSelectedDate(isSelected ? null : dateStr)}
-                    className={`min-h-[64px] sm:min-h-[72px] rounded-xl p-1.5 border cursor-pointer transition-all ${
-                      isSelected
-                        ? 'border-orange-500 bg-orange-500/15'
-                        : isToday
-                        ? 'border-orange-500/60 bg-orange-500/5'
-                        : 'border-gray-800/40 hover:border-gray-700 bg-gray-950/30'
-                    }`}
-                  >
-                    <p className={`text-xs font-black text-center mb-1 ${isToday || isSelected ? 'text-orange-500' : 'text-gray-400'}`}>{day}</p>
-                    {dayItems.slice(0, 2).map(item => (
-                      <div
-                        key={item.id}
-                        onClick={(e) => { e.stopPropagation(); setEditing(item); }}
-                        className="text-[9px] font-bold truncate px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 mb-0.5"
-                      >
-                        {item.time ? `${item.time} ` : ''}{item.title}
-                      </div>
-                    ))}
-                    {dayItems.length > 2 && <p className="text-[9px] text-orange-400 font-bold text-center">+{dayItems.length - 2}</p>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {selectedDate && (
-            <div className="px-6 py-4 border-t border-gray-800 bg-gray-950/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-black text-orange-500 uppercase">
-                  Ausgewählter Tag: {new Date(selectedDate).toLocaleDateString('de-CH', { dateStyle: 'full' })}
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {selectedDayItems.length === 0 ? 'Keine Termine an diesem Tag' : `${selectedDayItems.length} Termin(e) eingetragen`}
-                </p>
-              </div>
-              <button
-                onClick={() => { setEditing(null); setShowAdd(true); }}
-                className="px-4 py-2.5 bg-orange-500 text-gray-950 font-black rounded-xl text-xs active:scale-95 transition-all min-h-[40px]"
-              >
-                + Termin an diesem Tag
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <h3 className="font-black text-white text-lg flex items-center gap-2">
-            <Clock size={18} className="text-orange-500"/> Kommende Termine
-          </h3>
-          {calItems.length === 0 ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 animate-pulse">
-                  <div className="h-4 bg-gray-800 rounded w-3/4 mb-2"></div>
-                  <div className="h-3 bg-gray-800 rounded w-1/2"></div>
-                </div>
-              ))}
-            </div>
-          ) : upcomingItems.length === 0 ? (
-            <div className="bg-gray-900 border border-gray-800 border-dashed rounded-2xl p-6 text-center">
-              <p className="text-gray-600 text-xs font-bold uppercase tracking-widest">Keine kommenden Termine</p>
-            </div>
-          ) : upcomingItems.map(item => (
-            <div key={item.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 hover:border-gray-700 transition-all group shadow-lg">
-              <div className="flex justify-between items-start gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="font-black text-white truncate">{item.title}</p>
-                  <p className="text-[11px] text-orange-500 font-bold mt-1 flex items-center gap-1">
-                    <CalendarDays size={12}/> {new Date(item.date).toLocaleDateString('de-CH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
-                    {item.time && <><Clock size={12} className="ml-2"/>{item.time}</>}
-                  </p>
-                  {item.location && <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-1"><MapPin size={12} className="text-gray-500"/>{item.location}</p>}
-                  {item.description && <p className="text-xs text-gray-500 mt-2 line-clamp-2">{item.description}</p>}
-                </div>
-                <div className="flex gap-1.5 shrink-0">
-                  <button
-                    onClick={() => {
-                      downloadICSFile(item, `${item.title.replace(/\s+/g, '_')}.ics`);
-                      notify(`"${item.title}" als .ics heruntergeladen.`, "success");
-                    }}
-                    title="Diesen Termin als .ics herunterladen"
-                    className="p-3 bg-gray-950 border border-gray-800 text-orange-500 hover:bg-orange-500 hover:text-gray-950 rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
-                  >
-                    <Download size={14}/>
-                  </button>
-                  <button
-                    onClick={() => setEditing(item)}
-                    title="Bearbeiten"
-                    className="p-3 bg-gray-950 border border-gray-800 text-gray-400 hover:text-white rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
-                  >
-                    <Edit2 size={14}/>
-                  </button>
-                  <button
-                    onClick={() => deleteItem(item.id)}
-                    title="Löschen"
-                    className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 rounded-xl transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
-                  >
-                    <Trash2 size={14}/>
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CalendarItemForm({ initialData, onSave, onCancel }) {
-  const [form, setForm] = useState(initialData || {
-    title: '', date: new Date().toISOString().slice(0, 10), time: '', location: '', description: ''
-  });
-
-  return (
-    <form onSubmit={e => { e.preventDefault(); onSave(form); }} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl space-y-4 animate-in slide-in-from-top-2 duration-200 shadow-2xl">
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="md:col-span-2 space-y-1">
-          <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Titel</label>
-          <input required value={form.title} onChange={e => setForm({...form, title: e.target.value})} placeholder="z.B. Vorstandssitzung" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[48px]"/>
-        </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Datum</label>
-          <input required type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[48px]"/>
-        </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Uhrzeit (optional)</label>
-          <input type="time" value={form.time} onChange={e => setForm({...form, time: e.target.value})} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[48px]"/>
-        </div>
-        <div className="md:col-span-2 space-y-1">
-          <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Ort (optional)</label>
-          <input value={form.location} onChange={e => setForm({...form, location: e.target.value})} placeholder="z.B. Vereinslokal Ämme" className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none min-h-[48px]"/>
-        </div>
-        <div className="md:col-span-2 space-y-1">
-          <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Beschreibung (optional)</label>
-          <textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Weitere Details..." rows={3} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white focus:border-orange-500 outline-none resize-none"/>
-        </div>
-      </div>
-      <div className="flex justify-end gap-3 pt-2 border-t border-gray-800">
-        <button type="button" onClick={onCancel} className="px-6 py-3.5 text-gray-500 hover:text-white font-bold transition-colors min-h-[48px]">Abbrechen</button>
-        <button type="submit" className="px-8 py-3.5 bg-orange-500 text-gray-950 font-black rounded-xl active:scale-95 transition-all shadow-lg flex items-center gap-2 min-h-[48px]"><Save size={18}/> Speichern</button>
-      </div>
-    </form>
-  );
-}
