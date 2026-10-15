@@ -3593,6 +3593,17 @@ function CreateSurveyForm({ onSubmit, initialData, onCancel, inline = false }) {
         </div>
         <div className="flex items-center gap-3 bg-gray-950 border border-gray-800 px-4 py-3 rounded-xl shrink-0">
           <label className="text-xs font-bold text-gray-500 uppercase">Max. Stimmen:</label>
+          <input type="number" min="1" max="20" required className="w-16 bg-gray-900 border border-gray-800 rounded-lg px-2 py-2 text-center text-white font-black focus:border-orange-500 outline-none min-h-[40px]" value={maxAnswers} onChange={e => setMaxAnswers(parseInt(e.target.value, 10) || 1)} />
+        </div>
+        <div className="flex items-center gap-3 bg-gray-950 border border-gray-800 px-4 py-3 rounded-xl shrink-0">
+          <label className="text-xs font-bold text-gray-500 uppercase">Mehrheit:</label>
+          <select className="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white text-xs font-bold focus:border-orange-500 outline-none min-h-[40px]" value={majorityType} onChange={e => setMajorityType(e.target.value)}>
+            <option value="none">Keine Vorgabe</option>
+            <option value="simple">Einfaches Mehr (&gt;50%)</option>
+            <option value="two_thirds">Zweidrittelmehrheit (⅔)</option>
+          </select>
+        </div>
+      </div>
       <div className="grid sm:grid-cols-2 gap-3">
         <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-4 py-3 rounded-xl">
           <input type="checkbox" id="anonCheck" checked={isAnonymous} onChange={e => setIsAnonymous(e.target.checked)} className="accent-orange-500 w-4 h-4 shrink-0" />
