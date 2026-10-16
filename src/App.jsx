@@ -6,7 +6,7 @@ import {
   UploadCloud, Search, Download, ArrowUp, ArrowDown, Maximize2, Minimize2,
   Folder, FolderPlus, FileText, File, CalendarDays, MapPin, Clock,
   Printer, CheckCircle2, AlertTriangle, Info, Filter, Sparkles, Share2, QrCode, Play,
-  Zap, Lightbulb
+  Zap, Lightbulb, Trophy, HelpCircle, ExternalLink, Image as ImageIcon, EyeOff
 } from 'lucide-react';
 import { 
   signInWithCustomToken, 
@@ -53,6 +53,15 @@ const INITIAL_USERS = [
     password: '' 
   }
 ];
+
+const DEFAULT_QUIZ_DATA = {
+  title: '10-Tage SchmuDo-Countdown Quiz',
+  subtitle: 'Jeden Tag eine neue knifflige Frage rund um die RüssSuuger Ämme & Fasnacht! Die Gewinner und Lösungen werden erst ganz am Schluss enthüllt.',
+  isVisibleToMembers: false,
+  isResultsPublished: false,
+  questions: [],
+  submissions: {}
+};
 
 const toAuthEmail = (firstName, lastName) =>
   `${firstName.toLowerCase().replace(/\s+/g, '')}.${lastName.toLowerCase().replace(/\s+/g, '')}@ruesssuuger.internal`;
@@ -245,6 +254,7 @@ export default function App() {
   const [files, setFiles] = useState([]);
   const [folders, setFolders] = useState([]);
   const [calItems, setCalItems] = useState([]);
+  const [quizData, setQuizData] = useState(DEFAULT_QUIZ_DATA);
   const [activeTab, setActiveTab] = useState('events');
   const [dbReady, setDbReady] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
@@ -313,6 +323,7 @@ export default function App() {
     const foldersRef = collection(db, 'artifacts', appId, 'public', 'data', 'folders');
     const filesRef   = collection(db, 'artifacts', appId, 'public', 'data', 'files');
     const calRef     = collection(db, 'artifacts', appId, 'public', 'data', 'calendar');
+    const quizRef    = doc(db, 'artifacts', appId, 'public', 'data', 'quiz', 'main');
 
     const unsubUsers = onSnapshot(usersRef, 
       (s) => {
@@ -352,8 +363,18 @@ export default function App() {
       (s) => setCalItems(s.docs.map(d => ({ ...d.data(), id: d.id }))),
       (err) => console.error("Calendar Error:", err)
     );
+    const unsubQuiz = onSnapshot(quizRef,
+      (snap) => {
+        if (snap.exists()) {
+          setQuizData({ ...DEFAULT_QUIZ_DATA, ...snap.data() });
+        } else {
+          setQuizData(DEFAULT_QUIZ_DATA);
+        }
+      },
+      (err) => console.error("Quiz Error:", err)
+    );
 
-    return () => { unsubUsers(); unsubEvents(); unsubMinutes(); unsubFolders(); unsubFiles(); unsubCal(); };
+    return () => { unsubUsers(); unsubEvents(); unsubMinutes(); unsubFolders(); unsubFiles(); unsubCal(); unsubQuiz(); };
   }, [user]);
 
   useEffect(() => {
@@ -413,6 +434,20 @@ export default function App() {
   };
 
   const isVorstand = useMemo(() => currentUser?.groups?.includes('Vorstand'), [currentUser]);
+  const isAdmin = currentUser?.role === 'admin';
+  const canSeeQuizTab = isAdmin || Boolean(quizData?.isVisibleToMembers);
+
+  useEffect(() => {
+    if (activeTab === 'quiz' && !canSeeQuizTab) {
+      setActiveTab('events');
+    }
+  }, [activeTab, canSeeQuizTab]);
+
+  const openQuizQuestionsForMe = useMemo(() => {
+    if (!currentUser || !quizData?.isVisibleToMembers || quizData?.isResultsPublished) return 0;
+    const mySubs = quizData?.submissions?.[currentUser.id] || {};
+    return (quizData?.questions || []).filter(q => q.status === 'active' && !mySubs[q.id]).length;
+  }, [quizData, currentUser]);
 
   const myOpenTodosCount = useMemo(() => {
     if (!currentUser || !isVorstand) return 0;
@@ -559,6 +594,15 @@ export default function App() {
           <main className="max-w-6xl mx-auto px-4 py-6 sm:py-8">
             <nav className="hidden sm:flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
               <TabButton active={activeTab === 'events'}   onClick={() => setActiveTab('events')}   icon={<Calendar size={18} />}      label="Events" />
+              {canSeeQuizTab && (
+                <TabButton
+                  active={activeTab === 'quiz'}
+                  onClick={() => setActiveTab('quiz')}
+                  icon={<Trophy size={18} />}
+                  label={isAdmin && !quizData?.isVisibleToMembers ? 'Quiz (Versteckt)' : 'Quiz'}
+                  badge={openQuizQuestionsForMe}
+                />
+              )}
               {isVorstand && (
                 <TabButton active={activeTab === 'minutes'}  onClick={() => setActiveTab('minutes')}  icon={<ClipboardList size={18} />} label="Protokolle" badge={myOpenTodosCount} />
               )}
@@ -579,6 +623,15 @@ export default function App() {
             {/* Mobile Bottom Navigation Bar */}
             <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-[150] bg-gray-900/95 backdrop-blur-xl border-t border-gray-800 px-2 py-1.5 flex items-center justify-around shadow-2xl">
               <MobileTabButton active={activeTab === 'events'} onClick={() => setActiveTab('events')} icon={<Calendar size={20} />} label="Events" />
+              {canSeeQuizTab && (
+                <MobileTabButton
+                  active={activeTab === 'quiz'}
+                  onClick={() => setActiveTab('quiz')}
+                  icon={<Trophy size={20} />}
+                  label={isAdmin && !quizData?.isVisibleToMembers ? 'Quiz 🔒' : 'Quiz'}
+                  badge={openQuizQuestionsForMe}
+                />
+              )}
               {isVorstand && (
                 <MobileTabButton active={activeTab === 'minutes'} onClick={() => setActiveTab('minutes')} icon={<ClipboardList size={20} />} label="Protokolle" badge={myOpenTodosCount} />
               )}
@@ -597,7 +650,27 @@ export default function App() {
             </nav>
 
             <div className="animate-in fade-in duration-500">
-              {activeTab === 'events'   && <EventsView events={events.filter(e => !e.isArchived)} calItems={calItems} currentUser={currentUser} users={users} notify={notify} askConfirm={askConfirm} />}
+              {activeTab === 'events'   && (
+                <EventsView
+                  events={events.filter(e => !e.isArchived)}
+                  calItems={calItems}
+                  currentUser={currentUser}
+                  users={users}
+                  openQuizCount={openQuizQuestionsForMe}
+                  onOpenQuiz={() => setActiveTab('quiz')}
+                  notify={notify}
+                  askConfirm={askConfirm}
+                />
+              )}
+              {activeTab === 'quiz'     && canSeeQuizTab && (
+                <QuizView
+                  quizData={quizData}
+                  currentUser={currentUser}
+                  users={users}
+                  notify={notify}
+                  askConfirm={askConfirm}
+                />
+              )}
               {activeTab === 'minutes'  && isVorstand && <ProtocolView minutes={minutes} users={users} currentUser={currentUser} calItems={calItems} notify={notify} askConfirm={askConfirm} />}
               {activeTab === 'files'    && isVorstand && <FilesView folders={folders} files={files} currentUser={currentUser} notify={notify} askConfirm={askConfirm} />}
               {activeTab === 'calendar' && isVorstand && <CalendarView calItems={calItems} currentUser={currentUser} notify={notify} askConfirm={askConfirm} />}
@@ -608,6 +681,1270 @@ export default function App() {
         </>
       )}
     </div>
+  );
+}
+
+function QuizView({ quizData, currentUser, users, notify, askConfirm }) {
+  const isAdmin = currentUser?.role === 'admin';
+  const [adminTab, setAdminTab] = useState('questions'); // 'questions' | 'leaderboard' | 'settings'
+  const [showQuestionEditor, setShowQuestionEditor] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState(null);
+  const [selectedQuestionId, setSelectedQuestionId] = useState(null);
+  const [enlargedImage, setEnlargedImage] = useState(null);
+  const [beamerMode, setBeamerMode] = useState(false);
+  const [confettiActive, setConfettiActive] = useState(false);
+
+  const questions = useMemo(() => {
+    return [...(quizData?.questions || [])].sort((a, b) => (a.dayNumber || 1) - (b.dayNumber || 1));
+  }, [quizData]);
+
+  const submissions = quizData?.submissions || {};
+  const mySubmissions = submissions[currentUser.id] || {};
+
+  const saveQuizDoc = async (patch) => {
+    const quizRef = doc(db, 'artifacts', appId, 'public', 'data', 'quiz', 'main');
+    await setDoc(quizRef, {
+      ...DEFAULT_QUIZ_DATA,
+      ...quizData,
+      ...patch
+    });
+  };
+
+  const toggleVisibilityForMembers = async () => {
+    const nextVal = !quizData.isVisibleToMembers;
+    await saveQuizDoc({ isVisibleToMembers: nextVal });
+    notify(
+      nextVal
+        ? "Quiz ist jetzt für alle Mitglieder im Portal sichtbar!"
+        : "Quiz ist für normale Mitglieder wieder unsichtbar (Stealth-Modus).",
+      nextVal ? "success" : "info"
+    );
+  };
+
+  const togglePublishWinners = async () => {
+    const nextVal = !quizData.isResultsPublished;
+    await saveQuizDoc({ isResultsPublished: nextVal });
+    if (nextVal) {
+      setConfettiActive(true);
+      setTimeout(() => setConfettiActive(false), 4000);
+      notify("🏆 Gewinner & Lösungen wurden für alle veröffentlicht!", "success");
+    } else {
+      notify("Gewinner & Lösungen sind für Mitglieder wieder ausgeblendet.", "info");
+    }
+  };
+
+  const handleSaveQuestion = async (qData) => {
+    const exists = questions.some(q => q.id === qData.id);
+    const nextQuestions = exists
+      ? questions.map(q => (q.id === qData.id ? qData : q))
+      : [...questions, qData];
+    await saveQuizDoc({ questions: nextQuestions });
+    setShowQuestionEditor(false);
+    setEditingQuestion(null);
+    notify(`Tag ${qData.dayNumber} gespeichert.`, "success");
+  };
+
+  const handleStatusChange = async (qId, nextStatus) => {
+    const nextQuestions = questions.map(q => (q.id === qId ? { ...q, status: nextStatus } : q));
+    await saveQuizDoc({ questions: nextQuestions });
+    const statusLabel = nextStatus === 'active' ? 'Heute Offen 🔥' : nextStatus === 'closed' ? 'Geschlossen 🔒' : 'Gesperrt (Vorschau)';
+    notify(`Frage-Status geändert auf «${statusLabel}».`, "success");
+  };
+
+  const handleDeleteQuestion = (q) => {
+    askConfirm(
+      `Tag ${q.dayNumber} löschen`,
+      `Möchtest du die Frage «${q.title || q.questionText}» wirklich löschen?`,
+      async () => {
+        const nextQuestions = questions.filter(x => x.id !== q.id);
+        await saveQuizDoc({ questions: nextQuestions });
+        notify("Tagesfrage gelöscht.", "info");
+      }
+    );
+  };
+
+  const handleResetAllSubmissions = () => {
+    askConfirm(
+      'Alle Antworten zurücksetzen',
+      'Möchtest du wirklich sämtliche bisher abgegebenen Quiz-Antworten aller Mitglieder unwiderruflich löschen?',
+      async () => {
+        await saveQuizDoc({ submissions: {}, isResultsPublished: false });
+        notify("Alle Antworten wurden zurückgesetzt.", "info");
+      }
+    );
+  };
+
+  const submitMemberAnswer = async (question, answerPayload) => {
+    const quizRef = doc(db, 'artifacts', appId, 'public', 'data', 'quiz', 'main');
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(quizRef);
+      const currentData = snap.exists() ? snap.data() : DEFAULT_QUIZ_DATA;
+      const allSubs = currentData.submissions || {};
+      const userSubs = allSubs[currentUser.id] || {};
+      if (userSubs[question.id]) {
+        return; // Bereits geantwortet
+      }
+      const nextSubs = {
+        ...allSubs,
+        [currentUser.id]: {
+          ...userSubs,
+          [question.id]: {
+            ...answerPayload,
+            submittedAt: Date.now(),
+            userName: `${currentUser.firstName} ${currentUser.lastName}`.trim()
+          }
+        }
+      };
+      tx.set(quizRef, {
+        ...DEFAULT_QUIZ_DATA,
+        ...currentData,
+        submissions: nextSubs
+      });
+    });
+    notify("Deine Antwort wurde geheim eingeloggt! 🎭", "success");
+  };
+
+  // Berechnung der Rangliste (für Admin immer sichtbar, für Mitglieder erst bei isResultsPublished)
+  const leaderboard = useMemo(() => {
+    const scoresMap = {};
+
+    Object.entries(submissions).forEach(([userId, userAnswers]) => {
+      const uObj = users.find(u => u.id === userId);
+      const displayName = uObj
+        ? `${uObj.firstName} ${uObj.lastName}`.trim()
+        : Object.values(userAnswers || {})[0]?.userName || 'Mitglied';
+
+      let totalPoints = 0;
+      let correctCount = 0;
+      let answeredCount = 0;
+      let totalResponseTimeScore = 0;
+      const perQuestion = {};
+
+      questions.forEach(q => {
+        const sub = userAnswers?.[q.id];
+        if (!sub) return;
+        answeredCount++;
+        const pts = Number(q.points) || 1;
+        let isCorrect = false;
+
+        if (q.questionType === 'text') {
+          const cleanUser = String(sub.textAnswer || '').trim().toLowerCase();
+          const acceptedList = String(q.correctTextAnswer || '')
+            .split(',')
+            .map(s => s.trim().toLowerCase())
+            .filter(Boolean);
+          isCorrect = acceptedList.includes(cleanUser);
+        } else {
+          isCorrect = sub.optionId === q.correctOptionId;
+        }
+
+        if (isCorrect) {
+          totalPoints += pts;
+          correctCount++;
+        }
+        totalResponseTimeScore += sub.submittedAt || 0;
+        perQuestion[q.id] = {
+          isCorrect,
+          pointsEarned: isCorrect ? pts : 0,
+          sub
+        };
+      });
+
+      scoresMap[userId] = {
+        userId,
+        name: displayName,
+        totalPoints,
+        correctCount,
+        answeredCount,
+        totalResponseTimeScore,
+        perQuestion
+      };
+    });
+
+    return Object.values(scoresMap).sort((a, b) => {
+      if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+      if (b.correctCount !== a.correctCount) return b.correctCount - a.correctCount;
+      return a.totalResponseTimeScore - b.totalResponseTimeScore;
+    });
+  }, [submissions, questions, users]);
+
+  const activeQuestion = useMemo(() => {
+    if (selectedQuestionId) {
+      return questions.find(q => q.id === selectedQuestionId) || null;
+    }
+    // Standardmässig die erste offene Frage wählen, die das Mitglied noch nicht beantwortet hat
+    const firstUnansweredActive = questions.find(q => q.status === 'active' && !mySubmissions[q.id]);
+    if (firstUnansweredActive) return firstUnansweredActive;
+    const firstActive = questions.find(q => q.status === 'active');
+    if (firstActive) return firstActive;
+    return questions[0] || null;
+  }, [questions, selectedQuestionId, mySubmissions]);
+
+  return (
+    <div className="space-y-6">
+      <ConfettiOverlay active={confettiActive} />
+
+      {/* Admin Control Bar (Stealth & Gewinner-Veröffentlichung) */}
+      {isAdmin && (
+        <div className="bg-gradient-to-r from-gray-900 via-gray-900 to-orange-950/30 border-2 border-orange-500/40 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest bg-orange-500 text-gray-950 px-2.5 py-0.5 rounded-full">
+                  ADMIN QUIZ-ZENTRALE
+                </span>
+                {quizData.isVisibleToMembers ? (
+                  <span className="text-[10px] font-black uppercase tracking-widest bg-green-500/20 text-green-400 border border-green-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <Unlock size={11} /> Für Mitglieder sichtbar
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-black uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <EyeOff size={11} /> Unsichtbar für Mitglieder (Vorbereitung)
+                  </span>
+                )}
+                {quizData.isResultsPublished && (
+                  <span className="text-[10px] font-black uppercase tracking-widest bg-amber-500 text-gray-950 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <Trophy size={11} /> Gewinner & Antworten publiziert
+                  </span>
+                )}
+              </div>
+              <h3 className="text-lg font-black text-white">
+                Steuerung & Endauswertung ({leaderboard.length} Teilnehmende • {questions.length} Tagesfragen)
+              </h3>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={toggleVisibilityForMembers}
+                className={`px-4 py-3 rounded-2xl text-xs font-black flex items-center gap-2 transition-all active:scale-95 border ${
+                  quizData.isVisibleToMembers
+                    ? 'bg-gray-950 border-gray-700 text-gray-300 hover:text-white'
+                    : 'bg-green-500 text-gray-950 border-green-500 shadow-lg shadow-green-500/20'
+                }`}
+              >
+                {quizData.isVisibleToMembers ? (
+                  <>
+                    <EyeOff size={16} /> Für Mitglieder verbergen
+                  </>
+                ) : (
+                  <>
+                    <Unlock size={16} /> Quiz für Mitglieder freigeben
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={togglePublishWinners}
+                className={`px-4 py-3 rounded-2xl text-xs font-black flex items-center gap-2 transition-all active:scale-95 border ${
+                  quizData.isResultsPublished
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                    : 'bg-orange-500 text-gray-950 border-orange-500 shadow-lg shadow-orange-500/20'
+                }`}
+              >
+                <Trophy size={16} />
+                {quizData.isResultsPublished ? 'Gewinner wieder verbergen' : '🏆 Gewinner & Lösungen veröffentlichen'}
+              </button>
+
+              <button
+                onClick={() => setBeamerMode(true)}
+                className="px-4 py-3 rounded-2xl bg-gray-800 hover:bg-gray-700 text-white text-xs font-black flex items-center gap-2"
+              >
+                <Maximize2 size={15} /> Beamer-Finale
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-gray-800">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setAdminTab('questions')}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${
+                  adminTab === 'questions' ? 'bg-orange-500 text-gray-950' : 'bg-gray-950 text-gray-400 hover:text-white'
+                }`}
+              >
+                Tagesfragen & Vorschau ({questions.length})
+              </button>
+              <button
+                onClick={() => setAdminTab('leaderboard')}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${
+                  adminTab === 'leaderboard' ? 'bg-orange-500 text-gray-950' : 'bg-gray-950 text-gray-400 hover:text-white'
+                }`}
+              >
+                Geheime Admin-Rangliste ({leaderboard.length})
+              </button>
+              <button
+                onClick={() => setAdminTab('settings')}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${
+                  adminTab === 'settings' ? 'bg-orange-500 text-gray-950' : 'bg-gray-950 text-gray-400 hover:text-white'
+                }`}
+              >
+                Titel & Reset
+              </button>
+            </div>
+
+            {adminTab === 'questions' && (
+              <button
+                onClick={() => {
+                  setEditingQuestion(null);
+                  setShowQuestionEditor(true);
+                }}
+                className="px-4 py-2 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5"
+              >
+                <Plus size={15} strokeWidth={3} /> Neue Tagesfrage (Tag {questions.length + 1})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Admin Settings Sub-Tab */}
+      {isAdmin && adminTab === 'settings' && (
+        <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 space-y-4 shadow-xl">
+          <h3 className="text-lg font-black text-white">Quiz-Titel & Einstellungen</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-gray-400 uppercase">Quiz-Haupttitel</label>
+              <input
+                value={quizData.title || ''}
+                onChange={e => saveQuizDoc({ title: e.target.value })}
+                className="w-full mt-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-400 uppercase">Beschreibung / Hinweis</label>
+              <input
+                value={quizData.subtitle || ''}
+                onChange={e => saveQuizDoc({ subtitle: e.target.value })}
+                className="w-full mt-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white"
+              />
+            </div>
+          </div>
+          <div className="pt-3 border-t border-gray-800 flex justify-between items-center">
+            <p className="text-xs text-gray-400">Alle bisherigen Antworten der Mitglieder für einen Neustart löschen:</p>
+            <button
+              onClick={handleResetAllSubmissions}
+              className="px-4 py-2.5 bg-red-500/15 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 rounded-xl text-xs font-black transition-all"
+            >
+              Alle Antworten zurücksetzen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Geheime Rangliste Sub-Tab */}
+      {isAdmin && adminTab === 'leaderboard' && (
+        <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 space-y-5 shadow-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-black text-white flex items-center gap-2">
+                <Trophy className="text-orange-500" size={22} /> Admin-Endauswertung & Rangliste
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Diese Auswertung ist für Mitglieder erst sichtbar, wenn du oben auf «Gewinner & Lösungen veröffentlichen» klickst.
+              </p>
+            </div>
+          </div>
+
+          {leaderboard.length === 0 ? (
+            <div className="text-center py-12 bg-gray-950/60 rounded-2xl border border-dashed border-gray-800">
+              <p className="text-gray-400 font-bold text-sm">Noch keine Antworten eingegangen.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800 text-[10px] font-black uppercase tracking-wider text-gray-400">
+                    <th className="py-3 px-3">Rang</th>
+                    <th className="py-3 px-3">Mitglied</th>
+                    <th className="py-3 px-3">Punkte</th>
+                    <th className="py-3 px-3">Richtig</th>
+                    {questions.map(q => (
+                      <th key={q.id} className="py-3 px-2 text-center">Tag {q.dayNumber}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/70 text-sm">
+                  {leaderboard.map((row, idx) => (
+                    <tr key={row.userId} className="hover:bg-gray-950/60">
+                      <td className="py-3.5 px-3 font-black">
+                        {idx === 0 ? '🥇 1.' : idx === 1 ? '🥈 2.' : idx === 2 ? '🥉 3.' : `${idx + 1}.`}
+                      </td>
+                      <td className="py-3.5 px-3 font-bold text-white">{row.name}</td>
+                      <td className="py-3.5 px-3 font-black text-orange-400">{row.totalPoints} Pkt.</td>
+                      <td className="py-3.5 px-3 text-xs text-gray-400">
+                        {row.correctCount} / {row.answeredCount}
+                      </td>
+                      {questions.map(q => {
+                        const res = row.perQuestion[q.id];
+                        if (!res) {
+                          return <td key={q.id} className="py-3.5 px-2 text-center text-gray-600">–</td>;
+                        }
+                        return (
+                          <td key={q.id} className="py-3.5 px-2 text-center">
+                            <span
+                              title={
+                                q.questionType === 'text'
+                                  ? `Antwort: ${res.sub.textAnswer}`
+                                  : `Option: ${(q.options || []).find(o => o.id === res.sub.optionId)?.text || ''}`
+                              }
+                              className={`inline-flex items-center justify-center w-6 h-6 rounded-lg text-xs font-black ${
+                                res.isCorrect
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                              }`}
+                            >
+                              {res.isCorrect ? '✓' : '✗'}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Question Editor Modal / Form */}
+      {isAdmin && (showQuestionEditor || editingQuestion) && (
+        <QuizQuestionEditor
+          initialData={editingQuestion}
+          nextDayNumber={questions.length + 1}
+          onSave={handleSaveQuestion}
+          onCancel={() => {
+            setShowQuestionEditor(false);
+            setEditingQuestion(null);
+          }}
+        />
+      )}
+
+      {/* Quiz Hero Header für alle */}
+      <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-orange-950/30 border border-orange-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest bg-orange-500 text-gray-950 px-3 py-1 rounded-full">
+              <Sparkles size={12} /> RüssSuuger Fasnachts-Challenge
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-black text-white italic tracking-tight">
+              {quizData.title || '10-Tage SchmuDo-Countdown Quiz'}
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-400 max-w-2xl leading-relaxed">
+              {quizData.subtitle}
+            </p>
+          </div>
+
+          <div className="bg-gray-950/90 border border-gray-800 rounded-2xl px-5 py-3.5 text-center shrink-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Dein Fortschritt</p>
+            <p className="text-2xl font-black text-orange-500 mt-0.5">
+              {Object.keys(mySubmissions).length} / {questions.filter(q => q.status !== 'locked').length || questions.length}
+            </p>
+            <p className="text-[10px] text-gray-500 font-bold">Tagesfragen beantwortet</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Wenn die Gewinner veröffentlicht wurden -> Offizielles Siegerpodest & Gesamtrangliste für alle sichtbar */}
+      {quizData.isResultsPublished && (
+        <div className="bg-gradient-to-br from-amber-500/15 via-gray-900 to-gray-900 border-2 border-amber-500/50 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl animate-in fade-in">
+          <div className="text-center space-y-1">
+            <span className="text-[10px] font-black uppercase tracking-widest bg-amber-500 text-gray-950 px-3 py-1 rounded-full">
+              🏆 OFFIZIELLES ENDERGEBNIS
+            </span>
+            <h3 className="text-2xl sm:text-3xl font-black text-white mt-2">
+              Die Quiz-Champions stehen fest!
+            </h3>
+            <p className="text-xs sm:text-sm text-gray-400">
+              Herzliche Gratulation! Unten kannst du ausserdem bei allen Tagesfragen die richtigen Lösungen nachschauen.
+            </p>
+          </div>
+
+          {leaderboard.length > 0 && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto pt-2">
+                {leaderboard.slice(0, 3).map((winner, idx) => {
+                  const medals = ['🥇 1. Platz', '🥈 2. Platz', '🥉 3. Platz'];
+                  const styles = [
+                    'border-amber-400 bg-amber-500/15 ring-2 ring-amber-400/20',
+                    'border-gray-400/50 bg-gray-800/60',
+                    'border-orange-700/60 bg-orange-950/30'
+                  ];
+                  return (
+                    <div
+                      key={winner.userId}
+                      className={`rounded-2xl p-5 border text-center space-y-1.5 ${styles[idx]}`}
+                    >
+                      <p className="text-xs font-black uppercase text-amber-400">{medals[idx]}</p>
+                      <p className="text-lg font-black text-white truncate">{winner.name}</p>
+                      <p className="text-2xl font-black text-orange-400">{winner.totalPoints} Punkte</p>
+                      <p className="text-[11px] text-gray-400 font-bold">
+                        {winner.correctCount} von {questions.length} richtig
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {leaderboard.length > 3 && (
+                <div className="max-w-2xl mx-auto bg-gray-950/80 border border-gray-800 rounded-2xl divide-y divide-gray-800/80">
+                  {leaderboard.slice(3).map((row, idx) => (
+                    <div key={row.userId} className="px-4 py-3 flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-black text-gray-500 w-6">{idx + 4}.</span>
+                        <span className="font-bold text-white">{row.name}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500">{row.correctCount} richtig</span>
+                        <span className="font-black text-orange-400">{row.totalPoints} Pkt.</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Tages-Kacheln (Tag 1 bis Tag X) */}
+      {questions.length === 0 ? (
+        <div className="text-center py-16 bg-gray-900/40 rounded-3xl border border-dashed border-gray-800">
+          <HelpCircle className="mx-auto text-gray-700 mb-3" size={44} />
+          <p className="text-gray-400 font-bold">
+            {isAdmin
+              ? 'Noch keine Tagesfragen erfasst. Klicke oben auf «+ Neue Tagesfrage», um Tag 1 zu erstellen!'
+              : 'Die ersten Tagesfragen werden in Kürze freigeschaltet.'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 sm:gap-3">
+            {questions.map(q => {
+              const isSelected = activeQuestion?.id === q.id;
+              const hasAnswered = Boolean(mySubmissions[q.id]);
+              const isLockedForMember = q.status === 'locked' && !isAdmin;
+
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  disabled={isLockedForMember}
+                  onClick={() => setSelectedQuestionId(q.id)}
+                  className={`p-3.5 rounded-2xl border text-left transition-all relative overflow-hidden ${
+                    isLockedForMember
+                      ? 'bg-gray-900/40 border-gray-800/60 opacity-50 cursor-not-allowed'
+                      : isSelected
+                      ? 'bg-orange-500/15 border-orange-500 ring-1 ring-orange-500/30 shadow-lg'
+                      : 'bg-gray-900 border-gray-800 hover:border-gray-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-orange-500">
+                      Tag {q.dayNumber}
+                    </span>
+                    {hasAnswered ? (
+                      <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                        <Check size={12} strokeWidth={3} />
+                      </span>
+                    ) : q.status === 'active' ? (
+                      <span className="w-2 h-2 rounded-full bg-green-500 animate-ping" />
+                    ) : (
+                      <Lock size={12} className="text-gray-500" />
+                    )}
+                  </div>
+                  <p className="text-xs font-black text-white truncate">
+                    {q.status === 'locked' && !isAdmin ? 'Noch geheim 🔒' : q.title || `Frage #${q.dayNumber}`}
+                  </p>
+                  <p className="text-[10px] text-gray-500 font-bold mt-1">
+                    {hasAnswered
+                      ? 'Beantwortet ✓'
+                      : q.status === 'active'
+                      ? 'Jetzt offen 🔥'
+                      : q.status === 'closed'
+                      ? 'Abgeschlossen'
+                      : 'Gesperrt'}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Detail-Karte der ausgewählten Tagesfrage */}
+          {activeQuestion && (
+            <QuizQuestionDetailCard
+              key={activeQuestion.id}
+              question={activeQuestion}
+              isAdmin={isAdmin}
+              mySubmission={mySubmissions[activeQuestion.id]}
+              isResultsPublished={Boolean(quizData.isResultsPublished)}
+              totalSubmissionsCount={
+                Object.values(submissions).filter(uMap => Boolean(uMap?.[activeQuestion.id])).length
+              }
+              onSubmitAnswer={payload => submitMemberAnswer(activeQuestion, payload)}
+              onStatusChange={st => handleStatusChange(activeQuestion.id, st)}
+              onEdit={() => setEditingQuestion(activeQuestion)}
+              onDelete={() => handleDeleteQuestion(activeQuestion)}
+              onEnlargeImage={url => setEnlargedImage(url)}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Bild-Lightbox zum Vergrössern */}
+      {enlargedImage && (
+        <div
+          onClick={() => setEnlargedImage(null)}
+          className="fixed inset-0 z-[290] bg-gray-950/95 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out"
+        >
+          <img
+            src={enlargedImage}
+            alt="Quiz Vollbild"
+            className="max-w-full max-h-[88vh] rounded-2xl shadow-2xl border border-gray-800 object-contain"
+          />
+          <button
+            onClick={() => setEnlargedImage(null)}
+            className="fixed top-6 right-6 p-3 bg-gray-900 rounded-2xl text-white border border-gray-700"
+          >
+            <X size={20} />
+          </button>
+        </div>
+      )}
+
+      {/* Beamer-Präsentationsmodus für das grosse Finale */}
+      {beamerMode && (
+        <div className="fixed inset-0 z-[270] bg-gray-950 flex flex-col p-6 sm:p-10 overflow-y-auto">
+          <div className="flex items-center justify-between border-b border-gray-800 pb-5">
+            <div>
+              <p className="text-xs font-black uppercase tracking-widest text-orange-500">
+                RüssSuuger Ämme • Grosses Quiz-Finale
+              </p>
+              <h2 className="text-2xl sm:text-4xl font-black text-white mt-1">{quizData.title}</h2>
+            </div>
+            <div className="flex items-center gap-3">
+              {!quizData.isResultsPublished && (
+                <button
+                  onClick={togglePublishWinners}
+                  className="px-5 py-3 bg-orange-500 text-gray-950 font-black rounded-2xl text-xs flex items-center gap-2 shadow-lg"
+                >
+                  <Trophy size={16} /> Jetzt Gewinner & Lösungen enthüllen!
+                </button>
+              )}
+              <button
+                onClick={() => setBeamerMode(false)}
+                className="p-3 bg-gray-900 rounded-2xl text-gray-400 hover:text-white"
+              >
+                <Minimize2 size={20} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 max-w-5xl w-full mx-auto py-8 space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {leaderboard.slice(0, 3).map((winner, idx) => {
+                const titles = ['🥇 1. PLATZ', '🥈 2. PLATZ', '🥉 3. PLATZ'];
+                return (
+                  <div
+                    key={winner.userId}
+                    className={`rounded-3xl p-7 border text-center space-y-2 ${
+                      idx === 0
+                        ? 'bg-gradient-to-b from-amber-500/25 to-gray-900 border-amber-400 shadow-2xl'
+                        : 'bg-gray-900 border-gray-800'
+                    }`}
+                  >
+                    <p className="text-sm font-black text-amber-400">{titles[idx]}</p>
+                    <p className="text-2xl sm:text-3xl font-black text-white">{winner.name}</p>
+                    <p className="text-3xl font-black text-orange-500">{winner.totalPoints} Punkte</p>
+                    <p className="text-xs text-gray-400 font-bold">
+                      {winner.correctCount} von {questions.length} Fragen richtig
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 space-y-3">
+              <h3 className="text-sm font-black uppercase tracking-widest text-orange-500">
+                Alle Tagesfragen & Richtige Antworten
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {questions.map(q => {
+                  const correctText =
+                    q.questionType === 'text'
+                      ? q.correctTextAnswer
+                      : (q.options || []).find(o => o.id === q.correctOptionId)?.text;
+                  return (
+                    <div key={q.id} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 space-y-1">
+                      <p className="text-[10px] font-black uppercase text-orange-400">
+                        Tag {q.dayNumber} • {q.points || 1} Pkt.
+                      </p>
+                      <p className="text-sm font-bold text-white">{q.questionText}</p>
+                      <p className="text-xs font-black text-emerald-400 pt-1">
+                        ✓ Lösung: {correctText || '–'}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuizQuestionDetailCard({
+  question,
+  isAdmin,
+  mySubmission,
+  isResultsPublished,
+  totalSubmissionsCount,
+  onSubmitAnswer,
+  onStatusChange,
+  onEdit,
+  onDelete,
+  onEnlargeImage
+}) {
+  const [selectedOptId, setSelectedOptId] = useState(mySubmission?.optionId || '');
+  const [textAnswer, setTextAnswer] = useState(mySubmission?.textAnswer || '');
+  const [submitting, setSubmitting] = useState(false);
+
+  const hasAnswered = Boolean(mySubmission);
+  const canVoteNow = question.status === 'active' && !hasAnswered && !isResultsPublished;
+  const embedUrl = getYouTubeEmbedUrl(question.linkUrl);
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!canVoteNow) return;
+    if (question.questionType === 'text' && !textAnswer.trim()) return;
+    if (question.questionType !== 'text' && !selectedOptId) return;
+    setSubmitting(true);
+    await onSubmitAnswer(
+      question.questionType === 'text'
+        ? { textAnswer: textAnswer.trim() }
+        : { optionId: selectedOptId }
+    );
+    setSubmitting(false);
+  };
+
+  if (question.status === 'locked' && !isAdmin) {
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-3xl p-10 text-center space-y-3">
+        <Lock className="mx-auto text-orange-500" size={40} />
+        <h3 className="text-xl font-black text-white">Tag {question.dayNumber} ist noch unter Verschluss</h3>
+        <p className="text-sm text-gray-400">Diese Tagesfrage wird erst am entsprechenden Tag vom Admin freigeschaltet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-800 pb-5">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-widest bg-orange-500 text-gray-950 px-2.5 py-0.5 rounded-full">
+              TAG {question.dayNumber} • {question.points || 1} {(question.points || 1) === 1 ? 'PUNKT' : 'PUNKTE'}
+            </span>
+            <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+              question.status === 'active'
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                : question.status === 'closed'
+                ? 'bg-gray-800 text-gray-400'
+                : 'bg-red-500/20 text-red-400'
+            }`}>
+              {question.status === 'active' ? 'Heute Aktiv 🔥' : question.status === 'closed' ? 'Abgeschlossen' : 'Gesperrt (Entwurf)'}
+            </span>
+            {isAdmin && (
+              <span className="text-[10px] font-bold text-gray-400 bg-gray-950 px-2.5 py-0.5 rounded-full border border-gray-800">
+                {totalSubmissionsCount} Antworten eingegangen
+              </span>
+            )}
+          </div>
+          {question.title && (
+            <p className="text-xs font-black uppercase tracking-wider text-orange-400 pt-1">{question.title}</p>
+          )}
+          <h3 className="text-xl sm:text-2xl font-black text-white leading-snug whitespace-pre-wrap">
+            {question.questionText}
+          </h3>
+        </div>
+
+        {isAdmin && (
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={question.status || 'locked'}
+              onChange={e => onStatusChange(e.target.value)}
+              className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs font-black text-white"
+            >
+              <option value="locked">🔒 Gesperrt</option>
+              <option value="active">🔥 Heute Aktiv (Offen)</option>
+              <option value="closed">✅ Geschlossen</option>
+            </select>
+            <button
+              onClick={onEdit}
+              className="p-2.5 bg-gray-800 hover:bg-gray-700 rounded-xl text-gray-300 hover:text-white"
+              title="Frage bearbeiten"
+            >
+              <Edit2 size={16} />
+            </button>
+            <button
+              onClick={onDelete}
+              className="p-2.5 bg-gray-800 hover:bg-red-500/20 rounded-xl text-gray-400 hover:text-red-500"
+              title="Frage löschen"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Multimedia-Bereich: Bild, Link oder YouTube-Video */}
+      {(question.imageUrl || question.linkUrl) && (
+        <div className="space-y-4">
+          {question.imageUrl && (
+            <div className="space-y-1.5">
+              <div
+                onClick={() => onEnlargeImage(question.imageUrl)}
+                className="relative group cursor-zoom-in rounded-2xl overflow-hidden border border-gray-800 bg-gray-950 max-h-96 flex items-center justify-center"
+              >
+                <img
+                  src={question.imageUrl}
+                  alt={question.title || 'Quiz-Bild'}
+                  className="max-h-96 w-auto object-contain mx-auto transition-transform duration-300 group-hover:scale-[1.02]"
+                />
+                <div className="absolute bottom-3 right-3 bg-gray-950/80 backdrop-blur-md text-white text-[10px] font-black uppercase px-3 py-1.5 rounded-xl border border-gray-700 flex items-center gap-1.5">
+                  <Maximize2 size={12} /> Bild vergrössern
+                </div>
+              </div>
+            </div>
+          )}
+
+          {embedUrl ? (
+            <div className="rounded-2xl overflow-hidden border border-gray-800 bg-black aspect-video max-h-80 mx-auto">
+              <iframe
+                src={embedUrl}
+                title="Quiz Video"
+                className="w-full h-full"
+                allow="autoplay; encrypted-media"
+                allowFullScreen
+              />
+            </div>
+          ) : (
+            question.linkUrl && (
+              <a
+                href={question.linkUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl bg-gray-950 hover:bg-gray-800 border border-orange-500/30 text-orange-400 font-black text-xs transition-all"
+              >
+                <ExternalLink size={15} /> {question.linkLabel || 'Weiterführenden Link / Hinweis öffnen'}
+              </a>
+            )
+          )}
+        </div>
+      )}
+
+      {/* Antwort-Bereich */}
+      <form onSubmit={handleSend} className="space-y-4">
+        {question.questionType === 'text' ? (
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase text-gray-400">Deine Antwort / Schätzung</label>
+            <input
+              type="text"
+              disabled={!canVoteNow}
+              placeholder="Antwort hier eingeben..."
+              value={hasAnswered ? mySubmission.textAnswer : textAnswer}
+              onChange={e => setTextAnswer(e.target.value)}
+              className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-4 text-white font-bold focus:border-orange-500 outline-none disabled:opacity-60"
+            />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {(question.options || []).map((opt, idx) => {
+              const chosenId = hasAnswered ? mySubmission?.optionId : selectedOptId;
+              const isSelected = chosenId === opt.id;
+              const isCorrectOption = isResultsPublished && opt.id === question.correctOptionId;
+              const isWrongSelection = isResultsPublished && isSelected && opt.id !== question.correctOptionId;
+
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  disabled={!canVoteNow}
+                  onClick={() => setSelectedOptId(opt.id)}
+                  className={`p-4 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 ${
+                    isCorrectOption
+                      ? 'bg-emerald-500/20 border-emerald-500 text-white'
+                      : isWrongSelection
+                      ? 'bg-red-500/15 border-red-500/50 text-gray-300'
+                      : isSelected
+                      ? 'bg-orange-500/20 border-orange-500 text-white shadow-lg'
+                      : 'bg-gray-950 border-gray-800 text-gray-200 hover:border-gray-700'
+                  } ${!canVoteNow ? 'cursor-default' : 'active:scale-[0.99]'}`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className={`w-7 h-7 rounded-xl font-black text-xs flex items-center justify-center shrink-0 ${
+                      isCorrectOption
+                        ? 'bg-emerald-500 text-gray-950'
+                        : isSelected
+                        ? 'bg-orange-500 text-gray-950'
+                        : 'bg-gray-900 text-gray-400 border border-gray-800'
+                    }`}>
+                      {String.fromCharCode(65 + idx)}
+                    </span>
+                    <span className="font-bold text-sm break-words">{opt.text}</span>
+                  </div>
+
+                  {isCorrectOption && (
+                    <span className="text-[10px] font-black uppercase bg-emerald-500 text-gray-950 px-2 py-0.5 rounded shrink-0">
+                      ✓ Richtige Lösung
+                    </span>
+                  )}
+                  {!isResultsPublished && isSelected && hasAnswered && (
+                    <span className="text-[10px] font-black uppercase bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded shrink-0">
+                      Deine Wahl
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Submit-Button oder Geheimhaltungs-Bestätigung */}
+        {canVoteNow && (
+          <button
+            type="submit"
+            disabled={
+              submitting ||
+              (question.questionType === 'text' ? !textAnswer.trim() : !selectedOptId)
+            }
+            className="w-full bg-orange-500 hover:bg-orange-400 disabled:opacity-40 text-gray-950 font-black py-4 rounded-2xl shadow-lg transition-all text-base"
+          >
+            {submitting ? 'Wird gespeichert...' : 'Antwort verbindlich einloggen 🔒'}
+          </button>
+        )}
+
+        {hasAnswered && !isResultsPublished && (
+          <div className="bg-gray-950 border border-orange-500/30 rounded-2xl p-4 flex items-center gap-3">
+            <div className="p-2.5 bg-orange-500/15 text-orange-400 rounded-xl shrink-0">
+              <Lock size={18} />
+            </div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-wider text-orange-400">
+                Antwort geheim gespeichert!
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Ob deine Antwort richtig war, bleibt bis zur grossen Gewinner-Veröffentlichung am Schluss geheim.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Auflösung erst sichtbar, wenn der Admin die Gewinner veröffentlicht hat */}
+        {isResultsPublished && (
+          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 space-y-1.5">
+            <p className="text-xs font-black uppercase tracking-wider text-emerald-400">
+              ✓ Offizielle Auflösung (Tag {question.dayNumber})
+            </p>
+            <p className="text-sm font-bold text-white">
+              Richtige Antwort:{' '}
+              <span className="text-emerald-400">
+                {question.questionType === 'text'
+                  ? question.correctTextAnswer
+                  : (question.options || []).find(o => o.id === question.correctOptionId)?.text || '–'}
+              </span>
+            </p>
+            {question.explanation && (
+              <p className="text-xs text-gray-300 pt-1 leading-relaxed">{question.explanation}</p>
+            )}
+          </div>
+        )}
+      </form>
+    </div>
+  );
+}
+
+function QuizQuestionEditor({ initialData, nextDayNumber, onSave, onCancel }) {
+  const [dayNumber, setDayNumber] = useState(initialData?.dayNumber || nextDayNumber || 1);
+  const [title, setTitle] = useState(initialData?.title || '');
+  const [questionText, setQuestionText] = useState(initialData?.questionText || '');
+  const [questionType, setQuestionType] = useState(initialData?.questionType || 'mc'); // 'mc' | 'text'
+  const [points, setPoints] = useState(initialData?.points || 1);
+  const [status, setStatus] = useState(initialData?.status || 'locked');
+  const [imageUrl, setImageUrl] = useState(initialData?.imageUrl || '');
+  const [linkUrl, setLinkUrl] = useState(initialData?.linkUrl || '');
+  const [linkLabel, setLinkLabel] = useState(initialData?.linkLabel || '');
+  const [explanation, setExplanation] = useState(initialData?.explanation || '');
+  const [options, setOptions] = useState(
+    initialData?.options || [
+      { id: 'qopt_1', text: '' },
+      { id: 'qopt_2', text: '' },
+      { id: 'qopt_3', text: '' },
+      { id: 'qopt_4', text: '' }
+    ]
+  );
+  const [correctOptionId, setCorrectOptionId] = useState(initialData?.correctOptionId || 'qopt_1');
+  const [correctTextAnswer, setCorrectTextAnswer] = useState(initialData?.correctTextAnswer || '');
+  const [uploadingImg, setUploadingImg] = useState(false);
+
+  const handleImageFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImg(true);
+    try {
+      const dataUrl = await readFileAsDataURL(file);
+      setImageUrl(dataUrl);
+    } catch (err) {
+      console.error(err);
+    }
+    setUploadingImg(false);
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const cleanedOptions = options.filter(o => o.text.trim());
+    onSave({
+      id: initialData?.id || `quiz_q_${Date.now()}`,
+      dayNumber: Number(dayNumber) || 1,
+      title: title.trim(),
+      questionText: questionText.trim(),
+      questionType,
+      points: Number(points) || 1,
+      status,
+      imageUrl: imageUrl.trim(),
+      linkUrl: linkUrl.trim(),
+      linkLabel: linkLabel.trim(),
+      explanation: explanation.trim(),
+      options: cleanedOptions,
+      correctOptionId: cleanedOptions.some(o => o.id === correctOptionId)
+        ? correctOptionId
+        : cleanedOptions[0]?.id || 'qopt_1',
+      correctTextAnswer: correctTextAnswer.trim()
+    });
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="bg-gray-900 border-2 border-orange-500/40 rounded-3xl p-6 sm:p-8 space-y-5 shadow-2xl"
+    >
+      <div className="flex items-center justify-between border-b border-gray-800 pb-4">
+        <h3 className="text-xl font-black text-white">
+          {initialData ? `Tag ${dayNumber} bearbeiten` : `Neue Tagesfrage erstellen`}
+        </h3>
+        <button type="button" onClick={onCancel} className="p-2 bg-gray-800 rounded-xl text-gray-400 hover:text-white">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <div>
+          <label className="text-xs font-bold text-gray-400 uppercase">Tag Nr. (1–10)</label>
+          <input
+            type="number"
+            min={1}
+            max={30}
+            required
+            value={dayNumber}
+            onChange={e => setDayNumber(e.target.value)}
+            className="w-full mt-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white font-black"
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="text-xs font-bold text-gray-400 uppercase">Kurztitel (optional, z.B. «Wagenbau-Rätsel»)</label>
+          <input
+            placeholder="z.B. Sujet-Zeitreise"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            className="w-full mt-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-bold text-gray-400 uppercase">Status</label>
+          <select
+            value={status}
+            onChange={e => setStatus(e.target.value)}
+            className="w-full mt-1 bg-gray-950 border border-gray-800 rounded-xl px-3 py-3 text-white font-bold"
+          >
+            <option value="locked">🔒 Gesperrt</option>
+            <option value="active">🔥 Heute Aktiv</option>
+            <option value="closed">✅ Geschlossen</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-bold text-gray-400 uppercase">Fragetext</label>
+        <textarea
+          required
+          rows={3}
+          placeholder="Stelle hier deine Tagesfrage..."
+          value={questionText}
+          onChange={e => setQuestionText(e.target.value)}
+          className="w-full mt-1 bg-gray-950 border border-gray-800 rounded-xl p-4 text-white focus:border-orange-500 outline-none"
+        />
+      </div>
+
+      {/* Bild & Link Sektion */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-950 border border-gray-800 rounded-2xl p-4">
+        <div className="space-y-2">
+          <label className="text-xs font-black uppercase text-orange-400 flex items-center gap-1.5">
+            <ImageIcon size={14} /> Bild hinzufügen (Upload oder Bild-URL)
+          </label>
+          <div className="flex gap-2">
+            <input
+              placeholder="Bild-URL (oder rechts Datei wählen)"
+              value={imageUrl}
+              onChange={e => setImageUrl(e.target.value)}
+              className="flex-1 bg-gray-900 border border-gray-800 rounded-xl px-3.5 py-2.5 text-xs text-white"
+            />
+            <label className="px-3.5 py-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-xs font-black cursor-pointer shrink-0 flex items-center gap-1.5">
+              <UploadCloud size={15} /> {uploadingImg ? '...' : 'Foto'}
+              <input type="file" accept="image/*" className="hidden" onChange={handleImageFileChange} />
+            </label>
+          </div>
+          {imageUrl && (
+            <div className="flex items-center justify-between bg-gray-900 p-2 rounded-xl border border-gray-800">
+              <img src={imageUrl} alt="Vorschau" className="h-12 w-16 object-cover rounded-lg" />
+              <button type="button" onClick={() => setImageUrl('')} className="text-xs text-red-400 font-bold px-2">
+                Bild entfernen
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-black uppercase text-orange-400 flex items-center gap-1.5">
+            <ExternalLink size={14} /> Link oder YouTube-Video (optional)
+          </label>
+          <input
+            placeholder="https://... (Weblink oder YouTube-URL)"
+            value={linkUrl}
+            onChange={e => setLinkUrl(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-800 rounded-xl px-3.5 py-2.5 text-xs text-white"
+          />
+          <input
+            placeholder="Link-Button Text (z.B. «Hinweis auf Google Maps öffnen»)"
+            value={linkLabel}
+            onChange={e => setLinkLabel(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-800 rounded-xl px-3.5 py-2 text-xs text-gray-300"
+          />
+        </div>
+      </div>
+
+      {/* Fragetyp & Antwortoptionen */}
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setQuestionType('mc')}
+              className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${
+                questionType === 'mc' ? 'bg-orange-500 text-gray-950' : 'bg-gray-950 text-gray-400 border border-gray-800'
+              }`}
+            >
+              Multiple Choice
+            </button>
+            <button
+              type="button"
+              onClick={() => setQuestionType('text')}
+              className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${
+                questionType === 'text' ? 'bg-orange-500 text-gray-950' : 'bg-gray-950 text-gray-400 border border-gray-800'
+              }`}
+            >
+              Freitext / Schätzfrage
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-gray-400 uppercase">Punktewert:</label>
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={points}
+              onChange={e => setPoints(e.target.value)}
+              className="w-20 bg-gray-950 border border-gray-800 rounded-xl px-3 py-1.5 text-sm text-white font-black text-center"
+            />
+          </div>
+        </div>
+
+        {questionType === 'mc' ? (
+          <div className="space-y-2.5">
+            <label className="text-xs font-bold text-gray-400 uppercase block">
+              Antwortoptionen (wähle rechts die richtige Lösung aus – bleibt für Mitglieder geheim!)
+            </label>
+            {options.map((opt, idx) => {
+              const isCorrect = correctOptionId === opt.id;
+              return (
+                <div key={opt.id} className="flex items-center gap-2">
+                  <span className="w-7 text-center font-black text-xs text-gray-500">
+                    {String.fromCharCode(65 + idx)}
+                  </span>
+                  <input
+                    required={idx < 2}
+                    placeholder={`Antwortoption ${idx + 1}`}
+                    value={opt.text}
+                    onChange={e => {
+                      const next = [...options];
+                      next[idx] = { ...opt, text: e.target.value };
+                      setOptions(next);
+                    }}
+                    className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCorrectOptionId(opt.id)}
+                    className={`px-3.5 py-2.5 rounded-xl text-xs font-black border transition-all shrink-0 ${
+                      isCorrect
+                        ? 'bg-emerald-500 text-gray-950 border-emerald-500'
+                        : 'bg-gray-950 text-gray-400 border-gray-800 hover:text-white'
+                    }`}
+                  >
+                    {isCorrect ? '✓ Richtige Antwort' : 'Als richtig markieren'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div>
+            <label className="text-xs font-bold text-gray-400 uppercase block">
+              Richtige Freitext-Lösung (mehrere erlaubte Schreibweisen mit Komma trennen)
+            </label>
+            <input
+              required
+              placeholder="z.B. 1988, 88"
+              value={correctTextAnswer}
+              onChange={e => setCorrectTextAnswer(e.target.value)}
+              className="w-full mt-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white font-bold"
+            />
+          </div>
+        )}
+      </div>
+
+      <div>
+        <label className="text-xs font-bold text-gray-400 uppercase">
+          Auflösungs-Erklärung (wird erst ganz am Schluss bei der Siegerehrung angezeigt)
+        </label>
+        <input
+          placeholder="Optionaler Fun-Fact zur Lösung..."
+          value={explanation}
+          onChange={e => setExplanation(e.target.value)}
+          className="w-full mt-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white"
+        />
+      </div>
+
+      <div className="flex justify-end gap-3 pt-3 border-t border-gray-800">
+        <button type="button" onClick={onCancel} className="px-5 py-3 rounded-xl bg-gray-800 text-gray-300 font-bold text-xs">
+          Abbrechen
+        </button>
+        <button type="submit" className="px-6 py-3 rounded-xl bg-orange-500 text-gray-950 font-black text-xs flex items-center gap-2">
+          <Save size={16} /> Tagesfrage speichern
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -1609,7 +2946,6 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
         ) : (
           filteredMinutes.map(m => {
             const isExpanded = expandedId === m.id || searchTerm.trim().length > 0 || roleFilter !== 'Alle' || onlyOpenTasks || onlyMyTasks;
-            const presentMembers = vorstandMembers.filter(v => m.attendance?.[v.id] === 'present');
             const totalPts = m.traktanden ? Object.values(m.traktanden).reduce((acc, arr) => acc + (arr?.length || 0), 0) : 0;
             const openPts = m.traktanden
               ? Object.values(m.traktanden).reduce((acc, arr) => acc + (arr?.filter(p => p.type === 'todo' && !p.done).length || 0), 0)
@@ -2094,7 +3430,7 @@ function ProtocolEditor({ vorstand, currentUser, onSave, onCancel, initialData, 
   );
 }
 
-function EventsView({ events, calItems = [], currentUser, isArchive, users, notify, askConfirm }) {
+function EventsView({ events, calItems = [], currentUser, isArchive, users, openQuizCount = 0, onOpenQuiz, notify, askConfirm }) {
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
@@ -2212,6 +3548,28 @@ function EventsView({ events, calItems = [], currentUser, isArchive, users, noti
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {!isArchive && openQuizCount > 0 && onOpenQuiz && (
+        <div
+          onClick={onOpenQuiz}
+          className="bg-gradient-to-r from-orange-500/20 via-amber-500/10 to-gray-900 border-2 border-orange-500/50 rounded-2xl p-4 flex items-center justify-between gap-4 cursor-pointer hover:border-orange-500 transition-all shadow-lg"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-orange-500 text-gray-950 rounded-xl shrink-0">
+              <Trophy size={18} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">
+                Suuger-Quiz • Neue Tagesfrage offen!
+              </p>
+              <p className="text-sm font-black text-white">
+                Du hast noch {openQuizCount} offene {openQuizCount === 1 ? 'Tagesfrage' : 'Tagesfragen'} – jetzt mitmachen!
+              </p>
+            </div>
+          </div>
+          <ChevronRight size={20} className="text-orange-500 shrink-0" />
         </div>
       )}
 
