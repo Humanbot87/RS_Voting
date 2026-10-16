@@ -701,7 +701,8 @@ export default function App() {
 }
 
 function HelperShiftsAdminView({ helperShifts, users, notify, askConfirm }) {
-  const currentYearStr = String(new Date().getFullYear());
+  const currentYearNum = Math.max(2026, new Date().getFullYear());
+  const currentYearStr = String(currentYearNum);
   const [selectedYear, setSelectedYear] = useState(currentYearStr);
   const [subTab, setSubTab] = useState('overview'); // 'overview' | 'shifts'
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'missing' | 'done' | 'multiple'
@@ -717,13 +718,19 @@ function HelperShiftsAdminView({ helperShifts, users, notify, askConfirm }) {
   };
 
   const availableYears = useMemo(() => {
-    const yrs = new Set([currentYearStr, String(Number(currentYearStr) - 1), String(Number(currentYearStr) + 1)]);
+    const yrs = new Set();
+    // Ab 2026 fortlaufend bis mindestens nächstes Jahr (wächst jedes Jahr automatisch mit)
+    for (let y = 2026; y <= currentYearNum + 1; y++) {
+      yrs.add(String(y));
+    }
     helperShifts.forEach(s => {
-      if (s.year) yrs.add(String(s.year));
-      else if (s.date) yrs.add(s.date.slice(0, 4));
+      const yNum = Number(s.year || (s.date ? s.date.slice(0, 4) : 0));
+      if (yNum >= 2026) {
+        yrs.add(String(yNum));
+      }
     });
-    return Array.from(yrs).sort((a, b) => b.localeCompare(a));
-  }, [helperShifts, currentYearStr]);
+    return Array.from(yrs).sort((a, b) => a.localeCompare(b));
+  }, [helperShifts, currentYearNum]);
 
   const shiftsForYear = useMemo(() => {
     return [...helperShifts]
