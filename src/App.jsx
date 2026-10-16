@@ -254,6 +254,7 @@ export default function App() {
   const [files, setFiles] = useState([]);
   const [folders, setFolders] = useState([]);
   const [calItems, setCalItems] = useState([]);
+  const [helperShifts, setHelperShifts] = useState([]);
   const [quizData, setQuizData] = useState(DEFAULT_QUIZ_DATA);
   const [activeTab, setActiveTab] = useState('events');
   const [dbReady, setDbReady] = useState(false);
@@ -323,6 +324,7 @@ export default function App() {
     const foldersRef = collection(db, 'artifacts', appId, 'public', 'data', 'folders');
     const filesRef   = collection(db, 'artifacts', appId, 'public', 'data', 'files');
     const calRef     = collection(db, 'artifacts', appId, 'public', 'data', 'calendar');
+    const shiftsRef  = collection(db, 'artifacts', appId, 'public', 'data', 'helper_shifts');
     const quizRef    = doc(db, 'artifacts', appId, 'public', 'data', 'quiz', 'main');
 
     const unsubUsers = onSnapshot(usersRef, 
@@ -363,6 +365,10 @@ export default function App() {
       (s) => setCalItems(s.docs.map(d => ({ ...d.data(), id: d.id }))),
       (err) => console.error("Calendar Error:", err)
     );
+    const unsubShifts = onSnapshot(shiftsRef,
+      (s) => setHelperShifts(s.docs.map(d => ({ ...d.data(), id: d.id }))),
+      (err) => console.error("Helper Shifts Error:", err)
+    );
     const unsubQuiz = onSnapshot(quizRef,
       (snap) => {
         if (snap.exists()) {
@@ -374,7 +380,7 @@ export default function App() {
       (err) => console.error("Quiz Error:", err)
     );
 
-    return () => { unsubUsers(); unsubEvents(); unsubMinutes(); unsubFolders(); unsubFiles(); unsubCal(); unsubQuiz(); };
+    return () => { unsubUsers(); unsubEvents(); unsubMinutes(); unsubFolders(); unsubFiles(); unsubCal(); unsubShifts(); unsubQuiz(); };
   }, [user]);
 
   useEffect(() => {
@@ -614,6 +620,7 @@ export default function App() {
               )}
               {currentUser.role === 'admin' && (
                 <>
+                  <TabButton active={activeTab === 'helpers'} onClick={() => setActiveTab('helpers')} icon={<UserCheck size={18} />} label="Helfereinsätze" />
                   <TabButton active={activeTab === 'archive'} onClick={() => setActiveTab('archive')} icon={<Archive size={18} />} label="Archiv" />
                   <TabButton active={activeTab === 'members'} onClick={() => setActiveTab('members')} icon={<Users size={18} />}   label="Mitglieder" />
                 </>
@@ -643,6 +650,7 @@ export default function App() {
               )}
               {currentUser.role === 'admin' && (
                 <>
+                  <MobileTabButton active={activeTab === 'helpers'} onClick={() => setActiveTab('helpers')} icon={<UserCheck size={20} />} label="Helfer" />
                   <MobileTabButton active={activeTab === 'archive'} onClick={() => setActiveTab('archive')} icon={<Archive size={20} />} label="Archiv" />
                   <MobileTabButton active={activeTab === 'members'} onClick={() => setActiveTab('members')} icon={<Users size={20} />} label="Mitglieder" />
                 </>
@@ -674,6 +682,14 @@ export default function App() {
               {activeTab === 'minutes'  && isVorstand && <ProtocolView minutes={minutes} users={users} currentUser={currentUser} calItems={calItems} notify={notify} askConfirm={askConfirm} />}
               {activeTab === 'files'    && isVorstand && <FilesView folders={folders} files={files} currentUser={currentUser} notify={notify} askConfirm={askConfirm} />}
               {activeTab === 'calendar' && isVorstand && <CalendarView calItems={calItems} currentUser={currentUser} notify={notify} askConfirm={askConfirm} />}
+              {activeTab === 'helpers'  && currentUser.role === 'admin' && (
+                <HelperShiftsAdminView
+                  helperShifts={helperShifts}
+                  users={users}
+                  notify={notify}
+                  askConfirm={askConfirm}
+                />
+              )}
               {activeTab === 'archive'  && <EventsView events={events.filter(e => e.isArchived)} calItems={calItems} currentUser={currentUser} isArchive users={users} notify={notify} askConfirm={askConfirm} />}
               {activeTab === 'members'  && currentUser.role === 'admin' && <MembersView users={users} notify={notify} askConfirm={askConfirm} />}
             </div>
@@ -681,6 +697,746 @@ export default function App() {
         </>
       )}
     </div>
+  );
+}
+
+function HelperShiftsAdminView({ helperShifts, users, notify, askConfirm }) {
+  const currentYearStr = String(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(currentYearStr);
+  const [subTab, setSubTab] = useState('overview'); // 'overview' | 'shifts'
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'missing' | 'done' | 'multiple'
+  const [groupFilter, setGroupFilter] = useState('Aktiv'); // 'Aktiv' | 'Alle' | specific group
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showShiftModal, setShowShiftModal] = useState(false);
+  const [editingShift, setEditingShift] = useState(null);
+
+  const ACTIVE_GROUPS = ['Vorstand', 'Aktiv Musig', 'Aktiv Wagenbau', 'Neumitglied Musig', 'Neumitglied Wagenbau'];
+
+  const isUserActiveMember = (u) => {
+    return (u.groups || []).some(g => ACTIVE_GROUPS.includes(g));
+  };
+
+  const availableYears = useMemo(() => {
+    const yrs = new Set([currentYearStr, String(Number(currentYearStr) - 1), String(Number(currentYearStr) + 1)]);
+    helperShifts.forEach(s => {
+      if (s.year) yrs.add(String(s.year));
+      else if (s.date) yrs.add(s.date.slice(0, 4));
+    });
+    return Array.from(yrs).sort((a, b) => b.localeCompare(a));
+  }, [helperShifts, currentYearStr]);
+
+  const shiftsForYear = useMemo(() => {
+    return [...helperShifts]
+      .filter(s => {
+        const y = s.year ? String(s.year) : (s.date || '').slice(0, 4);
+        return y === selectedYear;
+      })
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }, [helperShifts, selectedYear]);
+
+  // Auswertung pro Mitglied für das gewählte Jahr
+  const memberStats = useMemo(() => {
+    return users
+      .map(u => {
+        const userShifts = shiftsForYear.filter(s => (s.participantIds || []).includes(u.id));
+        const isActiveMember = isUserActiveMember(u);
+        return {
+          user: u,
+          isActiveMember,
+          shifts: userShifts,
+          count: userShifts.length,
+          fulfilled: userShifts.length >= 1
+        };
+      })
+      .sort((a, b) => {
+        // Zuerst nach Nachname/Vorname sortieren
+        const nameA = `${a.user.firstName || ''} ${a.user.lastName || ''}`.toLowerCase();
+        const nameB = `${b.user.firstName || ''} ${b.user.lastName || ''}`.toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+  }, [users, shiftsForYear]);
+
+  const filteredMemberStats = useMemo(() => {
+    return memberStats.filter(item => {
+      if (groupFilter === 'Aktiv' && !item.isActiveMember) return false;
+      if (groupFilter !== 'Aktiv' && groupFilter !== 'Alle' && !(item.user.groups || []).includes(groupFilter)) {
+        return false;
+      }
+      if (statusFilter === 'missing' && item.count > 0) return false;
+      if (statusFilter === 'done' && item.count < 1) return false;
+      if (statusFilter === 'multiple' && item.count < 2) return false;
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        const fullName = `${item.user.firstName || ''} ${item.user.lastName || ''}`.toLowerCase();
+        const shiftMatch = item.shifts.some(s => (s.title || '').toLowerCase().includes(q));
+        if (!fullName.includes(q) && !shiftMatch) return false;
+      }
+      return true;
+    });
+  }, [memberStats, groupFilter, statusFilter, searchTerm]);
+
+  const summary = useMemo(() => {
+    const activeMembers = memberStats.filter(m => m.isActiveMember);
+    const totalActive = activeMembers.length;
+    const fulfilledActive = activeMembers.filter(m => m.count >= 1).length;
+    const missingActive = totalActive - fulfilledActive;
+    const multipleActive = activeMembers.filter(m => m.count >= 2).length;
+    const quotaPct = totalActive > 0 ? Math.round((fulfilledActive / totalActive) * 100) : 0;
+    return {
+      totalActive,
+      fulfilledActive,
+      missingActive,
+      multipleActive,
+      quotaPct,
+      totalShiftsCount: shiftsForYear.length
+    };
+  }, [memberStats, shiftsForYear]);
+
+  const handleSaveShift = async (shiftData) => {
+    const id = shiftData.id || `shift_${Date.now()}`;
+    const year = shiftData.date ? shiftData.date.slice(0, 4) : selectedYear;
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'helper_shifts', id), {
+      ...shiftData,
+      id,
+      year
+    });
+    setShowShiftModal(false);
+    setEditingShift(null);
+    notify("Helfereinsatz erfolgreich gespeichert.", "success");
+  };
+
+  const handleDeleteShift = (shift) => {
+    askConfirm(
+      'Helfereinsatz löschen',
+      `Möchtest du den Helfereinsatz «${shift.title}» inkl. Zuweisungen wirklich löschen?`,
+      async () => {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'helper_shifts', shift.id));
+        notify("Helfereinsatz gelöscht.", "info");
+      }
+    );
+  };
+
+  const handleToggleUserInShift = async (shift, userId) => {
+    const currentList = shift.participantIds || [];
+    const exists = currentList.includes(userId);
+    const nextList = exists
+      ? currentList.filter(id => id !== userId)
+      : [...currentList, userId];
+
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'helper_shifts', shift.id), {
+      participantIds: nextList
+    });
+  };
+
+  const copySummaryReport = () => {
+    const activeList = memberStats.filter(m => m.isActiveMember);
+    const doneList = activeList.filter(m => m.count >= 1);
+    const openList = activeList.filter(m => m.count === 0);
+
+    const lines = [
+      `🛠️ *RüssSuuger Ämme – Helfereinsätze ${selectedYear}*`,
+      `Erfüllt: ${doneList.length} / ${activeList.length} Aktivmitglieder (${summary.quotaPct}%)`,
+      '',
+      `✅ *Bereits geleistet (${doneList.length}):*`,
+      ...doneList.map(m => `• ${m.user.firstName} ${m.user.lastName} (${m.count}x: ${m.shifts.map(s => s.title).join(', ')})`),
+      '',
+      `⚠️ *Noch offen – 0 Einsätze (${openList.length}):*`,
+      ...openList.map(m => `• ${m.user.firstName} ${m.user.lastName}`)
+    ];
+
+    if (copyTextToClipboard(lines.join('\n'))) {
+      notify("Helfer-Übersicht in die Zwischenablage kopiert!", "success");
+    } else {
+      notify("Kopieren fehlgeschlagen.", "error");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header & Kennzahlen */}
+      <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-orange-950/30 border border-orange-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest bg-orange-500 text-gray-950 px-3 py-1 rounded-full">
+              <Lock size={12} /> NUR ADMIN-ANSICHT • JAHRESPFLICHT (MIN. 1 EINSATZ)
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+              Helfereinsätze & Pflicht-Kontrolle {selectedYear}
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-400">
+              Jedes Aktivmitglied leistet mindestens 1 Helfereinsatz pro Jahr. Hier behältst du den vollen Überblick.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center bg-gray-950 border border-gray-800 rounded-2xl p-1">
+              {availableYears.map(yr => (
+                <button
+                  key={yr}
+                  onClick={() => setSelectedYear(yr)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
+                    selectedYear === yr ? 'bg-orange-500 text-gray-950' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {yr}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={copySummaryReport}
+              className="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-200 font-black rounded-2xl text-xs flex items-center gap-2 transition-all active:scale-95"
+              title="Bericht für WhatsApp / Vorstand kopieren"
+            >
+              <Share2 size={16} className="text-orange-500" /> Liste kopieren
+            </button>
+
+            <button
+              onClick={() => {
+                setEditingShift(null);
+                setShowShiftModal(true);
+              }}
+              className="px-5 py-3 bg-orange-500 hover:bg-orange-400 text-gray-950 font-black rounded-2xl text-xs flex items-center gap-2 shadow-lg shadow-orange-500/20 transition-all active:scale-95"
+            >
+              <Plus size={16} strokeWidth={3} /> Helfereinsatz erfassen
+            </button>
+          </div>
+        </div>
+
+        {/* Statistik-Kacheln (Klickbar zum Filtern) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+          <div
+            onClick={() => { setSubTab('overview'); setStatusFilter('all'); }}
+            className={`p-4 rounded-2xl border cursor-pointer transition-all ${
+              subTab === 'overview' && statusFilter === 'all'
+                ? 'bg-orange-500/15 border-orange-500'
+                : 'bg-gray-950/80 border-gray-800 hover:border-gray-700'
+            }`}
+          >
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Aktivmitglieder</p>
+            <p className="text-2xl font-black text-white mt-1">{summary.totalActive}</p>
+            <p className="text-[10px] text-gray-500 font-bold mt-0.5">{summary.totalShiftsCount} Einsätze im {selectedYear}</p>
+          </div>
+
+          <div
+            onClick={() => { setSubTab('overview'); setStatusFilter(statusFilter === 'done' ? 'all' : 'done'); }}
+            className={`p-4 rounded-2xl border cursor-pointer transition-all ${
+              subTab === 'overview' && statusFilter === 'done'
+                ? 'bg-emerald-500/20 border-emerald-500'
+                : 'bg-gray-950/80 border-gray-800 hover:border-emerald-500/40'
+            }`}
+          >
+            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Soll erfüllt (≥ 1x)</p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <p className="text-2xl font-black text-emerald-400">{summary.fulfilledActive}</p>
+              <span className="text-xs font-black text-emerald-500/80">({summary.quotaPct}%)</span>
+            </div>
+            <p className="text-[10px] text-gray-500 font-bold mt-0.5">Pflichteinsatz geleistet ✓</p>
+          </div>
+
+          <div
+            onClick={() => { setSubTab('overview'); setStatusFilter(statusFilter === 'missing' ? 'all' : 'missing'); }}
+            className={`p-4 rounded-2xl border cursor-pointer transition-all ${
+              subTab === 'overview' && statusFilter === 'missing'
+                ? 'bg-red-500/20 border-red-500'
+                : 'bg-gray-950/80 border-gray-800 hover:border-red-500/40'
+            }`}
+          >
+            <p className="text-[10px] font-black uppercase tracking-widest text-red-400">Noch offen (0x)</p>
+            <p className="text-2xl font-black text-red-400 mt-1">{summary.missingActive}</p>
+            <p className="text-[10px] text-gray-500 font-bold mt-0.5">Noch kein Einsatz im {selectedYear}</p>
+          </div>
+
+          <div
+            onClick={() => { setSubTab('overview'); setStatusFilter(statusFilter === 'multiple' ? 'all' : 'multiple'); }}
+            className={`p-4 rounded-2xl border cursor-pointer transition-all ${
+              subTab === 'overview' && statusFilter === 'multiple'
+                ? 'bg-amber-500/20 border-amber-500'
+                : 'bg-gray-950/80 border-gray-800 hover:border-amber-500/40'
+            }`}
+          >
+            <p className="text-[10px] font-black uppercase tracking-widest text-amber-400">Mehrfach-Helfer (≥ 2x)</p>
+            <p className="text-2xl font-black text-amber-400 mt-1">{summary.multipleActive}</p>
+            <p className="text-[10px] text-gray-500 font-bold mt-0.5">2 oder mehr Einsätze 🌟</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal / Formular zum Erstellen & Bearbeiten eines Helfereinsatzes */}
+      {(showShiftModal || editingShift) && (
+        <HelperShiftEditorModal
+          initialData={editingShift}
+          selectedYear={selectedYear}
+          users={users}
+          activeGroups={ACTIVE_GROUPS}
+          onSave={handleSaveShift}
+          onCancel={() => {
+            setShowShiftModal(false);
+            setEditingShift(null);
+          }}
+        />
+      )}
+
+      {/* Umschalter zwischen "Mitglieder-Kontrolle" und "Erfasste Helfereinsätze" */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 bg-gray-900 border border-gray-800 p-1.5 rounded-2xl w-fit">
+          <button
+            onClick={() => setSubTab('overview')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase transition-all flex items-center gap-2 ${
+              subTab === 'overview' ? 'bg-orange-500 text-gray-950 shadow-md' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Users size={15} /> Mitglieder-Übersicht ({filteredMemberStats.length})
+          </button>
+          <button
+            onClick={() => setSubTab('shifts')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase transition-all flex items-center gap-2 ${
+              subTab === 'shifts' ? 'bg-orange-500 text-gray-950 shadow-md' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <ClipboardList size={15} /> Erfasste Einsätze ({shiftsForYear.length})
+          </button>
+        </div>
+
+        {subTab === 'overview' && (
+          <div className="flex flex-wrap items-center gap-2">
+            {[
+              { id: 'all', label: 'Alle zeigen' },
+              { id: 'missing', label: '⚠️ Noch 0 Einsätze' },
+              { id: 'done', label: '✅ Soll erfüllt (1+)' },
+              { id: 'multiple', label: '🌟 2+ Einsätze' }
+            ].map(f => (
+              <button
+                key={f.id}
+                onClick={() => setStatusFilter(f.id)}
+                className={`px-3 py-2 rounded-xl text-[11px] font-black uppercase border transition-all ${
+                  statusFilter === f.id
+                    ? 'bg-orange-500 text-gray-950 border-orange-500'
+                    : 'bg-gray-900 text-gray-400 border-gray-800 hover:text-white'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Ansicht 1: Mitglieder-Kontrolltabelle */}
+      {subTab === 'overview' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <input
+                type="text"
+                placeholder="Mitglied oder Einsatz suchen..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-3.5 pl-11 pr-10 text-sm text-white focus:border-orange-500 outline-none"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                >
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+
+            <select
+              value={groupFilter}
+              onChange={e => setGroupFilter(e.target.value)}
+              className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3.5 text-xs font-black uppercase text-white outline-none focus:border-orange-500"
+            >
+              <option value="Aktiv">Nur Aktivmitglieder (Pflicht)</option>
+              <option value="Alle">Alle Mitglieder (inkl. Passiv/Ehren)</option>
+              {GROUPS.map(g => (
+                <option key={g} value={g}>Gruppe: {g}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-xl">
+            {filteredMemberStats.length === 0 ? (
+              <div className="text-center py-14 px-4">
+                <UserCheck className="mx-auto text-gray-700 mb-3" size={40} />
+                <p className="text-gray-400 font-bold text-sm">Keine Mitglieder für diesen Filter gefunden.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-800 bg-gray-950/60 text-[10px] font-black uppercase tracking-wider text-gray-400">
+                      <th className="py-3.5 px-4">Mitglied</th>
+                      <th className="py-3.5 px-4">Gruppe(n)</th>
+                      <th className="py-3.5 px-4 text-center">Status {selectedYear}</th>
+                      <th className="py-3.5 px-4">Geleistete Helfereinsätze</th>
+                      <th className="py-3.5 px-4 text-right">Schnell-Zuweisung</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/70 text-sm">
+                    {filteredMemberStats.map(({ user: u, count, shifts }) => {
+                      return (
+                        <tr key={u.id} className="hover:bg-gray-950/40 transition-colors">
+                          <td className="py-3.5 px-4 font-black text-white whitespace-nowrap">
+                            {u.firstName} {u.lastName}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="flex flex-wrap gap-1">
+                              {(u.groups || []).map(g => (
+                                <span
+                                  key={g}
+                                  className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-950 border border-gray-800 text-gray-400"
+                                >
+                                  {g}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                            {count === 0 ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-red-500/15 text-red-400 border border-red-500/30">
+                                ⚠️ 0 Einsätze (Offen)
+                              </span>
+                            ) : count === 1 ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                ✓ 1 Einsatz (Erfüllt)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                🌟 {count} Einsätze (Vorbild!)
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {shifts.length === 0 ? (
+                              <span className="text-xs text-gray-600 italic">Noch kein Einsatz eingetragen</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {shifts.map(s => (
+                                  <span
+                                    key={s.id}
+                                    className="inline-flex items-center gap-1.5 text-xs font-bold bg-gray-950 border border-orange-500/30 text-orange-300 px-2.5 py-1 rounded-xl"
+                                  >
+                                    <span>{s.title}</span>
+                                    {s.date && (
+                                      <span className="text-[10px] text-gray-500">
+                                        ({new Date(s.date).toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit' })})
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      title="Aus diesem Einsatz entfernen"
+                                      onClick={() => handleToggleUserInShift(s, u.id)}
+                                      className="text-gray-500 hover:text-red-400 ml-0.5"
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            {shiftsForYear.length > 0 ? (
+                              <select
+                                value=""
+                                onChange={e => {
+                                  const shiftId = e.target.value;
+                                  if (!shiftId) return;
+                                  const targetShift = shiftsForYear.find(s => s.id === shiftId);
+                                  if (targetShift) {
+                                    handleToggleUserInShift(targetShift, u.id);
+                                    notify(`${u.firstName} zu «${targetShift.title}» hinzugefügt.`, "success");
+                                  }
+                                }}
+                                className="bg-gray-950 border border-gray-800 hover:border-orange-500/50 rounded-xl px-2.5 py-1.5 text-xs font-bold text-gray-300 outline-none"
+                              >
+                                <option value="">+ Einsatz zuweisen...</option>
+                                {shiftsForYear
+                                  .filter(s => !(s.participantIds || []).includes(u.id))
+                                  .map(s => (
+                                    <option key={s.id} value={s.id}>
+                                      {s.title} ({s.date ? new Date(s.date).toLocaleDateString('de-CH') : s.year})
+                                    </option>
+                                  ))}
+                              </select>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setShowShiftModal(true)}
+                                className="text-xs font-bold text-orange-500 hover:underline"
+                              >
+                                + Ersten Einsatz anlegen
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Ansicht 2: Liste aller erfassten Helfereinsätze (Events/Schichten) */}
+      {subTab === 'shifts' && (
+        <div className="grid gap-4">
+          {shiftsForYear.length === 0 ? (
+            <div className="text-center py-16 bg-gray-900/40 rounded-3xl border border-dashed border-gray-800 space-y-3">
+              <ClipboardList className="mx-auto text-gray-700" size={44} />
+              <p className="text-gray-400 font-bold">
+                Für {selectedYear} wurden noch keine Helfereinsätze erfasst.
+              </p>
+              <button
+                onClick={() => setShowShiftModal(true)}
+                className="px-5 py-2.5 bg-orange-500 text-gray-950 font-black rounded-xl text-xs inline-flex items-center gap-2"
+              >
+                <Plus size={15} /> Jetzt ersten Helfereinsatz erfassen
+              </button>
+            </div>
+          ) : (
+            shiftsForYear.map(shift => {
+              const participants = (shift.participantIds || [])
+                .map(id => users.find(u => u.id === id))
+                .filter(Boolean);
+
+              return (
+                <div
+                  key={shift.id}
+                  className="bg-gray-900 border border-gray-800 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xl"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-4">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest bg-orange-500/15 text-orange-400 border border-orange-500/30 px-2.5 py-0.5 rounded-full">
+                          {shift.date ? new Date(shift.date).toLocaleDateString('de-CH', { day: '2-digit', month: 'long', year: 'numeric' }) : `Jahr ${selectedYear}`}
+                        </span>
+                        <span className="text-[10px] font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-400 px-2.5 py-0.5 rounded-full">
+                          {participants.length} {participants.length === 1 ? 'Helfer' : 'Helfer'} eingetragen
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-black text-white mt-1.5">{shift.title}</h3>
+                      {shift.notes && <p className="text-xs text-gray-400 mt-0.5">{shift.notes}</p>}
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end sm:self-center">
+                      <button
+                        onClick={() => setEditingShift(shift)}
+                        className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5"
+                      >
+                        <Edit2 size={14} /> Helfer / Einsatz bearbeiten
+                      </button>
+                      <button
+                        onClick={() => handleDeleteShift(shift)}
+                        className="p-2.5 bg-gray-800 hover:bg-red-500/20 text-gray-400 hover:text-red-500 rounded-xl"
+                        title="Einsatz löschen"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {participants.length === 0 ? (
+                    <p className="text-xs text-gray-500 italic">Noch keine Mitglieder diesem Einsatz zugewiesen.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {participants.map(p => (
+                        <div
+                          key={p.id}
+                          className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs font-bold text-white"
+                        >
+                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          <span>{p.firstName} {p.lastName}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleUserInShift(shift, p.id)}
+                            className="text-gray-500 hover:text-red-400 ml-1"
+                            title="Entfernen"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HelperShiftEditorModal({ initialData, selectedYear, users, activeGroups, onSave, onCancel }) {
+  const [title, setTitle] = useState(initialData?.title || '');
+  const [date, setDate] = useState(initialData?.date || `${selectedYear}-${new Date().toISOString().slice(5, 10)}`);
+  const [notes, setNotes] = useState(initialData?.notes || '');
+  const [participantIds, setParticipantIds] = useState(initialData?.participantIds || []);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [onlyActiveFilter, setOnlyActiveFilter] = useState(true);
+
+  const filteredUsers = useMemo(() => {
+    return [...users]
+      .filter(u => {
+        if (onlyActiveFilter) {
+          const isAct = (u.groups || []).some(g => activeGroups.includes(g));
+          if (!isAct) return false;
+        }
+        if (memberSearch.trim()) {
+          const q = memberSearch.toLowerCase();
+          const full = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
+          return full.includes(q);
+        }
+        return true;
+      })
+      .sort((a, b) =>
+        `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
+      );
+  }, [users, onlyActiveFilter, memberSearch, activeGroups]);
+
+  const toggleParticipant = (uid) => {
+    if (participantIds.includes(uid)) {
+      setParticipantIds(participantIds.filter(id => id !== uid));
+    } else {
+      setParticipantIds([...participantIds, uid]);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={e => {
+        e.preventDefault();
+        if (!title.trim()) return;
+        onSave({
+          ...(initialData || {}),
+          title: title.trim(),
+          date,
+          notes: notes.trim(),
+          participantIds
+        });
+      }}
+      className="bg-gray-900 border-2 border-orange-500/50 rounded-3xl p-6 sm:p-8 space-y-5 shadow-2xl animate-in fade-in"
+    >
+      <div className="flex items-center justify-between border-b border-gray-800 pb-4">
+        <div>
+          <h3 className="text-xl font-black text-white">
+            {initialData ? 'Helfereinsatz bearbeiten' : 'Neuen Helfereinsatz erfassen'}
+          </h3>
+          <p className="text-xs text-gray-400">Einsatz benennen und alle beteiligten Helfer anhaken</p>
+        </div>
+        <button type="button" onClick={onCancel} className="p-2 bg-gray-800 rounded-xl text-gray-400 hover:text-white">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="sm:col-span-2">
+          <label className="text-xs font-bold text-gray-400 uppercase">Bezeichnung / Anlass des Helfereinsatzes</label>
+          <input
+            required
+            placeholder="z.B. Fasnachts-Bar, Abbau Monsterkonzert, Wagenbau-Bewirtung..."
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            className="w-full mt-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white font-bold focus:border-orange-500 outline-none"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-bold text-gray-400 uppercase">Datum</label>
+          <input
+            type="date"
+            required
+            value={date}
+            onChange={e => setDate(e.target.value)}
+            className="w-full mt-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white font-bold focus:border-orange-500 outline-none"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-bold text-gray-400 uppercase">Notiz / Schicht-Info (optional)</label>
+        <input
+          placeholder="z.B. Schicht 20:00 – 01:00 Uhr / Verantwortlich: Tourmanager"
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          className="w-full mt-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:border-orange-500 outline-none"
+        />
+      </div>
+
+      {/* Mitglieder-Auswahl */}
+      <div className="bg-gray-950 border border-gray-800 rounded-2xl p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <label className="text-xs font-black uppercase text-orange-400">
+            Beteiligte Mitglieder auswählen ({participantIds.length} ausgewählt)
+          </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setOnlyActiveFilter(!onlyActiveFilter)}
+              className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase border ${
+                onlyActiveFilter
+                  ? 'bg-orange-500/20 text-orange-400 border-orange-500/40'
+                  : 'bg-gray-900 text-gray-400 border-gray-800'
+              }`}
+            >
+              {onlyActiveFilter ? '✓ Nur Aktivmitglieder' : 'Alle Mitglieder'}
+            </button>
+          </div>
+        </div>
+
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" size={15} />
+          <input
+            placeholder="Name filtern..."
+            value={memberSearch}
+            onChange={e => setMemberSearch(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-800 rounded-xl py-2 pl-9 pr-4 text-xs text-white outline-none focus:border-orange-500"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
+          {filteredUsers.map(u => {
+            const isSelected = participantIds.includes(u.id);
+            return (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => toggleParticipant(u.id)}
+                className={`p-2.5 rounded-xl border text-left flex items-center justify-between gap-2 transition-all ${
+                  isSelected
+                    ? 'bg-orange-500/20 border-orange-500 text-white'
+                    : 'bg-gray-900 border-gray-800 text-gray-300 hover:border-gray-700'
+                }`}
+              >
+                <span className="text-xs font-bold truncate">{u.firstName} {u.lastName}</span>
+                <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
+                  isSelected ? 'bg-orange-500 border-orange-500 text-gray-950' : 'border-gray-700'
+                }`}>
+                  {isSelected && <Check size={13} strokeWidth={3} />}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3 pt-3 border-t border-gray-800">
+        <button type="button" onClick={onCancel} className="px-5 py-3 rounded-xl bg-gray-800 text-gray-300 font-bold text-xs">
+          Abbrechen
+        </button>
+        <button type="submit" className="px-6 py-3 rounded-xl bg-orange-500 text-gray-950 font-black text-xs flex items-center gap-2 shadow-lg">
+          <Save size={16} /> Helfereinsatz speichern
+        </button>
+      </div>
+    </form>
   );
 }
 
