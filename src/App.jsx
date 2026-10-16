@@ -27,8 +27,6 @@ const TRAKTANDEN = [
 ];
 
 const SCHMUDO_DATES = [
-  { year: 2025, date: '2025-02-27T05:00:00' },
-  { year: 2026, date: '2026-02-12T05:00:00' },
   { year: 2027, date: '2027-02-04T05:00:00' },
   { year: 2028, date: '2028-02-24T05:00:00' },
   { year: 2029, date: '2029-02-08T05:00:00' },
@@ -113,6 +111,13 @@ const copyTextToClipboard = (text) => {
   }
   document.body.removeChild(textarea);
   return success;
+};
+
+const getYouTubeEmbedUrl = (url = '') => {
+  if (!url) return null;
+  const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+  const match = url.match(regExp);
+  return match && match[1] ? `https://www.youtube.com/embed/${match[1]}?autoplay=1` : null;
 };
 
 const StandardQRCodeImage = ({ value, size = 220 }) => {
@@ -882,7 +887,7 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
   const [yearFilter,     setYearFilter]     = useState('Alle');
   const [onlyOpenTasks,  setOnlyOpenTasks]  = useState(false);
   const [onlyMyTasks,    setOnlyMyTasks]    = useState(false);
-  const [tasksViewMode,  setTasksViewMode]  = useState('kanban'); // 'list' | 'kanban'
+  const [tasksViewMode,  setTasksViewMode]  = useState('kanban');
   const [showKanbanBoard, setShowKanbanBoard] = useState(false);
   const [draggedTask,    setDraggedTask]    = useState(null);
   const [compactFactsOnly, setCompactFactsOnly] = useState(false);
@@ -1592,5 +1597,1749 @@ function ProtocolView({ minutes, users, currentUser, calItems = [], notify, askC
       )}
 
       <div className="grid gap-4">
-        {minutes.length === 0 ? (
-          <div
+        {filteredMinutes.length === 0 ? (
+          <div className="text-center py-20 bg-gray-900/40 rounded-3xl border border-dashed border-gray-800">
+            <ClipboardList className="mx-auto text-gray-800 mb-3" size={44} />
+            <p className="text-gray-400 font-bold">
+              {searchTerm || roleFilter !== 'Alle' || yearFilter !== 'Alle' || onlyOpenTasks || onlyMyTasks
+                ? 'Keine Protokolle für diesen Filter gefunden.'
+                : 'Noch keine Protokolle vorhanden.'}
+            </p>
+          </div>
+        ) : (
+          filteredMinutes.map(m => {
+            const isExpanded = expandedId === m.id || searchTerm.trim().length > 0 || roleFilter !== 'Alle' || onlyOpenTasks || onlyMyTasks;
+            const presentMembers = vorstandMembers.filter(v => m.attendance?.[v.id] === 'present');
+            const totalPts = m.traktanden ? Object.values(m.traktanden).reduce((acc, arr) => acc + (arr?.length || 0), 0) : 0;
+            const openPts = m.traktanden
+              ? Object.values(m.traktanden).reduce((acc, arr) => acc + (arr?.filter(p => p.type === 'todo' && !p.done).length || 0), 0)
+              : 0;
+            const dateObj = m.date ? new Date(m.date) : null;
+
+            return (
+              <div
+                key={m.id}
+                className={`bg-gray-900 border rounded-3xl transition-all duration-300 overflow-hidden shadow-xl ${
+                  isExpanded ? 'border-orange-500/40 ring-1 ring-orange-500/10' : 'border-gray-800 hover:border-gray-700'
+                }`}
+              >
+                <div
+                  onClick={() => setExpandedId(expandedId === m.id ? null : m.id)}
+                  className="p-5 sm:p-6 cursor-pointer hover:bg-gray-800/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                >
+                  <div className="flex items-start sm:items-center gap-4 min-w-0">
+                    {dateObj && (
+                      <div className="bg-gray-950 border border-gray-800 rounded-2xl p-3 text-center min-w-[64px] shrink-0">
+                        <p className="text-[10px] font-black uppercase text-orange-500">
+                          {dateObj.toLocaleDateString('de-CH', { month: 'short' })}
+                        </p>
+                        <p className="text-xl font-black text-white leading-tight">
+                          {dateObj.toLocaleDateString('de-CH', { day: '2-digit' })}
+                        </p>
+                        <p className="text-[10px] text-gray-500 font-bold">{dateObj.getFullYear()}</p>
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="text-[10px] font-black uppercase tracking-widest bg-gray-800 text-gray-300 px-2.5 py-0.5 rounded-md">
+                          {totalPts} {totalPts === 1 ? 'Eintrag' : 'Einträge'}
+                        </span>
+                        {openPts > 0 && (
+                          <span className="text-[10px] font-black uppercase tracking-widest bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2.5 py-0.5 rounded-md">
+                            {openPts} Pendenzen offen
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="text-lg sm:text-xl font-black text-white truncate">
+                        {highlightText(m.title, searchTerm)}
+                      </h3>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-2 pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-800/60" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={() => copyProtocolSummary(m)}
+                      title="Zusammenfassung kopieren"
+                      className="p-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-gray-300 hover:text-orange-400 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                    >
+                      <Share2 size={18} />
+                    </button>
+                    <button
+                      onClick={() => setReadingMinute(m)}
+                      title="Lese- & Druckansicht"
+                      className="p-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-gray-300 hover:text-orange-400 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                    >
+                      <Printer size={18} />
+                    </button>
+                    <button
+                      onClick={() => setEditing(m)}
+                      title="Bearbeiten"
+                      className="p-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-gray-400 hover:text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                    >
+                      <Edit2 size={18} />
+                    </button>
+                    {currentUser.role === 'admin' && (
+                      <button
+                        onClick={() =>
+                          askConfirm(
+                            'Protokoll löschen',
+                            `Möchtest du das Protokoll «${m.title}» wirklich unwiderruflich löschen?`,
+                            async () => {
+                              await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'minutes', m.id));
+                              notify("Protokoll gelöscht.", "info");
+                            },
+                            'Löschen'
+                          )
+                        }
+                        className="p-3 bg-gray-800 hover:bg-red-500/20 rounded-xl text-gray-400 hover:text-red-500 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="px-5 pb-6 sm:px-6 sm:pb-6 pt-2 border-t border-gray-800/80 space-y-5 bg-gray-950/30 animate-in fade-in duration-200">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-800/60">
+                      <div className="flex flex-wrap gap-1.5">
+                        {vorstandMembers.map(v => {
+                          const status = m.attendance?.[v.id] || 'present';
+                          return (
+                            <span
+                              key={v.id}
+                              className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${
+                                status === 'present'
+                                  ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                                  : status === 'excused'
+                                  ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-500'
+                                  : 'bg-red-500/10 border-red-500/30 text-red-500'
+                              }`}
+                            >
+                              {v.firstName}: {status === 'present' ? 'Anwesend' : status === 'excused' ? 'Entschuldigt' : 'Abwesend'}
+                            </span>
+                          );
+                        })}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setCompactFactsOnly(!compactFactsOnly)}
+                        className={`text-[11px] font-black uppercase px-3 py-1.5 rounded-xl border transition-all ${
+                          compactFactsOnly
+                            ? 'bg-orange-500 text-gray-950 border-orange-500'
+                            : 'bg-gray-900 text-gray-400 border-gray-800 hover:text-white'
+                        }`}
+                      >
+                        {compactFactsOnly ? '✓ Nur Beschlüsse & Pendenzen' : 'Nur Beschlüsse & Pendenzen'}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {TRAKTANDEN.filter(t => roleFilter === 'Alle' || roleFilter === t).map(t => {
+                        let pts = m.traktanden?.[t] || [];
+                        if (compactFactsOnly) {
+                          pts = pts.filter(p => p.type === 'decision' || p.type === 'todo');
+                        }
+                        if (pts.length === 0) return null;
+                        const meta = traktandumMeta[t] || { badge: 'bg-gray-800 text-gray-300', dot: 'bg-orange-500' };
+                        return (
+                          <div key={t} className="bg-gray-900/90 p-4 rounded-2xl border border-gray-800/90 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${meta.badge}`}>
+                                {t}
+                              </span>
+                              <span className="text-[10px] text-gray-500 font-bold">{pts.length} Pkt.</span>
+                            </div>
+                            <div className="space-y-2.5">
+                              {pts.map((p, idx) => {
+                                const typeKey = p.type === 'todo' && p.done ? 'done' : (p.type || 'info');
+                                const tMeta = pointTypeMeta[typeKey] || pointTypeMeta.info;
+                                return (
+                                  <div key={p.id || idx} className="bg-gray-950/80 border border-gray-800/70 rounded-xl p-3.5 text-sm space-y-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                                        {p.type === 'todo' && (
+                                          <button
+                                            onClick={() => toggleTaskDone(m, t, p.id)}
+                                            className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${
+                                              p.done ? 'bg-emerald-500 border-emerald-500 text-gray-950' : 'border-orange-500 hover:bg-orange-500/20'
+                                            }`}
+                                          >
+                                            {p.done && <Check size={13} strokeWidth={3} />}
+                                          </button>
+                                        )}
+                                        <p className={`text-gray-200 whitespace-pre-wrap break-words leading-relaxed flex-1 ${p.done ? 'line-through text-gray-500' : ''}`}>
+                                          {highlightText(p.text, searchTerm)}
+                                        </p>
+                                      </div>
+                                      {p.type && p.type !== 'info' && (
+                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border shrink-0 ${tMeta.style}`}>
+                                          {tMeta.label}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {(p.assignee || p.dueDate || p.docUrl) && (
+                                      <div className="flex flex-wrap items-center gap-2 pt-1.5 border-t border-gray-800/60">
+                                        {p.assignee && (
+                                          <span className="text-[10px] font-bold text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded">
+                                            @{p.assignee}
+                                          </span>
+                                        )}
+                                        {p.dueDate && (
+                                          <span className="text-[10px] font-bold text-gray-400 bg-gray-900 px-2 py-0.5 rounded">
+                                            Frist: {new Date(p.dueDate).toLocaleDateString('de-CH')}
+                                          </span>
+                                        )}
+                                        {p.docUrl && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setPreviewDoc({ url: p.docUrl, name: p.docName || 'Beilage' })}
+                                            className="text-[10px] font-bold text-blue-400 hover:underline flex items-center gap-1"
+                                          >
+                                            <Paperclip size={11} /> {p.docName || 'Beilage ansehen'}
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {readingMinute && (
+        <ReadingViewModal
+          minute={readingMinute}
+          vorstandMembers={vorstandMembers}
+          onClose={() => setReadingMinute(null)}
+        />
+      )}
+
+      {previewDoc && (
+        <FilePreviewModal
+          file={previewDoc}
+          onClose={() => setPreviewDoc(null)}
+        />
+      )}
+
+      {watchingLive && liveDraft && (
+        <div className="fixed inset-0 z-[240] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-orange-500/40 rounded-3xl max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-5 border-b border-gray-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping" />
+                <h3 className="font-black text-white">{liveDraft.form?.title || 'Live-Sitzung'}</h3>
+              </div>
+              <button onClick={() => setWatchingLive(false)} className="p-2 bg-gray-800 rounded-xl text-gray-400 hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-4">
+              {TRAKTANDEN.map(t => {
+                const pts = liveDraft.form?.traktanden?.[t] || [];
+                if (pts.length === 0) return null;
+                return (
+                  <div key={t} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 space-y-2">
+                    <h4 className="text-xs font-black uppercase text-orange-500">{t}</h4>
+                    {pts.map((p, i) => (
+                      <p key={p.id || i} className="text-sm text-gray-200 border-b border-gray-900 pb-1.5 last:border-0">
+                        • {p.text}
+                      </p>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProtocolEditor({ vorstand, currentUser, onSave, onCancel, initialData, notify }) {
+  const [form, setForm] = useState(() => {
+    if (initialData) return initialData;
+    const defaultAttendance = {};
+    vorstand.forEach(v => { defaultAttendance[v.id] = 'present'; });
+    const defaultTraktanden = {};
+    TRAKTANDEN.forEach(t => { defaultTraktanden[t] = []; });
+    return {
+      title: `Vorstandssitzung`,
+      date: new Date().toISOString().slice(0, 10),
+      attendance: defaultAttendance,
+      traktanden: defaultTraktanden
+    };
+  });
+
+  const [activeTraktandum, setActiveTraktandum] = useState(TRAKTANDEN[0]);
+  const [newPointText, setNewPointText] = useState('');
+  const [newPointType, setNewPointType] = useState('info');
+  const [newPointAssignee, setNewPointAssignee] = useState('');
+  const [newPointDueDate, setNewPointDueDate] = useState('');
+
+  const addPoint = () => {
+    if (!newPointText.trim()) return;
+    const pt = {
+      id: Date.now().toString() + Math.random().toString(36).slice(2, 5),
+      text: newPointText.trim(),
+      type: newPointType,
+      status: 'open',
+      done: false,
+      assignee: newPointType === 'todo' ? newPointAssignee : '',
+      dueDate: newPointType === 'todo' ? newPointDueDate : ''
+    };
+    const currentList = form.traktanden?.[activeTraktandum] || [];
+    const nextForm = {
+      ...form,
+      traktanden: {
+        ...form.traktanden,
+        [activeTraktandum]: [...currentList, pt]
+      }
+    };
+    setForm(nextForm);
+    setNewPointText('');
+    setNewPointDueDate('');
+  };
+
+  const removePoint = (tName, ptId) => {
+    const list = form.traktanden?.[tName] || [];
+    setForm({
+      ...form,
+      traktanden: {
+        ...form.traktanden,
+        [tName]: list.filter(x => x.id !== ptId)
+      }
+    });
+  };
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-3xl p-5 sm:p-8 space-y-6 shadow-2xl">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800 pb-5">
+        <div>
+          <h3 className="text-2xl font-black text-white">{initialData ? 'Protokoll bearbeiten' : 'Neues Sitzungsprotokoll'}</h3>
+          <p className="text-xs text-gray-400 mt-1">Traktanden, Beschlüsse und Pendenzen erfassen</p>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <button type="button" onClick={onCancel} className="px-5 py-3 rounded-xl bg-gray-800 text-gray-300 font-bold text-sm">
+            Abbrechen
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave(form)}
+            className="px-6 py-3 rounded-xl bg-orange-500 text-gray-950 font-black text-sm flex items-center gap-2 shadow-lg shadow-orange-500/20"
+          >
+            <Save size={16} /> Speichern
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs font-bold text-gray-400 uppercase">Sitzungstitel</label>
+          <input
+            className="w-full mt-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"
+            value={form.title}
+            onChange={e => setForm({ ...form, title: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="text-xs font-bold text-gray-400 uppercase">Datum</label>
+          <input
+            type="date"
+            className="w-full mt-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-orange-500 outline-none"
+            value={form.date}
+            onChange={e => setForm({ ...form, date: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-bold text-gray-400 uppercase block mb-2">Anwesenheit Vorstand</label>
+        <div className="flex flex-wrap gap-2">
+          {vorstand.map(v => {
+            const st = form.attendance?.[v.id] || 'present';
+            const nextStatus = st === 'present' ? 'excused' : st === 'excused' ? 'absent' : 'present';
+            return (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() =>
+                  setForm({
+                    ...form,
+                    attendance: { ...form.attendance, [v.id]: nextStatus }
+                  })
+                }
+                className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                  st === 'present'
+                    ? 'bg-green-500/15 border-green-500/40 text-green-400'
+                    : st === 'excused'
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-400'
+                    : 'bg-red-500/15 border-red-500/40 text-red-400'
+                }`}
+              >
+                {v.firstName}: {st === 'present' ? 'Anwesend' : st === 'excused' ? 'Entschuldigt' : 'Abwesend'}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+        {TRAKTANDEN.map(t => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setActiveTraktandum(t)}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase whitespace-nowrap transition-all ${
+              activeTraktandum === t ? 'bg-orange-500 text-gray-950' : 'bg-gray-950 text-gray-400 border border-gray-800'
+            }`}
+          >
+            {t} ({(form.traktanden?.[t] || []).length})
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-gray-950 border border-gray-800 rounded-2xl p-4 space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { id: 'info', label: 'Info / Notiz' },
+            { id: 'decision', label: 'Beschluss' },
+            { id: 'todo', label: 'Pendenz (Aufgabe)' }
+          ].map(tp => (
+            <button
+              key={tp.id}
+              type="button"
+              onClick={() => setNewPointType(tp.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase ${
+                newPointType === tp.id ? 'bg-orange-500 text-gray-950' : 'bg-gray-900 text-gray-400'
+              }`}
+            >
+              {tp.label}
+            </button>
+          ))}
+        </div>
+
+        <textarea
+          rows={3}
+          placeholder={`Eintrag für «${activeTraktandum}» eingeben...`}
+          className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3.5 text-white focus:border-orange-500 outline-none text-sm"
+          value={newPointText}
+          onChange={e => setNewPointText(e.target.value)}
+        />
+
+        {newPointType === 'todo' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <select
+              value={newPointAssignee}
+              onChange={e => setNewPointAssignee(e.target.value)}
+              className="bg-gray-900 border border-gray-800 rounded-xl px-3.5 py-2.5 text-sm text-white"
+            >
+              <option value="">Verantwortlich wählen...</option>
+              <option value="Gesamtvorstand">Gesamtvorstand</option>
+              {vorstand.map(v => (
+                <option key={v.id} value={`${v.firstName} ${v.lastName}`}>
+                  {v.firstName} {v.lastName}
+                </option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={newPointDueDate}
+              onChange={e => setNewPointDueDate(e.target.value)}
+              className="bg-gray-900 border border-gray-800 rounded-xl px-3.5 py-2.5 text-sm text-white"
+            />
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={addPoint}
+          className="bg-orange-500 hover:bg-orange-400 text-gray-950 font-black px-5 py-2.5 rounded-xl text-xs uppercase tracking-wider"
+        >
+          + Punkt zu {activeTraktandum} hinzufügen
+        </button>
+
+        <div className="space-y-2 pt-3 border-t border-gray-800">
+          {(form.traktanden?.[activeTraktandum] || []).map(pt => (
+            <div key={pt.id} className="bg-gray-900 border border-gray-800 rounded-xl p-3 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase text-orange-400">{pt.type}</span>
+                <p className="text-sm text-white whitespace-pre-wrap">{pt.text}</p>
+                {pt.assignee && <p className="text-xs text-gray-400">@{pt.assignee}</p>}
+              </div>
+              <button
+                type="button"
+                onClick={() => removePoint(activeTraktandum, pt.id)}
+                className="text-gray-500 hover:text-red-500 p-1"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EventsView({ events, calItems = [], currentUser, isArchive, users, notify, askConfirm }) {
+  const [selectedEventId, setSelectedEventId] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [nowTs, setNowTs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (isArchive) return;
+    const timer = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [isArchive]);
+
+  const schmudoCountdown = useMemo(() => {
+    const nextSchmudo = SCHMUDO_DATES
+      .map(s => ({ ...s, targetMs: new Date(s.date).getTime() }))
+      .find(s => s.targetMs > nowTs);
+
+    if (!nextSchmudo) return null;
+    const diff = Math.max(0, nextSchmudo.targetMs - nowTs);
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+    const minutes = Math.floor((diff / (1000 * 60)) % 60);
+    const seconds = Math.floor((diff / 1000) % 60);
+
+    return {
+      year: nextSchmudo.year,
+      dateFormatted: new Date(nextSchmudo.date).toLocaleDateString('de-CH', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      }),
+      days,
+      hours,
+      minutes,
+      seconds
+    };
+  }, [nowTs]);
+
+  const isVorstand = useMemo(() => currentUser?.groups?.includes('Vorstand'), [currentUser]);
+
+  const nextUpcomingCalItem = useMemo(() => {
+    if (isArchive || !isVorstand) return null;
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const upcoming = [...calItems]
+      .filter(c => (c.date || '') >= todayIso)
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    return upcoming[0] || null;
+  }, [calItems, isArchive, isVorstand]);
+
+  const currentEvent = useMemo(
+    () => events.find(e => e.id === selectedEventId),
+    [events, selectedEventId]
+  );
+
+  const saveEvent = async (ev) => {
+    const id = ev.id || Date.now().toString();
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', id), {
+      ...ev,
+      id,
+      isArchived: ev.isArchived || false,
+      surveys: ev.surveys || []
+    });
+    setShowCreate(false);
+    setEditingEvent(null);
+    notify("Event erfolgreich gespeichert.", "success");
+  };
+
+  if (currentEvent) {
+    return (
+      <EventDetail
+        event={currentEvent}
+        currentUser={currentUser}
+        onBack={() => setSelectedEventId(null)}
+        users={users}
+        notify={notify}
+        askConfirm={askConfirm}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {!isArchive && schmudoCountdown && (
+        <div className="relative overflow-hidden bg-gradient-to-br from-gray-900 via-gray-900 to-orange-950/40 border border-orange-500/40 rounded-3xl p-5 sm:p-7 shadow-2xl">
+          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest bg-orange-500 text-gray-950 px-3 py-1 rounded-full shadow-md">
+                <Sparkles size={12} /> Fasnachts-Countdown • Urknall 05:00 Uhr
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-black text-white italic tracking-tight">
+                No <span className="text-orange-500">{schmudoCountdown.days}</span> Täg bis zom SchmuDo <span className="text-orange-500">{schmudoCountdown.year}</span>
+              </h3>
+              <p className="text-xs sm:text-sm text-gray-400 font-medium">
+                Donnerstag, {schmudoCountdown.dateFormatted} • RüssSuuger Ämme
+              </p>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2 sm:gap-3 shrink-0">
+              {[
+                { value: schmudoCountdown.days, label: 'Täg' },
+                { value: String(schmudoCountdown.hours).padStart(2, '0'), label: 'Stond' },
+                { value: String(schmudoCountdown.minutes).padStart(2, '0'), label: 'Min' },
+                { value: String(schmudoCountdown.seconds).padStart(2, '0'), label: 'Sek' }
+              ].map((unit, idx) => (
+                <div
+                  key={idx}
+                  className="bg-gray-950/90 border border-orange-500/30 rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 text-center min-w-[64px] sm:min-w-[78px] shadow-inner"
+                >
+                  <p className="text-xl sm:text-3xl font-black text-orange-500 tabular-nums leading-none">
+                    {unit.value}
+                  </p>
+                  <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-gray-400 mt-1.5">
+                    {unit.label}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isArchive && isVorstand && nextUpcomingCalItem && (
+        <div className="bg-gradient-to-r from-orange-500/15 via-gray-900 to-gray-900 border border-orange-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-orange-500 text-gray-950 rounded-xl shrink-0">
+              <CalendarDays size={18} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">Nächster Vorstands-/Vereinstermin</p>
+              <p className="text-sm font-black text-white">
+                {nextUpcomingCalItem.title} • {new Date(nextUpcomingCalItem.date).toLocaleDateString('de-CH')}
+                {nextUpcomingCalItem.time ? ` (${nextUpcomingCalItem.time} Uhr)` : ''}
+                {nextUpcomingCalItem.location ? ` – ${nextUpcomingCalItem.location}` : ''}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-black text-white">{isArchive ? 'Event-Archiv' : 'Aktuelle Events & Abstimmungen'}</h2>
+        {currentUser.role === 'admin' && !isArchive && (
+          <button
+            onClick={() => setShowCreate(true)}
+            className="bg-orange-500 text-gray-950 font-black px-5 py-3 rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-500/20 active:scale-95 transition-all"
+          >
+            <Plus size={18} /> Neues Event
+          </button>
+        )}
+      </div>
+
+      {(showCreate || editingEvent) && (
+        <CreateEventForm
+          initialData={editingEvent}
+          onSave={saveEvent}
+          onCancel={() => { setShowCreate(false); setEditingEvent(null); }}
+        />
+      )}
+
+      <div className="grid gap-4">
+        {events.length === 0 ? (
+          <div className="text-center py-16 bg-gray-900/40 rounded-3xl border border-dashed border-gray-800">
+            <Calendar className="mx-auto text-gray-700 mb-3" size={40} />
+            <p className="text-gray-400 font-bold">Keine Events vorhanden.</p>
+          </div>
+        ) : (
+          events.map(ev => {
+            const activeCount = (ev.surveys || []).filter(s => s.status === 'active').length;
+            return (
+              <div
+                key={ev.id}
+                onClick={() => setSelectedEventId(ev.id)}
+                className="bg-gray-900 border border-gray-800 hover:border-orange-500/50 rounded-3xl p-6 cursor-pointer transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest bg-orange-500/15 text-orange-400 px-2.5 py-0.5 rounded-full">
+                      {ev.category || 'Event'}
+                    </span>
+                    {activeCount > 0 && (
+                      <span className="text-[10px] font-black uppercase tracking-widest bg-green-500 text-gray-950 px-2.5 py-0.5 rounded-full animate-pulse">
+                        Live-Abstimmung aktiv
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-xl font-black text-white">{ev.title}</h3>
+                  {ev.date && (
+                    <p className="text-xs text-gray-400">
+                      {new Date(ev.date).toLocaleDateString('de-CH', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                  {currentUser.role === 'admin' && (
+                    <>
+                      <button
+                        onClick={() => setEditingEvent(ev)}
+                        className="p-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-gray-300"
+                        title="Event bearbeiten"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', ev.id), {
+                            isArchived: !ev.isArchived
+                          });
+                          notify(ev.isArchived ? "Event wiederhergestellt." : "Event archiviert.", "info");
+                        }}
+                        className="p-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-gray-300"
+                        title={ev.isArchived ? "Wiederherstellen" : "Archivieren"}
+                      >
+                        <Archive size={16} />
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => setSelectedEventId(ev.id)}
+                    className="px-4 py-3 bg-orange-500 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1"
+                  >
+                    Öffnen <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CreateEventForm({ onSave, onCancel, initialData }) {
+  const [form, setForm] = useState(
+    initialData || {
+      title: '',
+      category: CATEGORIES[0],
+      date: new Date().toISOString().slice(0, 16)
+    }
+  );
+
+  return (
+    <form
+      onSubmit={e => {
+        e.preventDefault();
+        onSave(form);
+      }}
+      className="bg-gray-900 border border-gray-800 rounded-3xl p-6 space-y-4 shadow-2xl"
+    >
+      <h3 className="text-lg font-black text-white">{initialData ? 'Event bearbeiten' : 'Neues Event erstellen'}</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <input
+          required
+          placeholder="Event-Titel"
+          className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white"
+          value={form.title}
+          onChange={e => setForm({ ...form, title: e.target.value })}
+        />
+        <select
+          className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white"
+          value={form.category}
+          onChange={e => setForm({ ...form, category: e.target.value })}
+        >
+          {CATEGORIES.map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+        <input
+          type="datetime-local"
+          className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white"
+          value={form.date}
+          onChange={e => setForm({ ...form, date: e.target.value })}
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCancel} className="px-5 py-2.5 rounded-xl bg-gray-800 text-gray-300 font-bold text-xs">
+          Abbrechen
+        </button>
+        <button type="submit" className="px-6 py-2.5 rounded-xl bg-orange-500 text-gray-950 font-black text-xs">
+          Speichern
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function EventDetail({ event, currentUser, onBack, users, notify, askConfirm }) {
+  const [showAddSurvey, setShowAddSurvey] = useState(false);
+  const [editingSurvey, setEditingSurvey] = useState(null);
+  const [presentingIdx, setPresentingIdx] = useState(null);
+  const [confettiActive, setConfettiActive] = useState(false);
+
+  const surveys = event.surveys || [];
+
+  const updateSurveys = async (nextSurveys) => {
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id), {
+      surveys: nextSurveys
+    });
+  };
+
+  const handleSaveSurvey = async (surveyData) => {
+    const exists = surveys.some(s => s.id === surveyData.id);
+    const next = exists
+      ? surveys.map(s => (s.id === surveyData.id ? surveyData : s))
+      : [...surveys, { ...surveyData, id: Date.now().toString(), votes: {} }];
+    await updateSurveys(next);
+    setShowAddSurvey(false);
+    setEditingSurvey(null);
+    notify("Umfrage gespeichert.", "success");
+  };
+
+  const handleStatusChange = async (surveyId, newStatus) => {
+    const next = surveys.map(s => {
+      if (s.id === surveyId) return { ...s, status: newStatus };
+      if (newStatus === 'active' && s.status === 'active') return { ...s, status: 'published' };
+      return s;
+    });
+    await updateSurveys(next);
+    if (newStatus === 'published') {
+      setConfettiActive(true);
+      setTimeout(() => setConfettiActive(false), 3200);
+    }
+  };
+
+  const handleVote = async (surveyId, selectedOptionIds) => {
+    const eventRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', event.id);
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(eventRef);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const nextSurveys = (data.surveys || []).map(s => {
+        if (s.id !== surveyId) return s;
+        return {
+          ...s,
+          votes: {
+            ...(s.votes || {}),
+            [currentUser.id]: selectedOptionIds
+          }
+        };
+      });
+      tx.update(eventRef, { surveys: nextSurveys });
+    });
+    notify("Deine Stimme wurde gezählt!", "success");
+  };
+
+  const handleCreateRunoff = async (survey) => {
+    const counts = {};
+    (survey.options || []).forEach(o => { counts[o.id] = 0; });
+    Object.values(survey.votes || {}).forEach(arr => {
+      (Array.isArray(arr) ? arr : [arr]).forEach(optId => {
+        if (counts[optId] !== undefined) counts[optId]++;
+      });
+    });
+    const sorted = [...(survey.options || [])].sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0));
+    const topOptions = sorted.slice(0, 2).map((o, idx) => ({
+      ...o,
+      id: `runoff_${Date.now()}_${idx}`
+    }));
+    const runoffSurvey = {
+      id: Date.now().toString(),
+      question: `⚡ Stichwahl: ${survey.question}`,
+      options: topOptions,
+      maxAnswers: 1,
+      status: 'active',
+      allowedGroups: survey.allowedGroups || GROUPS,
+      votes: {}
+    };
+    const next = surveys.map(s => (s.status === 'active' ? { ...s, status: 'published' } : s));
+    await updateSurveys([...next, runoffSurvey]);
+    notify("Stichwahl gestartet!", "success");
+  };
+
+  return (
+    <div className="space-y-6">
+      <ConfettiOverlay active={confettiActive} />
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <button
+          onClick={onBack}
+          className="text-sm font-bold text-gray-400 hover:text-white flex items-center gap-1.5"
+        >
+          <ChevronRight size={18} className="rotate-180" /> Zurück zur Übersicht
+        </button>
+        {currentUser.role === 'admin' && (
+          <div className="flex items-center gap-2">
+            {surveys.length > 0 && (
+              <button
+                onClick={() => setPresentingIdx(0)}
+                className="bg-gray-800 hover:bg-gray-700 text-white font-black px-4 py-2.5 rounded-xl text-xs flex items-center gap-2"
+              >
+                <Maximize2 size={15} /> Beamer-Modus
+              </button>
+            )}
+            <button
+              onClick={() => setShowAddSurvey(true)}
+              className="bg-orange-500 text-gray-950 font-black px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5"
+            >
+              <Plus size={16} /> Umfrage hinzufügen
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6">
+        <span className="text-[10px] font-black uppercase tracking-widest text-orange-500">{event.category}</span>
+        <h2 className="text-2xl sm:text-3xl font-black text-white mt-1">{event.title}</h2>
+      </div>
+
+      {(showAddSurvey || editingSurvey) && (
+        <CreateSurveyForm
+          initialData={editingSurvey}
+          onSave={handleSaveSurvey}
+          onCancel={() => { setShowAddSurvey(false); setEditingSurvey(null); }}
+        />
+      )}
+
+      <div className="space-y-4">
+        {surveys.map((s, idx) => (
+          <SurveyCard
+            key={s.id}
+            survey={s}
+            currentUser={currentUser}
+            users={users}
+            onVote={opts => handleVote(s.id, opts)}
+            onStatusChange={st => handleStatusChange(s.id, st)}
+            onCreateRunoff={() => handleCreateRunoff(s)}
+            onEdit={() => setEditingSurvey(s)}
+            onPresent={() => setPresentingIdx(idx)}
+            onDelete={() =>
+              askConfirm('Umfrage löschen', `«${s.question}» wirklich löschen?`, async () => {
+                await updateSurveys(surveys.filter(x => x.id !== s.id));
+              })
+            }
+          />
+        ))}
+      </div>
+
+      {presentingIdx !== null && surveys[presentingIdx] && (
+        <PresentationModal
+          event={event}
+          survey={surveys[presentingIdx]}
+          surveyIndex={presentingIdx}
+          totalSurveys={surveys.length}
+          users={users}
+          onSelectSurvey={i => setPresentingIdx(i)}
+          onStart={id => handleStatusChange(id, 'active')}
+          onPublish={id => handleStatusChange(id, 'published')}
+          onCreateRunoff={handleCreateRunoff}
+          onClose={() => setPresentingIdx(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateSurveyForm({ initialData, onSave, onCancel }) {
+  const [question, setQuestion] = useState(initialData?.question || '');
+  const [maxAnswers, setMaxAnswers] = useState(initialData?.maxAnswers || 1);
+  const [allowedGroups, setAllowedGroups] = useState(initialData?.allowedGroups || [...GROUPS]);
+  const [options, setOptions] = useState(
+    initialData?.options || [
+      { id: 'opt_1', text: 'Ja', youtubeUrl: '' },
+      { id: 'opt_2', text: 'Nein', youtubeUrl: '' },
+      { id: 'opt_3', text: 'Enthaltung', youtubeUrl: '' }
+    ]
+  );
+
+  const addOption = () => {
+    setOptions([...options, { id: `opt_${Date.now()}`, text: '', youtubeUrl: '' }]);
+  };
+
+  return (
+    <form
+      onSubmit={e => {
+        e.preventDefault();
+        onSave({
+          ...(initialData || {}),
+          question,
+          maxAnswers: Number(maxAnswers) || 1,
+          allowedGroups,
+          options: options.filter(o => o.text.trim()),
+          status: initialData?.status || 'draft'
+        });
+      }}
+      className="bg-gray-900 border border-gray-800 rounded-3xl p-6 space-y-4 shadow-2xl"
+    >
+      <h3 className="text-lg font-black text-white">{initialData ? 'Umfrage bearbeiten' : 'Neue Umfrage'}</h3>
+      <input
+        required
+        placeholder="Frage / Abstimmungstitel"
+        className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white"
+        value={question}
+        onChange={e => setQuestion(e.target.value)}
+      />
+
+      <div className="space-y-2">
+        <label className="text-xs font-bold text-gray-400 uppercase">Antwortoptionen</label>
+        {options.map((o, i) => (
+          <div key={o.id} className="flex gap-2">
+            <input
+              required
+              placeholder={`Option ${i + 1}`}
+              className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2.5 text-sm text-white"
+              value={o.text}
+              onChange={e => {
+                const next = [...options];
+                next[i] = { ...o, text: e.target.value };
+                setOptions(next);
+              }}
+            />
+            <input
+              placeholder="Optional: YouTube-URL"
+              className="w-48 bg-gray-950 border border-gray-800 rounded-xl px-3 py-2.5 text-xs text-gray-300"
+              value={o.youtubeUrl || ''}
+              onChange={e => {
+                const next = [...options];
+                next[i] = { ...o, youtubeUrl: e.target.value };
+                setOptions(next);
+              }}
+            />
+            {options.length > 2 && (
+              <button
+                type="button"
+                onClick={() => setOptions(options.filter((_, idx) => idx !== i))}
+                className="p-2.5 text-gray-500 hover:text-red-500"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
+          </div>
+        ))}
+        <button type="button" onClick={addOption} className="text-xs font-black text-orange-500 hover:underline">
+          + Weitere Option hinzufügen
+        </button>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <div>
+          <label className="text-xs font-bold text-gray-400 uppercase block">Max. Stimmen pro Person</label>
+          <input
+            type="number"
+            min={1}
+            max={20}
+            value={maxAnswers}
+            onChange={e => setMaxAnswers(e.target.value)}
+            className="mt-1 w-24 bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-white"
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-2">
+        <button type="button" onClick={onCancel} className="px-5 py-2.5 rounded-xl bg-gray-800 text-gray-300 font-bold text-xs">
+          Abbrechen
+        </button>
+        <button type="submit" className="px-6 py-2.5 rounded-xl bg-orange-500 text-gray-950 font-black text-xs">
+          Umfrage speichern
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function SurveyCard({ survey, currentUser, onVote, onStatusChange, onCreateRunoff, onEdit, onDelete, onPresent }) {
+  const myVotes = survey.votes?.[currentUser.id] || [];
+  const [selected, setSelected] = useState(myVotes);
+  const [activePlayerUrl, setActivePlayerUrl] = useState(null);
+
+  const totalVoters = Object.keys(survey.votes || {}).length;
+  const hasVoted = myVotes.length > 0;
+
+  const optionCounts = useMemo(() => {
+    const map = {};
+    (survey.options || []).forEach(o => { map[o.id] = 0; });
+    Object.values(survey.votes || {}).forEach(v => {
+      (Array.isArray(v) ? v : [v]).forEach(optId => {
+        if (map[optId] !== undefined) map[optId]++;
+      });
+    });
+    return map;
+  }, [survey]);
+
+  const totalVotesCast = Object.values(optionCounts).reduce((a, b) => a + b, 0);
+
+  const toggleSelect = (optId) => {
+    if (survey.status !== 'active') return;
+    if (survey.maxAnswers === 1) {
+      setSelected([optId]);
+    } else {
+      if (selected.includes(optId)) {
+        setSelected(selected.filter(x => x !== optId));
+      } else if (selected.length < (survey.maxAnswers || 1)) {
+        setSelected([...selected, optId]);
+      }
+    }
+  };
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 space-y-4 shadow-xl">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+            survey.status === 'active'
+              ? 'bg-green-500 text-gray-950'
+              : survey.status === 'published'
+              ? 'bg-orange-500/20 text-orange-400'
+              : 'bg-gray-800 text-gray-400'
+          }`}>
+            {survey.status === 'active' ? 'Live-Abstimmung' : survey.status === 'published' ? 'Abstimmung Beendet' : 'Entwurf'}
+          </span>
+          <h3 className="text-xl font-black text-white mt-1.5">{survey.question}</h3>
+          <p className="text-xs text-gray-400">Max. {survey.maxAnswers || 1} Stimme(n) • {totalVoters} Teilnehmende</p>
+        </div>
+
+        {currentUser.role === 'admin' && (
+          <div className="flex flex-wrap items-center gap-2">
+            {survey.status === 'draft' && (
+              <button
+                onClick={() => onStatusChange('active')}
+                className="px-3.5 py-2 bg-green-500 text-gray-950 font-black rounded-xl text-xs"
+              >
+                Starten
+              </button>
+            )}
+            {survey.status === 'active' && (
+              <button
+                onClick={() => onStatusChange('published')}
+                className="px-3.5 py-2 bg-orange-500 text-gray-950 font-black rounded-xl text-xs"
+              >
+                Resultate publizieren
+              </button>
+            )}
+            {survey.status === 'published' && (
+              <button
+                onClick={onCreateRunoff}
+                className="px-3.5 py-2 bg-amber-500/20 border border-amber-500/40 text-amber-300 font-black rounded-xl text-xs flex items-center gap-1"
+              >
+                <Zap size={14} /> Stichwahl (Top 2)
+              </button>
+            )}
+            <button onClick={onPresent} className="p-2.5 bg-gray-800 rounded-xl text-gray-300 hover:text-white" title="Präsentieren">
+              <Maximize2 size={16} />
+            </button>
+            <button onClick={onEdit} className="p-2.5 bg-gray-800 rounded-xl text-gray-300 hover:text-white" title="Bearbeiten">
+              <Edit2 size={16} />
+            </button>
+            <button onClick={onDelete} className="p-2.5 bg-gray-800 rounded-xl text-gray-400 hover:text-red-500" title="Löschen">
+              <Trash2 size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2.5">
+        {(survey.options || []).map(opt => {
+          const isChecked = selected.includes(opt.id);
+          const count = optionCounts[opt.id] || 0;
+          const pct = totalVotesCast > 0 ? Math.round((count / totalVotesCast) * 100) : 0;
+          const embedUrl = getYouTubeEmbedUrl(opt.youtubeUrl);
+
+          return (
+            <div key={opt.id} className="space-y-2">
+              <div
+                onClick={() => toggleSelect(opt.id)}
+                className={`p-4 rounded-2xl border transition-all ${
+                  survey.status === 'active' ? 'cursor-pointer' : ''
+                } ${
+                  isChecked ? 'bg-orange-500/15 border-orange-500' : 'bg-gray-950 border-gray-800'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    {survey.status === 'active' && (
+                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center ${
+                        isChecked ? 'bg-orange-500 border-orange-500 text-gray-950' : 'border-gray-600'
+                      }`}>
+                        {isChecked && <Check size={14} strokeWidth={3} />}
+                      </div>
+                    )}
+                    <span className="font-bold text-white">{opt.text}</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {embedUrl && (
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setActivePlayerUrl(activePlayerUrl === embedUrl ? null : embedUrl);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-red-500/15 text-red-400 text-xs font-bold flex items-center gap-1"
+                      >
+                        <Play size={12} /> Reinhören
+                      </button>
+                    )}
+                    {survey.status === 'published' && (
+                      <span className="text-sm font-black text-orange-400">{count} ({pct}%)</span>
+                    )}
+                  </div>
+                </div>
+
+                {survey.status === 'published' && (
+                  <div className="w-full h-2 bg-gray-900 rounded-full overflow-hidden mt-2.5">
+                    <div className="h-full bg-orange-500 transition-all duration-500" style={{ width: `${pct}%` }} />
+                  </div>
+                )}
+              </div>
+
+              {activePlayerUrl === embedUrl && embedUrl && (
+                <div className="rounded-2xl overflow-hidden border border-gray-800 bg-black aspect-video max-h-60">
+                  <iframe src={embedUrl} title={opt.text} className="w-full h-full" allow="autoplay; encrypted-media" allowFullScreen />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {survey.status === 'active' && (
+        <button
+          disabled={selected.length === 0}
+          onClick={() => onVote(selected)}
+          className="w-full bg-orange-500 disabled:opacity-40 text-gray-950 font-black py-3.5 rounded-2xl shadow-lg"
+        >
+          {hasVoted ? 'Stimme aktualisieren ✓' : 'Stimme abgeben'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PresentationModal({ event, survey, surveyIndex, totalSurveys, users, onSelectSurvey, onStart, onPublish, onCreateRunoff, onClose }) {
+  const [showQrIntro, setShowQrIntro] = useState(survey.status === 'draft');
+  const totalVoters = Object.keys(survey.votes || {}).length;
+  const onlineUsersCount = users.filter(u => u.isOnline && Date.now() - (u.lastSeen || 0) < 120000).length;
+
+  const optionCounts = useMemo(() => {
+    const map = {};
+    (survey.options || []).forEach(o => { map[o.id] = 0; });
+    Object.values(survey.votes || {}).forEach(v => {
+      (Array.isArray(v) ? v : [v]).forEach(optId => {
+        if (map[optId] !== undefined) map[optId]++;
+      });
+    });
+    return map;
+  }, [survey]);
+
+  const totalVotesCast = Object.values(optionCounts).reduce((a, b) => a + b, 0);
+
+  return (
+    <div className="fixed inset-0 z-[260] bg-gray-950 flex flex-col p-6 sm:p-10 overflow-y-auto">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-800 pb-5">
+        <div>
+          <p className="text-xs font-black uppercase tracking-widest text-orange-500">
+            {event.title} • Abstimmung {surveyIndex + 1} / {totalSurveys}
+          </p>
+          <h2 className="text-2xl sm:text-4xl font-black text-white mt-1">{survey.question}</h2>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            disabled={surveyIndex <= 0}
+            onClick={() => onSelectSurvey(surveyIndex - 1)}
+            className="px-3.5 py-2.5 bg-gray-900 border border-gray-800 rounded-xl text-white disabled:opacity-40"
+          >
+            ←
+          </button>
+          <button
+            disabled={surveyIndex >= totalSurveys - 1}
+            onClick={() => onSelectSurvey(surveyIndex + 1)}
+            className="px-3.5 py-2.5 bg-gray-900 border border-gray-800 rounded-xl text-white disabled:opacity-40"
+          >
+            →
+          </button>
+          <button
+            onClick={() => setShowQrIntro(!showQrIntro)}
+            className="px-4 py-2.5 bg-gray-900 border border-gray-800 rounded-xl text-xs font-black text-gray-300 flex items-center gap-1.5"
+          >
+            <QrCode size={16} /> QR-Code
+          </button>
+          {survey.status === 'active' && (
+            <button
+              onClick={() => onPublish(survey.id)}
+              className="px-5 py-2.5 bg-orange-500 text-gray-950 font-black rounded-xl text-xs"
+            >
+              Resultate publizieren
+            </button>
+          )}
+          <button onClick={onClose} className="p-2.5 bg-gray-900 rounded-xl text-gray-400 hover:text-white">
+            <Minimize2 size={20} />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col items-center justify-center max-w-4xl w-full mx-auto py-8">
+        {showQrIntro ? (
+          <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8 text-center space-y-6 w-full max-w-xl">
+            <StandardQRCodeImage value={window.location.origin} size={240} />
+            <div>
+              <p className="text-lg font-black text-white">Jetzt QR-Code scannen & abstimmen</p>
+              <p className="text-sm text-gray-400 mt-1">{onlineUsersCount} Mitglieder aktuell online</p>
+            </div>
+            <button
+              onClick={() => {
+                setShowQrIntro(false);
+                if (survey.status === 'draft') onStart(survey.id);
+              }}
+              className="w-full bg-orange-500 text-gray-950 font-black py-4 rounded-2xl text-lg"
+            >
+              Zur Abstimmung starten →
+            </button>
+          </div>
+        ) : survey.status === 'published' ? (
+          <div className="w-full space-y-4">
+            {(survey.options || []).map(opt => {
+              const count = optionCounts[opt.id] || 0;
+              const pct = totalVotesCast > 0 ? Math.round((count / totalVotesCast) * 100) : 0;
+              return (
+                <div key={opt.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-2">
+                  <div className="flex justify-between text-lg font-black text-white">
+                    <span>{opt.text}</span>
+                    <span className="text-orange-500">{count} Stimmen ({pct}%)</span>
+                  </div>
+                  <div className="w-full h-4 bg-gray-950 rounded-full overflow-hidden">
+                    <div className="h-full bg-orange-500 transition-all duration-700" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex justify-between items-center pt-4">
+              <button
+                onClick={() => onCreateRunoff(survey)}
+                className="px-5 py-3 bg-amber-500/20 border border-amber-500/40 text-amber-300 font-black rounded-2xl text-xs flex items-center gap-2"
+              >
+                <Zap size={16} /> ⚡ Stichwahl mit den Bestplatzierten starten
+              </button>
+              {surveyIndex < totalSurveys - 1 && (
+                <button
+                  onClick={() => onSelectSurvey(surveyIndex + 1)}
+                  className="px-6 py-3 bg-orange-500 text-gray-950 font-black rounded-2xl text-sm"
+                >
+                  Nächste Abstimmung →
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-16 bg-gray-900 border border-gray-800 rounded-3xl w-full space-y-4">
+            <p className="text-orange-400 font-black uppercase tracking-widest text-sm">Abstimmung läuft live</p>
+            <p className="text-6xl font-black text-white">{totalVoters}</p>
+            <p className="text-gray-400 text-sm">Mitglieder haben bereits abgestimmt</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FilesView({ folders, files, currentUser, notify, askConfirm }) {
+  const [newFolderName, setNewFolderName] = useState('');
+  const [selectedFolderId, setSelectedFolderId] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  const createFolder = async (e) => {
+    e.preventDefault();
+    if (!newFolderName.trim()) return;
+    const id = Date.now().toString();
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'folders', id), {
+      id,
+      name: newFolderName.trim(),
+      createdAt: Date.now()
+    });
+    setNewFolderName('');
+    notify("Ordner erstellt.", "success");
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const dataUrl = await readFileAsDataURL(file);
+      const id = Date.now().toString();
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', id), {
+        id,
+        name: file.name,
+        url: dataUrl,
+        folderId: selectedFolderId || 'root',
+        createdAt: Date.now()
+      });
+      notify("Datei hochgeladen.", "success");
+    } catch (err) {
+      notify("Upload fehlgeschlagen.", "error");
+    }
+    setUploading(false);
+  };
+
+  const visibleFiles = files.filter(f => (selectedFolderId ? f.folderId === selectedFolderId : true));
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-black text-white">Vorstands-Dateien</h2>
+          <p className="text-sm text-gray-400">Dokumente, Reglemente & Vorlagen</p>
+        </div>
+        <label className="bg-orange-500 text-gray-950 font-black px-5 py-3 rounded-2xl text-xs cursor-pointer flex items-center gap-2">
+          <UploadCloud size={18} /> {uploading ? 'Lädt hoch...' : 'Datei hochladen'}
+          <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploading} />
+        </label>
+      </div>
+
+      <form onSubmit={createFolder} className="flex gap-2">
+        <input
+          placeholder="Neuer Ordnername..."
+          value={newFolderName}
+          onChange={e => setNewFolderName(e.target.value)}
+          className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white"
+        />
+        <button type="submit" className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5">
+          <FolderPlus size={16} /> Ordner anlegen
+        </button>
+      </form>
+
+      <div className="flex gap-2 overflow-x-auto pb-2">
+        <button
+          onClick={() => setSelectedFolderId(null)}
+          className={`px-4 py-2 rounded-xl text-xs font-black ${!selectedFolderId ? 'bg-orange-500 text-gray-950' : 'bg-gray-900 text-gray-400'}`}
+        >
+          Alle Dateien
+        </button>
+        {folders.map(fl => (
+          <button
+            key={fl.id}
+            onClick={() => setSelectedFolderId(fl.id)}
+            className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 ${
+              selectedFolderId === fl.id ? 'bg-orange-500 text-gray-950' : 'bg-gray-900 text-gray-400'
+            }`}
+          >
+            <Folder size={14} /> {fl.name}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid gap-3">
+        {visibleFiles.map(f => (
+          <div key={f.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <FileText className="text-orange-500" size={20} />
+              <span className="font-bold text-white text-sm">{f.name}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => triggerFileDownload(f.url, f.name)}
+                className="p-2 bg-gray-800 rounded-xl text-gray-300 hover:text-white"
+              >
+                <Download size={16} />
+              </button>
+              <button
+                onClick={() =>
+                  askConfirm('Datei löschen', `«${f.name}» wirklich löschen?`, async () => {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'files', f.id));
+                  })
+                }
+                className="p-2 bg-gray-800 rounded-xl text-gray-400 hover:text-red-500"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CalendarView({ calItems, notify, askConfirm }) {
+  const [title, setTitle] = useState('');
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
+  const [location, setLocation] = useState('');
+
+  const addCalItem = async (e) => {
+    e.preventDefault();
+    if (!title.trim() || !date) return;
+    const id = Date.now().toString();
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'calendar', id), {
+      id,
+      title: title.trim(),
+      date,
+      time,
+      location: location.trim()
+    });
+    setTitle('');
+    setDate('');
+    setTime('');
+    setLocation('');
+    notify("Termin eingetragen.", "success");
+  };
+
+  const sorted = [...calItems].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-black text-white">Vereinskalender</h2>
+          <p className="text-sm text-gray-400">Termine & Export für iPhone / Android</p>
+        </div>
+        {sorted.length > 0 && (
+          <button
+            onClick={() => downloadICSFile(sorted)}
+            className="bg-orange-500 text-gray-950 font-black px-5 py-3 rounded-2xl text-xs flex items-center gap-2"
+          >
+            <Download size={16} /> Alle als .ICS exportieren
+          </button>
+        )}
+      </div>
+
+      <form onSubmit={addCalItem} className="bg-gray-900 border border-gray-800 rounded-3xl p-5 grid grid-cols-1 sm:grid-cols-5 gap-3">
+        <input required placeholder="Termin-Titel" value={title} onChange={e => setTitle(e.target.value)} className="bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2.5 text-sm text-white sm:col-span-2" />
+        <input required type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2.5 text-sm text-white" />
+        <input type="time" value={time} onChange={e => setTime(e.target.value)} className="bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2.5 text-sm text-white" />
+        <button type="submit" className="bg-orange-500 text-gray-950 font-black rounded-xl px-4 py-2.5 text-xs">
+          + Termin speichern
+        </button>
+      </form>
+
+      <div className="grid gap-3">
+        {sorted.map(item => (
+          <div key={item.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-black text-orange-500">
+                {new Date(item.date).toLocaleDateString('de-CH')} {item.time ? `• ${item.time} Uhr` : ''}
+              </p>
+              <h4 className="font-black text-white">{item.title}</h4>
+              {item.location && <p className="text-xs text-gray-400">{item.location}</p>}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => downloadICSFile(item, `${item.title}.ics`)}
+                className="p-2 bg-gray-800 rounded-xl text-gray-300 hover:text-white"
+                title="In Kalender speichern"
+              >
+                <Calendar size={16} />
+              </button>
+              <button
+                onClick={() =>
+                  askConfirm('Termin löschen', `«${item.title}» wirklich löschen?`, async () => {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'calendar', item.id));
+                  })
+                }
+                className="p-2 bg-gray-800 rounded-xl text-gray-400 hover:text-red-500"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MembersView({ users, notify, askConfirm }) {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [role, setRole] = useState('member');
+  const [selectedGroups, setSelectedGroups] = useState(['Aktiv Musig']);
+
+  const addMember = async (e) => {
+    e.preventDefault();
+    const f = sanitizeName(firstName);
+    const l = sanitizeName(lastName);
+    if (!f || !l) return;
+    const id = `${f.toLowerCase()}_${l.toLowerCase()}_${Date.now().toString().slice(-4)}`;
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', id), {
+      id,
+      firstName: f,
+      lastName: l,
+      role,
+      groups: selectedGroups,
+      password: ''
+    });
+    setFirstName('');
+    setLastName('');
+    notify("Mitglied hinzugefügt.", "success");
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6">
+        <h2 className="text-2xl font-black text-white">Mitgliederverwaltung ({users.length})</h2>
+      </div>
+
+      <form onSubmit={addMember} className="bg-gray-900 border border-gray-800 rounded-3xl p-6 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <input required placeholder="Vorname" value={firstName} onChange={e => setFirstName(e.target.value)} className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white" />
+          <input required placeholder="Nachname" value={lastName} onChange={e => setLastName(e.target.value)} className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white" />
+          <select value={role} onChange={e => setRole(e.target.value)} className="bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white">
+            <option value="member">Mitglied</option>
+            <option value="admin">Administrator</option>
+          </select>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {GROUPS.map(g => {
+            const active = selectedGroups.includes(g);
+            return (
+              <button
+                key={g}
+                type="button"
+                onClick={() =>
+                  setSelectedGroups(active ? selectedGroups.filter(x => x !== g) : [...selectedGroups, g])
+                }
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${
+                  active ? 'bg-orange-500 text-gray-950 border-orange-500' : 'bg-gray-950 text-gray-400 border-gray-800'
+                }`}
+              >
+                {g}
+              </button>
+            );
+          })}
+        </div>
+        <button type="submit" className="bg-orange-500 text-gray-950 font-black px-5 py-3 rounded-xl text-xs">
+          + Mitglied erfassen
+        </button>
+      </form>
+
+      <div className="grid gap-2.5">
+        {users.map(u => (
+          <div key={u.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <p className="font-black text-white">{u.firstName} {u.lastName}</p>
+              <p className="text-xs text-gray-400">{(u.groups || []).join(', ')}</p>
+            </div>
+            <button
+              onClick={() =>
+                askConfirm('Mitglied löschen', `${u.firstName} ${u.lastName} wirklich löschen?`, async () => {
+                  await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.id));
+                })
+              }
+              className="p-2 text-gray-500 hover:text-red-500"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReadingViewModal({ minute, vorstandMembers, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[260] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-3xl max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="p-5 border-b border-gray-800 flex items-center justify-between">
+          <h3 className="text-lg font-black text-white">{minute.title}</h3>
+          <div className="flex items-center gap-2">
+            <button onClick={() => window.print()} className="px-4 py-2 bg-orange-500 text-gray-950 font-black rounded-xl text-xs flex items-center gap-1.5">
+              <Printer size={14} /> Drucken
+            </button>
+            <button onClick={onClose} className="p-2 bg-gray-800 rounded-xl text-gray-400 hover:text-white">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+        <div className="p-6 overflow-y-auto space-y-4">
+          {TRAKTANDEN.map(t => {
+            const pts = minute.traktanden?.[t] || [];
+            if (pts.length === 0) return null;
+            return (
+              <div key={t} className="space-y-1.5">
+                <h4 className="text-xs font-black uppercase text-orange-500">{t}</h4>
+                {pts.map((p, idx) => (
+                  <p key={p.id || idx} className="text-sm text-gray-200">• {p.text}</p>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FilePreviewModal({ file, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[260] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-3xl max-w-3xl w-full p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-black text-white">{file.name}</h3>
+          <button onClick={onClose} className="p-2 bg-gray-800 rounded-xl text-gray-400 hover:text-white">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="flex justify-end">
+          <button
+            onClick={() => triggerFileDownload(file.url, file.name)}
+            className="px-5 py-2.5 bg-orange-500 text-gray-950 font-black rounded-xl text-xs flex items-center gap-2"
+          >
+            <Download size={16} /> Herunterladen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, icon, label, badge }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all whitespace-nowrap ${
+        active
+          ? 'bg-orange-500 text-gray-950 shadow-lg shadow-orange-500/20'
+          : 'bg-gray-900 text-gray-400 hover:text-white border border-gray-800'
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
+      {badge > 0 && (
+        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+          active ? 'bg-gray-950 text-orange-500' : 'bg-red-500 text-white'
+        }`}>
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function MobileTabButton({ active, onClick, icon, label, badge }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`relative flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition-all ${
+        active ? 'text-orange-500' : 'text-gray-500 hover:text-gray-300'
+      }`}
+    >
+      {icon}
+      <span className="text-[10px] font-black mt-0.5">{label}</span>
+      {badge > 0 && (
+        <span className="absolute top-1 right-2 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center">
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
